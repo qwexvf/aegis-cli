@@ -22,7 +22,6 @@ import (
 	"github.com/qwexvf/aegis/services/cli/internal/infra/locksnap"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/npmregistry"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/pmwrapper"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ttyprompt"
 	"github.com/qwexvf/aegis/services/cli/internal/presenter/cli"
 	"github.com/qwexvf/aegis/services/cli/internal/usecase"
@@ -79,12 +78,14 @@ func main() {
 		snapshot.WithAllowlist(set)
 	}
 
-	// PM wrappers (the order here drives `aegis --help` listing).
-	managers := []pmwrapper.PackageManager{
-		pmwrapper.NewNpm(),
-		pmwrapper.NewBun(),
-		pmwrapper.NewYarn(),
-		pmwrapper.NewPnpm(),
+	// PM wrappers — registered per-file with `no<pm>` build tags.
+	// See pm_registry.go and pm_<name>.go for the opt-out mechanism.
+	// `aegis --help` order matches the file-name ordering of init().
+	if len(registeredPMs) == 0 {
+		fmt.Fprintln(os.Stderr,
+			"aegis: no package managers compiled in — "+
+				"build with at least one of npm/bun/yarn/pnpm")
+		os.Exit(1)
 	}
 
 	clii.Execute(clii.Deps{
@@ -92,7 +93,7 @@ func main() {
 		Snapshot:           snapshot,
 		Cache:              cache,
 		Audit:              audit,
-		Managers:           managers,
+		Managers:           registeredPMs,
 		AllowlistLoader:    allowlistLoader,
 		AllowlistPresenter: cli.NewAllowlistPresenter(presenter),
 	})
