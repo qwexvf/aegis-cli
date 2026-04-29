@@ -88,36 +88,112 @@ AEGIS_OVERRIDE=allow aegis bun add some-blocked@1.2.3
 
 ## Status
 
-- ✅ Multi-PM support (npm + bun + yarn share one gate)
+- ✅ Multi-PM support (npm + bun + yarn + pnpm share one gate)
 - ✅ Argv parsing (scoped, ranges, tags, non-registry, yarn `global add`)
 - ✅ Exact-version fast path (skips registry round-trip)
 - ✅ Range/tag resolution via the npm registry
 - ✅ Aegis API client (`POST /api/v1/supply-chain/check`)
 - ✅ Allow / Warn / Block / Prompt UX with ANSI colors + NO_COLOR/TTY-aware
-- ✅ AEGIS_OVERRIDE=allow flow
-- ⬜ Interactive prompt for HIGH severity (Step 8)
-- ⬜ Local decision cache (Step 9)
-- ⬜ Audit log shipping (Step 10)
+- ✅ Local decision cache (`~/.aegis/cache/decisions.json`)
+- ✅ Interactive prompt for `prompt` decisions via `/dev/tty`
+- ✅ Auto-block in CI (`CI=true`, `GITHUB_ACTIONS`, etc.) — never blocks waiting for input
+- ✅ Audit log (`~/.aegis/audit.jsonl`)
+- ✅ `AEGIS_OVERRIDE=allow` requires `AEGIS_OVERRIDE_REASON` (untraceable overrides refused)
+- ✅ Real historical incident database (9 documented attacks, 17 version entries)
+- ⬜ Audit log shipping to API (offline → batch sync)
 - ⬜ pip / cargo / go (Tier A)
 - ⬜ `aegis guard <command>` for universal lockfile-diff coverage (Tier B)
+- ⬜ Active depsandbox runs (behavioral diff differentiator — Phase 3)
+
+## Verified incidents
+
+The gate ships with a curated database of real, citable npm
+supply-chain incidents. None are fabricated:
+
+| Package          | Version(s)                          | Date    | Advisory                | What happened |
+|------------------|-------------------------------------|---------|-------------------------|---------------|
+| `event-stream`   | `3.3.6`                             | 2018-11 | GHSA-jvqj-7wpc-9bqp     | Maintainer handover → malicious dep `flatmap-stream` targeting Bitcoin wallets |
+| `flatmap-stream` | `0.1.1`                             | 2018-11 | GHSA-jvqj-7wpc-9bqp     | The actual encrypted payload of the event-stream incident |
+| `eslint-scope`   | `3.7.2`                             | 2018-07 | GHSA-vhwc-9wr2-w98p     | Account takeover → npm credential exfiltration |
+| `ua-parser-js`   | `0.7.29`, `0.8.0`, `1.0.0`          | 2021-10 | GHSA-pjwm-rvh2-c87w     | Cryptominer + password stealer (preinstall.sh / preinstall.bat) |
+| `coa`            | `2.0.3`, `2.0.4`, `2.1.1`, `2.1.3`  | 2021-11 | GHSA-73qr-pfmq-6rp8     | Same actor / payload as ua-parser-js |
+| `rc`             | `1.2.9`, `1.3.9`, `2.3.9`           | 2021-11 | GHSA-g2q5-5433-rhrf     | Same actor; rc had ~14M weekly downloads at compromise |
+| `node-ipc`       | `10.1.1`, `10.1.2`                  | 2022-03 | GHSA-97m3-w2cp-4xx6     | "peacenotwar" — geo-IP-targeted file wipe on RU/BY hosts |
+| `colors`         | `1.4.44-liberty-2`                  | 2022-01 | (author self-sabotage)  | Infinite loop printing "LIBERTY LIBERTY LIBERTY" |
+| `faker`          | `6.6.6`                             | 2022-01 | (author self-sabotage)  | Package wiped + "What really happened with Aaron Swartz?" message |
+
+`./scripts/demo-history.sh` walks through every entry against a live API.
+
+## End-to-end verification
+
+The gate is designed to run against the live Gleam API
+(`POST /api/v1/supply-chain/check`). To smoke-test end-to-end:
+
+```bash
+# 1. Boot the API
+docker compose up api -d
+docker compose logs api    # confirm "Listening on 4000"
+
+# 2. Build CLI + run unit tests
+cd services/cli && make build && go test ./...
+
+# 3. Smoke a known-clean install
+./bin/aegis npm install lodash@4.17.21        # → ✓ allowed
+./bin/aegis npm install lodash@4.17.21        # → ✓ allowed (cached) — no API call
+
+# 4. Hit each ecosystem with a real incident
+./bin/aegis npm install ua-parser-js@0.7.29    # block, GHSA-pjwm-rvh2-c87w
+./bin/aegis bun add event-stream@3.3.6         # block, GHSA-jvqj-7wpc-9bqp
+./bin/aegis yarn add colors@1.4.44-liberty-2   # block, author sabotage
+./bin/aegis pnpm add node-ipc@10.1.2           # block, peacenotwar
+
+# 5. Cache + audit + override
+./bin/aegis cache list
+./bin/aegis audit tail -n 10
+AEGIS_OVERRIDE=allow ./bin/aegis npm install ua-parser-js@0.7.29
+                                               # → blocked: AEGIS_OVERRIDE_REASON required
+AEGIS_OVERRIDE=allow AEGIS_OVERRIDE_REASON='hotfix-123' \
+    ./bin/aegis npm install ua-parser-js@0.7.29
+                                               # → proceeds, audit entry with reason
+
+# 6. CI mode (prompt → block)
+CI=true ./bin/aegis npm install <prompt-package>
+
+# 7. Or run the full canned demo
+./scripts/demo-history.sh
+```
 
 ## Layout
 
+The CLI is organised in clean-architecture layers:
+
 ```
 services/cli/
-├── cmd/aegis/main.go        # entrypoint, Cobra command tree
+├── cmd/aegis/main.go            # composition root (wires concrete adapters)
 ├── internal/
-│   ├── api/                 # Aegis API client
-│   ├── pm/                  # PackageManager interface + Runner + npm/bun/yarn
-│   ├── registry/            # npm registry version resolution
-│   └── ui/                  # decision rendering
+│   ├── domain/                  # entities + Policy.Evaluate (pure)
+│   ├── usecase/                 # InstallGate + port interfaces
+│   ├── interface/cli/           # Cobra command tree
+│   ├── presenter/cli/           # Outcome → ANSI text
+│   └── infra/
+│       ├── aegisapi/            # DecisionChecker over HTTP
+│       ├── diskcache/           # DecisionCache (JSON file)
+│       ├── envprobe/            # CI markers + AEGIS_OVERRIDE/_REASON
+│       ├── ndjsonaudit/         # AuditWriter (NDJSON)
+│       ├── npmregistry/         # VersionResolver
+│       ├── pmwrapper/           # PackageManager (npm/bun/yarn/pnpm)
+│       └── ttyprompt/           # Confirmer (/dev/tty)
 ├── Makefile
 └── README.md
 ```
 
-Adding a new package manager is one new file under `internal/pm/`
+Domain has no dependencies. Usecase depends on domain + ports.
+Adapters depend on domain only. The composition root is the single
+place that constructs concrete implementations.
+
+Adding a new package manager is one file under `infra/pmwrapper/`
 implementing the `PackageManager` interface (`Name`, `Ecosystem`,
-`IsInstallCommand`, `ParseInstallArgs`, `Exec`).
+`InstallVerb`, `IsInstallCommand`, `ParseInstallArgs`, `Exec`).
 
 ## Roadmap
 
