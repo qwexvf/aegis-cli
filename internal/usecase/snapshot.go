@@ -30,6 +30,11 @@ type Snapshot struct {
 	analyzer ASTAnalyzer
 	fpCache  FingerprintCache
 
+	// allowlist is applied post-RiskScore/DriftScore in Diff so
+	// known-benign capabilities (lodash dynamic-eval, build tools'
+	// shell-spawn) don't manufacture false-positive verdicts.
+	allowlist domain.AllowSet
+
 	aegisVersion string
 	now          func() time.Time // injectable for tests
 }
@@ -52,6 +57,13 @@ func (s *Snapshot) WithRiskEngine(fetcher PackageSourceFetcher, analyzer ASTAnal
 	s.fetcher = fetcher
 	s.analyzer = analyzer
 	s.fpCache = fpCache
+	return s
+}
+
+// WithAllowlist attaches a precomputed AllowSet. Use cases without
+// allowlist behave as if an empty AllowSet were attached.
+func (s *Snapshot) WithAllowlist(set domain.AllowSet) *Snapshot {
+	s.allowlist = set
 	return s
 }
 
@@ -192,7 +204,8 @@ func (s *Snapshot) Diff(projectDir, fileA, fileB string) error {
 	for _, d := range delta.Added {
 		dep := d
 		entry := DiffEntry{Kind: DiffAdded, New: &dep}
-		entry.Risk = domain.RiskScore(dep.Fingerprint)
+		entry.Risk = domain.RiskScore(dep.Fingerprint).
+			ApplyAllowlist(dep.Ecosystem, dep.Name, dep.Version, s.allowlist)
 		entry.Verdict = domain.Verdict(entry.Risk, entry.Drift)
 		updateReportFlags(&report, entry.Verdict)
 		report.Entries = append(report.Entries, entry)
@@ -208,8 +221,10 @@ func (s *Snapshot) Diff(projectDir, fileA, fileB string) error {
 	for _, u := range delta.Upgraded {
 		oldDep, newDep := u.Old, u.New
 		entry := DiffEntry{Kind: DiffUpgraded, Old: &oldDep, New: &newDep}
-		entry.Risk = domain.RiskScore(newDep.Fingerprint)
-		entry.Drift = domain.DriftScore(oldDep.Fingerprint, newDep.Fingerprint)
+		entry.Risk = domain.RiskScore(newDep.Fingerprint).
+			ApplyAllowlist(newDep.Ecosystem, newDep.Name, newDep.Version, s.allowlist)
+		entry.Drift = domain.DriftScore(oldDep.Fingerprint, newDep.Fingerprint).
+			ApplyAllowlist(newDep.Ecosystem, newDep.Name, newDep.Version, s.allowlist)
 		entry.Verdict = domain.Verdict(entry.Risk, entry.Drift)
 		updateReportFlags(&report, entry.Verdict)
 		report.Entries = append(report.Entries, entry)

@@ -182,3 +182,16 @@ func TestSnapshotPresenter_MultipleAddedSorted(t *testing.T) {
 type testError string
 
 func (e testError) Error() string { return string(e) }
+
+// diffReportFromUpgrade builds a single-entry DiffReport for upgrade
+// rendering tests. Shared between snapshot_verdict_test.go and
+// allowlist_render_test.go.
+func diffReportFromUpgrade(oldDep, newDep domain.Dependency, v domain.VerdictKind, risk, drift domain.RiskAssessment) usecase.DiffReport {
+	return usecase.DiffReport{
+		Entries: []usecase.DiffEntry{{
+			Kind: usecase.DiffUpgraded,
+			Old:  &oldDep, New: &newDep,
+			Verdict: v, Risk: risk, Drift: drift,
+		}},
+	}
+}
