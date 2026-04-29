@@ -1,12 +1,14 @@
 # aegis CLI
 
-Supply-chain install gate for npm, pip, and cargo. Wraps your package manager
-and checks each install against the Aegis API before allowing it to proceed.
+Supply-chain install gate for the JavaScript ecosystem — wraps **npm**,
+**bun**, and **yarn** and checks each install against the Aegis API
+before letting it proceed.
 
 > **Status:** v0.1.0-demo, end-to-end working.
-> Done: skeleton, npm passthrough, argv parsing, version resolution,
-> Aegis API client, allow/warn/block/prompt UX, override flow.
-> Next: interactive prompt, local cache, audit log. See `docs/aegis-cli-demo-plan.md`.
+> Done: skeleton, multi-PM support (npm/bun/yarn), argv parsing, version
+> resolution, Aegis API client, allow/warn/block/prompt UX, override flow.
+> Next: interactive prompt, local cache, audit log, additional ecosystems
+> (pip / cargo / go). See `docs/aegis-cli-demo-plan.md`.
 
 ## Build
 
@@ -22,67 +24,82 @@ make build
 ./demo.sh
 ```
 
-`./demo.sh` spins up a local mock API and runs four scenarios:
+`./demo.sh` spins up a local mock API and runs scenarios across all three
+package managers (bun/yarn scenarios are skipped if the binaries aren't
+installed):
 
 ```
 ==> Demo 1: Allow (lodash@4.17.21)
 [aegis] checking lodash@4.17.21 ...
 [aegis] lodash@4.17.21 ✓ allowed
-add lodash 4.17.21
 
 ==> Demo 2: Block (@bitwarden/cli@2026.4.0 — April 2026 incident)
-[aegis] checking @bitwarden/cli@2026.4.0 ...
 [aegis] ✗ @bitwarden/cli@2026.4.0 — BLOCKED (CRITICAL)
 [aegis]   depsandbox-net-egress — Postinstall connects to attacker-controlled host
 [aegis]   depsandbox-credential-read — Reads /proc/self/environ during install
-[aegis]
 [aegis]   override: AEGIS_OVERRIDE=allow aegis npm install @bitwarden/cli@2026.4.0
 
-==> Demo 3: Prompt / Review Required (@aegis/suspicious-demo@2.0.0)
-[aegis] ⚠ @aegis/suspicious-demo@2.0.0 — REVIEW REQUIRED (HIGH)
-[aegis]   depsandbox-script-added — New postinstall script added since 1.x
-[aegis]   depsandbox-fs-write — Writes outside ./node_modules/ during install
+==> Demo 6: bun block (@bitwarden/cli@2026.4.0)
+[aegis] ✗ @bitwarden/cli@2026.4.0 — BLOCKED (CRITICAL)
+[aegis]   override: AEGIS_OVERRIDE=allow aegis bun add @bitwarden/cli@2026.4.0
 
-==> Demo 4: Block + override (ua-parser-js@0.7.29)
+==> Demo 8: yarn block (global add ua-parser-js@0.7.29)
 [aegis] ✗ ua-parser-js@0.7.29 — BLOCKED (CRITICAL)
-[aegis]   depsandbox-exec-shell — Postinstall executes downloaded shell payload
-[aegis]   AEGIS_OVERRIDE=allow set — proceeding (audited)
+[aegis]   override: AEGIS_OVERRIDE=allow aegis yarn add ua-parser-js@0.7.29
 ```
+
+## Supported package managers
+
+| PM     | Install commands recognized                | Registry          |
+|--------|--------------------------------------------|-------------------|
+| `npm`  | `install`, `i`, `add`, plus typo aliases   | registry.npmjs.org |
+| `bun`  | `install`, `i`, `add`, `a`                 | registry.npmjs.org |
+| `yarn` | `add`, `install`, `global add`             | registry.npmjs.org |
+
+Non-registry forms (local paths, tarballs, git URLs, `link:`,
+`workspace:`, yarn-berry `portal:` / `patch:` / `exec:` / `npm:`) are
+detected and passed through without an API check.
 
 ## Manual usage
 
 ```bash
-# Point at the live Gleam API (or any compatible endpoint)
 export AEGIS_API_URL=http://localhost:4000
 
-# Transparent passthrough — same as `npm <args>` for non-install commands
+# Transparent passthrough — same as the underlying PM for non-install commands
 aegis npm --version
+aegis bun run dev
+aegis yarn test
 
 # Install detection + version resolution + API check
 aegis npm install lodash@4.17.21
-aegis npm install lodash@^4.17.0       # range → resolved via registry
-aegis npm install lodash@latest         # tag → resolved via registry
+aegis bun add lodash@^4.17.0           # range → resolved via npm registry
+aegis yarn add lodash@latest            # tag → resolved via npm registry
+aegis yarn global add create-react-app
 
 # Non-registry installs pass through unchanged
 aegis npm install ./vendor/foo
-aegis npm install https://github.com/owner/repo.git
+aegis bun add link:../sibling
+aegis yarn add portal:./local-pkg
 
 # Override a block (audited)
 AEGIS_OVERRIDE=allow aegis npm install some-blocked@1.2.3
+AEGIS_OVERRIDE=allow aegis bun add some-blocked@1.2.3
 ```
 
 ## Status
 
-- ✅ `npm install` / `i` / `add` detection
-- ✅ Argv parsing (scoped, ranges, tags, non-registry)
+- ✅ Multi-PM support (npm + bun + yarn share one gate)
+- ✅ Argv parsing (scoped, ranges, tags, non-registry, yarn `global add`)
 - ✅ Exact-version fast path (skips registry round-trip)
 - ✅ Range/tag resolution via the npm registry
-- ✅ Aegis API client (POST /api/v1/supply-chain/check)
+- ✅ Aegis API client (`POST /api/v1/supply-chain/check`)
 - ✅ Allow / Warn / Block / Prompt UX with ANSI colors + NO_COLOR/TTY-aware
 - ✅ AEGIS_OVERRIDE=allow flow
 - ⬜ Interactive prompt for HIGH severity (Step 8)
 - ⬜ Local decision cache (Step 9)
 - ⬜ Audit log shipping (Step 10)
+- ⬜ pip / cargo / go (Tier A)
+- ⬜ `aegis guard <command>` for universal lockfile-diff coverage (Tier B)
 
 ## Layout
 
@@ -90,14 +107,17 @@ AEGIS_OVERRIDE=allow aegis npm install some-blocked@1.2.3
 services/cli/
 ├── cmd/aegis/main.go        # entrypoint, Cobra command tree
 ├── internal/
-│   ├── api/                 # Aegis API client (step 6)
-│   ├── cache/               # local decision cache (step 9)
-│   ├── registry/            # npm registry version resolution (step 4)
-│   ├── ui/                  # decision rendering + prompts (steps 7-8)
-│   └── wrap/                # package manager wrappers
+│   ├── api/                 # Aegis API client
+│   ├── pm/                  # PackageManager interface + Runner + npm/bun/yarn
+│   ├── registry/            # npm registry version resolution
+│   └── ui/                  # decision rendering
 ├── Makefile
 └── README.md
 ```
+
+Adding a new package manager is one new file under `internal/pm/`
+implementing the `PackageManager` interface (`Name`, `Ecosystem`,
+`IsInstallCommand`, `ParseInstallArgs`, `Exec`).
 
 ## Roadmap
 

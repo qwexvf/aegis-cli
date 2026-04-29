@@ -21,20 +21,23 @@ const (
 	boldCode   = "\x1b[1m"
 )
 
-// Render writes a single decision to w. The format depends on decision.Decision:
+// Render writes a single decision to w. pmName + installVerb are used to
+// build the override hint shown on block decisions ("aegis npm install ...",
+// "aegis bun add ...", "aegis yarn add ..."). The format depends on
+// decision.Decision:
 //
-//   allow  -> single dim line
-//   warn   -> yellow header + reasons, install proceeds
-//   block  -> red header + reasons + override hint
-//   prompt -> red header + reasons (caller is responsible for the prompt itself)
-func Render(w io.Writer, d *api.Decision) {
+//	allow  -> single dim line
+//	warn   -> yellow header + reasons, install proceeds
+//	block  -> red header + reasons + override hint
+//	prompt -> red header + reasons (caller is responsible for the prompt itself)
+func Render(w io.Writer, d *api.Decision, pmName, installVerb string) {
 	switch d.Decision {
 	case "allow":
 		renderAllow(w, d)
 	case "warn":
 		renderWarn(w, d)
 	case "block":
-		renderBlock(w, d)
+		renderBlock(w, d, pmName, installVerb)
 	case "prompt":
 		renderPrompt(w, d)
 	default:
@@ -69,41 +72,69 @@ func renderWarn(w io.Writer, d *api.Decision) {
 	}
 }
 
-func renderBlock(w io.Writer, d *api.Decision) {
+func renderBlock(w io.Writer, d *api.Decision, pmName, installVerb string) {
 	fmt.Fprintf(w, "%s[aegis]%s %s%s✗ %s@%s — BLOCKED (%s)%s\n",
 		dim(w), reset(w),
 		red(w), bold(w),
 		d.Package, d.Version,
 		strings.ToUpper(d.Severity),
 		reset(w))
+	renderIncidentMeta(w, d)
 	for _, r := range d.Reasons {
 		fmt.Fprintf(w, "%s[aegis]%s   %s%s%s — %s\n",
 			dim(w), reset(w),
 			red(w), r.Category, reset(w), r.Detail)
 	}
+	renderReferences(w, d)
 	fmt.Fprintf(w, "%s[aegis]%s\n", dim(w), reset(w))
-	fmt.Fprintf(w, "%s[aegis]%s   override: %sAEGIS_OVERRIDE=allow aegis npm install %s@%s%s\n",
+	fmt.Fprintf(w, "%s[aegis]%s   override: %sAEGIS_OVERRIDE=allow AEGIS_OVERRIDE_REASON=<reason> aegis %s %s %s@%s%s\n",
 		dim(w), reset(w),
 		dim(w),
+		pmName, installVerb,
 		d.Package, d.Version,
 		reset(w))
 }
 
+// renderIncidentMeta prints advisory ID + incident date + summary if
+// the decision is backed by a real documented incident.
+func renderIncidentMeta(w io.Writer, d *api.Decision) {
+	if d.AdvisoryID != "" {
+		fmt.Fprintf(w, "%s[aegis]%s   advisory: %s\n", dim(w), reset(w), d.AdvisoryID)
+	}
+	if d.IncidentDate != "" {
+		fmt.Fprintf(w, "%s[aegis]%s   incident: %s\n", dim(w), reset(w), d.IncidentDate)
+	}
+	if d.Summary != "" {
+		fmt.Fprintf(w, "%s[aegis]%s   summary:  %s\n", dim(w), reset(w), d.Summary)
+	}
+}
+
+func renderReferences(w io.Writer, d *api.Decision) {
+	if len(d.References) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "%s[aegis]%s   refs:\n", dim(w), reset(w))
+	for _, ref := range d.References {
+		fmt.Fprintf(w, "%s[aegis]%s     %s%s%s\n", dim(w), reset(w), dim(w), ref, reset(w))
+	}
+}
+
 func renderPrompt(w io.Writer, d *api.Decision) {
-	// Same body as block — the caller is expected to follow this with an
-	// interactive prompt. Step 8 wires that up; for now it behaves like
-	// a softer block.
+	// Header + reasons; the runner follows this with an interactive
+	// y/N (or auto-blocks in CI / no-TTY environments).
 	fmt.Fprintf(w, "%s[aegis]%s %s%s⚠ %s@%s — REVIEW REQUIRED (%s)%s\n",
 		dim(w), reset(w),
 		red(w), bold(w),
 		d.Package, d.Version,
 		strings.ToUpper(d.Severity),
 		reset(w))
+	renderIncidentMeta(w, d)
 	for _, r := range d.Reasons {
 		fmt.Fprintf(w, "%s[aegis]%s   %s%s%s — %s\n",
 			dim(w), reset(w),
 			red(w), r.Category, reset(w), r.Detail)
 	}
+	renderReferences(w, d)
 }
 
 // Resolved logs a "resolved version" line for a package we're about to check.

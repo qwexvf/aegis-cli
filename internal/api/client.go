@@ -30,6 +30,14 @@ type Decision struct {
 	Severity  string   `json:"severity"` // critical | high | medium | low | info
 	Cached    bool     `json:"cached"`
 	Reasons   []Reason `json:"reasons"`
+
+	// Incident metadata — present for `block` and `prompt` decisions
+	// that map to a documented historical incident. Empty for synthetic
+	// or unknown packages.
+	AdvisoryID    string   `json:"advisory_id,omitempty"`
+	IncidentDate  string   `json:"incident_date,omitempty"`
+	Summary       string   `json:"summary,omitempty"`
+	References    []string `json:"references,omitempty"`
 }
 
 // Client is the Aegis API client.
