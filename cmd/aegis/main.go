@@ -2,6 +2,10 @@
 // concrete adapters (infra/) into ports (usecase) and hands off to the
 // CLI command tree. This is the ONLY file that constructs adapters —
 // every other layer talks to ports, not implementations.
+//
+// The risk engine (AST scanner + package-source fetcher + fingerprint
+// cache) is opt-out via the `nojsscan` build tag. See risk_engine.go
+// (default) and risk_engine_off.go (with -tags=nojsscan).
 package main
 
 import (
@@ -10,13 +14,9 @@ import (
 
 	clii "github.com/qwexvf/aegis/services/cli/internal/interface/cli"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/astscan"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/astscan/jsscan"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/envprobe"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/jspkgsource"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/locksnap"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/npmregistry"
@@ -44,26 +44,14 @@ func main() {
 	}
 	scanner := locksnap.NewScanner()
 
-	// Risk-engine adapters: AST scanner + tarball fetcher + cache.
-	// Failure to compile the JS scanner means the embedded queries
-	// are malformed (a developer bug); fall back to no risk engine
-	// rather than refusing to run at all.
-	jsScanner, jsErr := jsscan.New()
-	dispatcher := astscan.NewDispatcher()
-	if jsErr == nil {
-		dispatcher.Register(domain.EcoNpm, jsScanner)
-	} else {
-		fmt.Fprintln(os.Stderr, "aegis: JS scanner init failed:", jsErr)
-	}
-	fetcher := jspkgsource.New()
-	fpCache := diskcache.NewFingerprintCache()
-
 	// Use cases.
 	gate := usecase.NewInstallGate(resolver, apiClient, cache, audit, confirm, env, presenter)
 	snapshot := usecase.NewSnapshot(store, scanner, cli.NewSnapshotPresenter(presenter), clii.Version)
-	if jsErr == nil {
-		snapshot.WithRiskEngine(fetcher, dispatcher, fpCache)
-	}
+
+	// Optionally attach the risk engine (AST scanner). The
+	// implementation is selected at compile time via build tags;
+	// see risk_engine.go (default) and risk_engine_off.go.
+	attachRiskEngine(snapshot)
 
 	// PM wrappers (the order here drives `aegis --help` listing).
 	managers := []pmwrapper.PackageManager{
