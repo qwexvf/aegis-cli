@@ -52,10 +52,22 @@ var credentialEnvVarRoots = []string{
 // RiskFlag is one explainable contribution to a score. Presenter
 // renders these alongside the total so the user sees *why* a version
 // got blocked.
+//
+// Suppressed flags are kept in the assessment (so the user sees what
+// was found) but their Weight is removed from the aggregate Score
+// when the rule applies — see RiskAssessment.ApplyAllowlist.
 type RiskFlag struct {
 	Code   string // stable identifier ("shell-spawn", "install-hook", ...)
 	Detail string // human-readable explanation
-	Weight int    // numeric contribution to the score
+	Weight int    // numeric contribution to the score (0 if Suppressed)
+
+	// Suppressed is true when an allowlist rule excused this flag.
+	// The flag is still rendered (transparency: users see what was
+	// found) but its Weight no longer contributes to Score.
+	Suppressed bool
+	// SuppressBy is the AllowRule.Reason from the matching rule.
+	// Empty when Suppressed is false.
+	SuppressBy string
 }
 
 // RiskAssessment bundles a Fingerprint's score with the flags that

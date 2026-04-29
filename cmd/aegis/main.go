@@ -15,6 +15,7 @@ import (
 	clii "github.com/qwexvf/aegis/services/cli/internal/interface/cli"
 
 	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/allowlist"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/envprobe"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/locksnap"
@@ -53,6 +54,21 @@ func main() {
 	// see risk_engine.go (default) and risk_engine_off.go.
 	attachRiskEngine(snapshot)
 
+	// Allowlist: layered builtin + user (~/.aegis/allowlist.yaml) +
+	// project (.aegis-allowlist.yaml at cwd). Failures fall back to
+	// builtin-only — never refuse to start because of allowlist file
+	// errors; the user will see them on the next `aegis allowlist
+	// list`.
+	allowlistLoader := func() *allowlist.Loader {
+		cwd, _ := os.Getwd()
+		return allowlist.New(cwd)
+	}
+	if set, err := allowlistLoader().Load(); err != nil {
+		fmt.Fprintln(os.Stderr, "aegis: allowlist load warning:", err)
+	} else {
+		snapshot.WithAllowlist(set)
+	}
+
 	// PM wrappers (the order here drives `aegis --help` listing).
 	managers := []pmwrapper.PackageManager{
 		pmwrapper.NewNpm(),
@@ -62,10 +78,12 @@ func main() {
 	}
 
 	clii.Execute(clii.Deps{
-		Gate:     gate,
-		Snapshot: snapshot,
-		Cache:    cache,
-		Audit:    audit,
-		Managers: managers,
+		Gate:               gate,
+		Snapshot:           snapshot,
+		Cache:              cache,
+		Audit:              audit,
+		Managers:           managers,
+		AllowlistLoader:    allowlistLoader,
+		AllowlistPresenter: cli.NewAllowlistPresenter(presenter),
 	})
 }

@@ -157,8 +157,10 @@ func (sp *SnapshotPresenter) renderEntry(e usecase.DiffEntry) {
 	if e.Drift.Score > totalScore {
 		totalScore = e.Drift.Score
 	}
-	if totalScore == 0 {
-		return // verdict=safe, no flags worth showing
+	// Show breakdown when ANY of: non-zero score, OR any flag exists
+	// (suppressed flags are kept visible for transparency).
+	if totalScore == 0 && len(e.Risk.Flags) == 0 && len(e.Drift.Flags) == 0 {
+		return
 	}
 
 	fmt.Fprintf(sp.p.w, "        %s└─ verdict=%s%s%s  risk=%d  drift=%d%s\n",
@@ -166,19 +168,30 @@ func (sp *SnapshotPresenter) renderEntry(e usecase.DiffEntry) {
 		color, e.Verdict, sp.p.reset(), e.Risk.Score, e.Drift.Score,
 		sp.p.reset())
 	for _, f := range e.Risk.Flags {
-		fmt.Fprintf(sp.p.w, "           %s+ %s%s%s — %s  %s(+%d)%s\n",
-			sp.p.dim(),
-			sp.p.yellow(), f.Code, sp.p.reset(),
-			f.Detail,
-			sp.p.dim(), f.Weight, sp.p.reset())
+		sp.renderFlag("+", sp.p.yellow(), f)
 	}
 	for _, f := range e.Drift.Flags {
-		fmt.Fprintf(sp.p.w, "           %sΔ %s%s%s — %s  %s(+%d)%s\n",
-			sp.p.dim(),
-			sp.p.red(), f.Code, sp.p.reset(),
-			f.Detail,
-			sp.p.dim(), f.Weight, sp.p.reset())
+		sp.renderFlag("Δ", sp.p.red(), f)
 	}
+}
+
+// renderFlag prints one flag line. Suppressed flags swap their marker
+// to ~ and append a dim "(allowlisted: <reason>)" suffix so users see
+// what was found AND why it was excused.
+func (sp *SnapshotPresenter) renderFlag(marker, color string, f domain.RiskFlag) {
+	if f.Suppressed {
+		fmt.Fprintf(sp.p.w, "           %s~ %s%s%s — %s  %s(+%d, allowlisted: %s)%s\n",
+			sp.p.dim(),
+			sp.p.dim(), f.Code, sp.p.reset(),
+			f.Detail,
+			sp.p.dim(), f.Weight, f.SuppressBy, sp.p.reset())
+		return
+	}
+	fmt.Fprintf(sp.p.w, "           %s%s %s%s%s — %s  %s(+%d)%s\n",
+		sp.p.dim(), marker,
+		color, f.Code, sp.p.reset(),
+		f.Detail,
+		sp.p.dim(), f.Weight, sp.p.reset())
 }
 
 func (sp *SnapshotPresenter) verdictMarker(v domain.VerdictKind) (marker, color string) {

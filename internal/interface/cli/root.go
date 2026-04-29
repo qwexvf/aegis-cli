@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/qwexvf/aegis/services/cli/internal/infra/allowlist"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/pmwrapper"
+	presentercli "github.com/qwexvf/aegis/services/cli/internal/presenter/cli"
 	"github.com/qwexvf/aegis/services/cli/internal/usecase"
 	"github.com/spf13/cobra"
 )
@@ -25,6 +27,13 @@ type Deps struct {
 	Cache    *diskcache.Cache
 	Audit    *ndjsonaudit.Writer
 	Managers []pmwrapper.PackageManager
+
+	// AllowlistLoader is a factory so each invocation of an allowlist
+	// subcommand picks up the cwd at run time (matters for project-
+	// scoped operations). When nil, the allowlist subcommand is not
+	// registered.
+	AllowlistLoader  func() *allowlist.Loader
+	AllowlistPresenter *presentercli.AllowlistPresenter
 }
 
 // NewRoot returns the root cobra.Command with every subcommand wired.
@@ -40,6 +49,9 @@ func NewRoot(d Deps) *cobra.Command {
 	root.AddCommand(auditCommand(d.Audit))
 	if d.Snapshot != nil {
 		root.AddCommand(snapshotCommand(d.Snapshot))
+	}
+	if d.AllowlistLoader != nil && d.AllowlistPresenter != nil {
+		root.AddCommand(allowlistCommand(d.AllowlistLoader, d.AllowlistPresenter))
 	}
 	for _, m := range d.Managers {
 		root.AddCommand(pmCommand(m, d.Gate))

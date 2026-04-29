@@ -4,9 +4,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/qwexvf/aegis/services/cli/internal/infra/allowlist"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/pmwrapper"
+	presentercli "github.com/qwexvf/aegis/services/cli/internal/presenter/cli"
+	"github.com/spf13/cobra"
 )
 
 // emptyDeps wires the tree with the bare minimum for command-tree
@@ -127,5 +130,46 @@ func TestNewRoot_VersionCommandUsable(t *testing.T) {
 		}
 	}
 	t.Error("version command not registered")
+}
+
+func TestNewRoot_AllowlistOnlyRegisteredWhenWired(t *testing.T) {
+	// No AllowlistLoader / AllowlistPresenter → no allowlist command.
+	root := NewRoot(emptyDeps(t))
+	for _, c := range root.Commands() {
+		if c.Name() == "allowlist" {
+			t.Error("allowlist must NOT register without Loader+Presenter")
+		}
+	}
+}
+
+func TestNewRoot_AllowlistRegisteredWhenWired(t *testing.T) {
+	deps := emptyDeps(t)
+	deps.AllowlistLoader = func() *allowlist.Loader {
+		return allowlist.New(t.TempDir())
+	}
+	deps.AllowlistPresenter = presentercli.NewAllowlistPresenter(presentercli.New())
+	root := NewRoot(deps)
+
+	var allowCmd *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "allowlist" {
+			allowCmd = c
+			break
+		}
+	}
+	if allowCmd == nil {
+		t.Fatal("allowlist command not registered when wired")
+	}
+	subs := map[string]bool{"list": false, "add": false, "remove": false, "test": false}
+	for _, sub := range allowCmd.Commands() {
+		if _, tracked := subs[sub.Name()]; tracked {
+			subs[sub.Name()] = true
+		}
+	}
+	for n, found := range subs {
+		if !found {
+			t.Errorf("allowlist subcommand %q missing", n)
+		}
+	}
 }
 
