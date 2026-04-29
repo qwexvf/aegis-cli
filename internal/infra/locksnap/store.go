@@ -159,15 +159,18 @@ type dependencyDTO struct {
 }
 
 type fingerprintDTO struct {
-	HasInstallScript    bool     `json:"has_install_script,omitempty"`
-	InstallScriptSHA256 string   `json:"install_script_sha256,omitempty"`
-	ShellCalls          int      `json:"shell_calls,omitempty"`
-	NetCalls            int      `json:"net_calls,omitempty"`
-	EnvReads            []string `json:"env_reads,omitempty"`
-	FSWrites            int      `json:"fs_writes,omitempty"`
-	ObfuscationScore    float64  `json:"obfuscation_score,omitempty"`
-	ASTSummaryHash      string   `json:"ast_summary_hash,omitempty"`
-	SourceSizeBytes     int      `json:"source_size_bytes,omitempty"`
+	Analyzed        bool      `json:"analyzed,omitempty"`
+	Capabilities    []string  `json:"capabilities,omitempty"`
+	Hooks           []hookDTO `json:"hooks,omitempty"`
+	EnvReads        []string  `json:"env_reads,omitempty"`
+	SourceSizeBytes int       `json:"source_size_bytes,omitempty"`
+	ASTSummaryHash  string    `json:"ast_summary_hash,omitempty"`
+}
+
+type hookDTO struct {
+	Phase  string `json:"phase"`
+	Source string `json:"source"`
+	Sha256 string `json:"sha256,omitempty"`
 }
 
 func fromDomain(s domain.Snapshot) fileSchema {
@@ -187,20 +190,32 @@ func fromDomain(s domain.Snapshot) fileSchema {
 			Direct:    d.Direct,
 		}
 		if d.Fingerprint != nil {
-			out.Deps[i].Fingerprint = &fingerprintDTO{
-				HasInstallScript:    d.Fingerprint.HasInstallScript,
-				InstallScriptSHA256: d.Fingerprint.InstallScriptSHA256,
-				ShellCalls:          d.Fingerprint.ShellCalls,
-				NetCalls:            d.Fingerprint.NetCalls,
-				EnvReads:            d.Fingerprint.EnvReads,
-				FSWrites:            d.Fingerprint.FSWrites,
-				ObfuscationScore:    d.Fingerprint.ObfuscationScore,
-				ASTSummaryHash:      d.Fingerprint.ASTSummaryHash,
-				SourceSizeBytes:     d.Fingerprint.SourceSizeBytes,
-			}
+			out.Deps[i].Fingerprint = fpToDTO(*d.Fingerprint)
 		}
 	}
 	return out
+}
+
+func fpToDTO(fp domain.Fingerprint) *fingerprintDTO {
+	dto := &fingerprintDTO{
+		Analyzed:        fp.Analyzed,
+		EnvReads:        fp.EnvReads,
+		SourceSizeBytes: fp.SourceSizeBytes,
+		ASTSummaryHash:  fp.ASTSummaryHash,
+	}
+	if len(fp.Capabilities) > 0 {
+		dto.Capabilities = make([]string, len(fp.Capabilities))
+		for i, c := range fp.Capabilities {
+			dto.Capabilities[i] = c.String()
+		}
+	}
+	if len(fp.Hooks) > 0 {
+		dto.Hooks = make([]hookDTO, len(fp.Hooks))
+		for i, h := range fp.Hooks {
+			dto.Hooks[i] = hookDTO{Phase: h.Phase.String(), Source: h.Source, Sha256: h.Sha256}
+		}
+	}
+	return dto
 }
 
 func (s fileSchema) toDomain() domain.Snapshot {
@@ -220,18 +235,59 @@ func (s fileSchema) toDomain() domain.Snapshot {
 			Direct:    d.Direct,
 		}
 		if d.Fingerprint != nil {
-			out.Deps[i].Fingerprint = &domain.Fingerprint{
-				HasInstallScript:    d.Fingerprint.HasInstallScript,
-				InstallScriptSHA256: d.Fingerprint.InstallScriptSHA256,
-				ShellCalls:          d.Fingerprint.ShellCalls,
-				NetCalls:            d.Fingerprint.NetCalls,
-				EnvReads:            d.Fingerprint.EnvReads,
-				FSWrites:            d.Fingerprint.FSWrites,
-				ObfuscationScore:    d.Fingerprint.ObfuscationScore,
-				ASTSummaryHash:      d.Fingerprint.ASTSummaryHash,
-				SourceSizeBytes:     d.Fingerprint.SourceSizeBytes,
-			}
+			fp := dtoToFp(*d.Fingerprint)
+			out.Deps[i].Fingerprint = &fp
 		}
 	}
 	return out
+}
+
+func dtoToFp(dto fingerprintDTO) domain.Fingerprint {
+	out := domain.Fingerprint{
+		Analyzed:        dto.Analyzed,
+		EnvReads:        dto.EnvReads,
+		SourceSizeBytes: dto.SourceSizeBytes,
+		ASTSummaryHash:  dto.ASTSummaryHash,
+	}
+	if len(dto.Capabilities) > 0 {
+		caps := make([]domain.Capability, 0, len(dto.Capabilities))
+		for _, name := range dto.Capabilities {
+			if c := capabilityFromString(name); c != 0 {
+				caps = append(caps, c)
+			}
+		}
+		out.Capabilities = domain.NewCapabilitySet(caps...)
+	}
+	if len(dto.Hooks) > 0 {
+		out.Hooks = make([]domain.InstallHook, 0, len(dto.Hooks))
+		for _, h := range dto.Hooks {
+			out.Hooks = append(out.Hooks, domain.InstallHook{
+				Phase:  hookPhaseFromString(h.Phase),
+				Source: h.Source,
+				Sha256: h.Sha256,
+			})
+		}
+	}
+	return out
+}
+
+func capabilityFromString(s string) domain.Capability {
+	for _, c := range domain.AllCapabilities() {
+		if c.String() == s {
+			return c
+		}
+	}
+	return 0
+}
+
+func hookPhaseFromString(s string) domain.HookPhase {
+	switch s {
+	case "preinstall":
+		return domain.PhasePreInstall
+	case "postinstall":
+		return domain.PhasePostInstall
+	case "build":
+		return domain.PhaseBuild
+	}
+	return 0
 }

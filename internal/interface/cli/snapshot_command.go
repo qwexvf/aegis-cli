@@ -18,8 +18,23 @@ func snapshotCommand(uc *usecase.Snapshot) *cobra.Command {
 	cmd.AddCommand(snapshotSaveCommand(uc))
 	cmd.AddCommand(snapshotShowCommand(uc))
 	cmd.AddCommand(snapshotDiffCommand(uc))
+	cmd.AddCommand(snapshotEnrichCommand(uc))
 	cmd.AddCommand(snapshotVerifyCommand(uc))
 	return cmd
+}
+
+func snapshotEnrichCommand(uc *usecase.Snapshot) *cobra.Command {
+	return &cobra.Command{
+		Use:   "enrich",
+		Short: "Run AST analysis over the saved snapshot to populate fingerprints",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			return uc.Enrich(cmd.Context(), cwd)
+		},
+	}
 }
 
 func snapshotSaveCommand(uc *usecase.Snapshot) *cobra.Command {

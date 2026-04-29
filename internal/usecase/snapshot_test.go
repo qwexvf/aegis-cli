@@ -61,20 +61,24 @@ func (f *fakeScanner) ScanProject(string) ([]domain.Dependency, error) {
 }
 
 type snapshotCapturingPresenter struct {
-	saved   int
-	shown   []domain.Snapshot
-	diffs   []domain.SnapshotDelta
-	infos   []string
-	empties []string
-	errors  []error
+	saved    int
+	shown    []domain.Snapshot
+	diffs    []DiffReport
+	progress int
+	infos    []string
+	empties  []string
+	errors   []error
 }
 
 func (p *snapshotCapturingPresenter) OnSnapshotSaved(string, int) { p.saved++ }
 func (p *snapshotCapturingPresenter) OnSnapshotShow(s domain.Snapshot, _ bool) {
 	p.shown = append(p.shown, s)
 }
-func (p *snapshotCapturingPresenter) OnSnapshotDiff(d domain.SnapshotDelta) {
-	p.diffs = append(p.diffs, d)
+func (p *snapshotCapturingPresenter) OnSnapshotDiff(r DiffReport) {
+	p.diffs = append(p.diffs, r)
+}
+func (p *snapshotCapturingPresenter) OnSnapshotEnrichProgress(int, int, string) {
+	p.progress++
 }
 func (p *snapshotCapturingPresenter) OnSnapshotEmpty(reason string) {
 	p.empties = append(p.empties, reason)
@@ -166,8 +170,9 @@ func TestSnapshot_DiffSavedVsLive(t *testing.T) {
 		t.Fatal("expected 1 diff")
 	}
 	d := pres.diffs[0]
-	if len(d.Upgraded) != 1 || d.Upgraded[0].Name != "ua-parser-js" {
-		t.Errorf("expected ua-parser-js upgrade, got %+v", d)
+	upgrades := entriesByKind(d, DiffUpgraded)
+	if len(upgrades) != 1 || upgrades[0].Name() != "ua-parser-js" {
+		t.Errorf("expected ua-parser-js upgrade, got %+v", d.Entries)
 	}
 }
 
@@ -181,9 +186,20 @@ func TestSnapshot_DiffTwoFiles(t *testing.T) {
 	if err := uc.Diff("/proj", "a.lock", "b.lock"); err != nil {
 		t.Fatal(err)
 	}
-	if len(pres.diffs) != 1 || len(pres.diffs[0].Upgraded) != 1 {
+	if len(pres.diffs) != 1 || len(entriesByKind(pres.diffs[0], DiffUpgraded)) != 1 {
 		t.Errorf("expected 1 upgrade, got %+v", pres.diffs)
 	}
+}
+
+// entriesByKind filters DiffReport.Entries by kind for compact assertions.
+func entriesByKind(r DiffReport, kind DiffEntryKind) []DiffEntry {
+	var out []DiffEntry
+	for _, e := range r.Entries {
+		if e.Kind == kind {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func TestSnapshot_DiffNoSavedSnapshotErrors(t *testing.T) {

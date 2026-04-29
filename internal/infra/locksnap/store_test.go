@@ -124,11 +124,18 @@ func TestStore_PreservesFingerprint(t *testing.T) {
 			Name:      "ua-parser-js",
 			Version:   "0.7.29",
 			Fingerprint: &domain.Fingerprint{
-				HasInstallScript: true,
-				ShellCalls:       3,
-				NetCalls:         1,
-				EnvReads:         []string{"AWS_ACCESS_KEY_ID"},
-				ObfuscationScore: 0.87,
+				Analyzed: true,
+				Capabilities: domain.NewCapabilitySet(
+					domain.CapShellSpawn,
+					domain.CapNetEgress,
+					domain.CapInstallHookExec,
+				),
+				Hooks: []domain.InstallHook{
+					{Phase: domain.PhasePostInstall, Source: "scripts.postinstall", Sha256: "abc"},
+				},
+				EnvReads:        []string{"AWS_ACCESS_KEY_ID"},
+				SourceSizeBytes: 12345,
+				ASTSummaryHash:  "deadbeef",
 			},
 		}},
 	}
@@ -136,8 +143,17 @@ func TestStore_PreservesFingerprint(t *testing.T) {
 
 	got, _, _ := store.Load(dir)
 	fp := got.Deps[0].Fingerprint
-	if fp == nil || !fp.HasInstallScript || fp.ShellCalls != 3 || fp.ObfuscationScore != 0.87 {
-		t.Errorf("fingerprint lost on roundtrip: %+v", fp)
+	if fp == nil || !fp.Analyzed {
+		t.Fatalf("fingerprint lost: %+v", fp)
+	}
+	if !fp.Capabilities.Has(domain.CapShellSpawn) || !fp.Capabilities.Has(domain.CapNetEgress) {
+		t.Errorf("capabilities lost: %v", fp.Capabilities)
+	}
+	if len(fp.Hooks) != 1 || fp.Hooks[0].Phase != domain.PhasePostInstall || fp.Hooks[0].Sha256 != "abc" {
+		t.Errorf("hooks lost: %+v", fp.Hooks)
+	}
+	if fp.SourceSizeBytes != 12345 || fp.ASTSummaryHash != "deadbeef" {
+		t.Errorf("scalar fields lost: %+v", fp)
 	}
 }
 

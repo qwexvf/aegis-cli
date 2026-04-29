@@ -36,20 +36,41 @@ type Dependency struct {
 	Fingerprint *Fingerprint
 }
 
-// Fingerprint summarizes observable behaviors of a (name, version).
-// MVP fields are heuristics derivable from lockfile + manifest;
-// AST-derived fields are nil until the AST scanner runs.
+// Fingerprint summarizes observable behaviors of a (name, version) in
+// language-neutral terms. Per-ecosystem AST scanners populate this
+// (see internal/infra/astscan/<lang>) by mapping their language's
+// dangerous patterns onto Capability + InstallHook values.
+//
+// Empty Fingerprint means "not analyzed yet" — distinguished from "no
+// dangerous behaviors found" by Analyzed=true with empty slices.
 type Fingerprint struct {
-	HasInstallScript    bool
-	InstallScriptSHA256 string
-	// AST-derived (later PR):
-	ShellCalls       int
-	NetCalls         int
-	EnvReads         []string
-	FSWrites         int
-	ObfuscationScore float64
-	ASTSummaryHash   string
-	SourceSizeBytes  int
+	// Analyzed is true once an AST scanner has visited this dependency.
+	// Used to distinguish "we looked and found nothing" from "we
+	// haven't looked yet".
+	Analyzed bool
+
+	// Capabilities is the set of behaviors the scanner detected. Order
+	// is stable (sorted by Capability ordinal) for deterministic output.
+	Capabilities CapabilitySet
+
+	// Hooks lists declared install-time scripts (npm postinstall,
+	// pip setup.py, cargo build.rs, ...). Empty when the package
+	// declares no hook.
+	Hooks []InstallHook
+
+	// EnvReads enumerates the env-var names read at the source level
+	// (e.g. "AWS_ACCESS_KEY_ID"). Carried separately from Capabilities
+	// because the *names* matter for credential-theft heuristics.
+	EnvReads []string
+
+	// SourceSizeBytes is the total size of the .js / .py / etc. source
+	// the scanner walked. Used by drift detection (sudden size jumps).
+	SourceSizeBytes int
+
+	// ASTSummaryHash is a hash over the scanner's analysis output. Two
+	// versions with the same hash had identical findings; a hash
+	// change signals "behavioral diff" even if Capability sets match.
+	ASTSummaryHash string
 }
 
 // Key uniquely identifies a Dependency for diff purposes.

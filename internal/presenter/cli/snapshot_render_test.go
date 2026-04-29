@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis/services/cli/internal/usecase"
 )
 
 func snapshotPresenterTest(t *testing.T) (*SnapshotPresenter, *bytes.Buffer) {
@@ -66,7 +67,7 @@ func TestSnapshotPresenter_ShowDirectOnlyFiltersTransitives(t *testing.T) {
 
 func TestSnapshotPresenter_DiffEmpty(t *testing.T) {
 	sp, buf := snapshotPresenterTest(t)
-	sp.OnSnapshotDiff(domain.SnapshotDelta{})
+	sp.OnSnapshotDiff(usecase.DiffReport{})
 	if !strings.Contains(buf.String(), "no changes") {
 		t.Errorf("expected 'no changes':\n%s", buf.String())
 	}
@@ -74,18 +75,16 @@ func TestSnapshotPresenter_DiffEmpty(t *testing.T) {
 
 func TestSnapshotPresenter_DiffMixed(t *testing.T) {
 	sp, buf := snapshotPresenterTest(t)
-	sp.OnSnapshotDiff(domain.SnapshotDelta{
-		Added: []domain.Dependency{
-			{Name: "vue", Version: "3.0.0", Direct: true, Ecosystem: domain.EcoNpm},
+	vue := domain.Dependency{Name: "vue", Version: "3.0.0", Direct: true, Ecosystem: domain.EcoNpm}
+	react := domain.Dependency{Name: "react", Version: "17.0.2", Ecosystem: domain.EcoNpm}
+	uaOld := domain.Dependency{Name: "ua-parser-js", Version: "0.7.28"}
+	uaNew := domain.Dependency{Name: "ua-parser-js", Version: "0.7.29"}
+	sp.OnSnapshotDiff(usecase.DiffReport{
+		Entries: []usecase.DiffEntry{
+			{Kind: usecase.DiffAdded, New: &vue, Verdict: domain.VerdictSafe},
+			{Kind: usecase.DiffRemoved, Old: &react, Verdict: domain.VerdictSafe},
+			{Kind: usecase.DiffUpgraded, Old: &uaOld, New: &uaNew, Verdict: domain.VerdictSafe},
 		},
-		Removed: []domain.Dependency{
-			{Name: "react", Version: "17.0.2", Ecosystem: domain.EcoNpm},
-		},
-		Upgraded: []domain.DepUpgrade{{
-			Name: "ua-parser-js",
-			Old:  domain.Dependency{Name: "ua-parser-js", Version: "0.7.28"},
-			New:  domain.Dependency{Name: "ua-parser-js", Version: "0.7.29"},
-		}},
 	})
 	out := buf.String()
 	for _, want := range []string{
@@ -100,6 +99,45 @@ func TestSnapshotPresenter_DiffMixed(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestSnapshotPresenter_DiffShowsFlagsForBlockedEntry(t *testing.T) {
+	sp, buf := snapshotPresenterTest(t)
+	uaOld := domain.Dependency{Name: "ua-parser-js", Version: "0.7.28"}
+	uaNew := domain.Dependency{Name: "ua-parser-js", Version: "0.7.29"}
+	sp.OnSnapshotDiff(usecase.DiffReport{
+		AnyBlocked: true,
+		Entries: []usecase.DiffEntry{{
+			Kind:    usecase.DiffUpgraded,
+			Old:     &uaOld,
+			New:     &uaNew,
+			Verdict: domain.VerdictBlock,
+			Risk: domain.RiskAssessment{
+				Score: 80,
+				Flags: []domain.RiskFlag{
+					{Code: "shell-spawn", Detail: "spawns subprocess", Weight: 20},
+				},
+			},
+			Drift: domain.RiskAssessment{
+				Score: 80,
+				Flags: []domain.RiskFlag{
+					{Code: "install-hook-added", Detail: "new postinstall hook (none in prior version)", Weight: 30},
+				},
+			},
+		}},
+	})
+	out := buf.String()
+	for _, want := range []string{
+		"verdict=block",
+		"risk=80",
+		"drift=80",
+		"shell-spawn",
+		"install-hook-added",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q:\n%s", want, out)
 		}
 	}
 }
