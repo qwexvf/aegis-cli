@@ -21,6 +21,7 @@ var Version = "0.1.0-demo"
 // cmd/aegis/main; tests can substitute fakes.
 type Deps struct {
 	Gate     *usecase.InstallGate
+	Snapshot *usecase.Snapshot
 	Cache    *diskcache.Cache
 	Audit    *ndjsonaudit.Writer
 	Managers []pmwrapper.PackageManager
@@ -37,6 +38,9 @@ func NewRoot(d Deps) *cobra.Command {
 	root.AddCommand(versionCommand())
 	root.AddCommand(cacheCommand(d.Cache))
 	root.AddCommand(auditCommand(d.Audit))
+	if d.Snapshot != nil {
+		root.AddCommand(snapshotCommand(d.Snapshot))
+	}
 	for _, m := range d.Managers {
 		root.AddCommand(pmCommand(m, d.Gate))
 	}

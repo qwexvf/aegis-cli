@@ -5,11 +5,15 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	clii "github.com/qwexvf/aegis/services/cli/internal/interface/cli"
 
 	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/envprobe"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/locksnap"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/npmregistry"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/pmwrapper"
@@ -28,8 +32,17 @@ func main() {
 	env := envprobe.New()
 	presenter := cli.New()
 
-	// Use case.
+	// Snapshot adapter (zstd JSON store + lockfile scanner).
+	store, err := locksnap.NewStore()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "aegis: snapshot store init failed:", err)
+		os.Exit(1)
+	}
+	scanner := locksnap.NewScanner()
+
+	// Use cases.
 	gate := usecase.NewInstallGate(resolver, apiClient, cache, audit, confirm, env, presenter)
+	snapshot := usecase.NewSnapshot(store, scanner, cli.NewSnapshotPresenter(presenter), clii.Version)
 
 	// PM wrappers (the order here drives `aegis --help` listing).
 	managers := []pmwrapper.PackageManager{
@@ -41,6 +54,7 @@ func main() {
 
 	clii.Execute(clii.Deps{
 		Gate:     gate,
+		Snapshot: snapshot,
 		Cache:    cache,
 		Audit:    audit,
 		Managers: managers,
