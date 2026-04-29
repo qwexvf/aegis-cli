@@ -1,54 +1,48 @@
+// Package main is the composition root for the aegis CLI. It wires
+// concrete adapters (infra/) into ports (usecase) and hands off to the
+// CLI command tree. This is the ONLY file that constructs adapters —
+// every other layer talks to ports, not implementations.
 package main
 
 import (
-	"fmt"
-	"os"
+	clii "github.com/qwexvf/aegis/services/cli/internal/interface/cli"
 
-	"github.com/qwexvf/aegis/services/cli/internal/pm"
-	"github.com/spf13/cobra"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/envprobe"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/ndjsonaudit"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/npmregistry"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/pmwrapper"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/ttyprompt"
+	"github.com/qwexvf/aegis/services/cli/internal/presenter/cli"
+	"github.com/qwexvf/aegis/services/cli/internal/usecase"
 )
 
-const version = "0.1.0-demo"
-
 func main() {
-	root := &cobra.Command{
-		Use:           "aegis",
-		Short:         "Aegis supply-chain CLI — install gate for npm, bun, yarn",
-		SilenceUsage:  true,
-		SilenceErrors: true,
+	// Adapters.
+	resolver := npmregistry.NewResolver()
+	apiClient := aegisapi.New()
+	cache := diskcache.New()
+	audit := ndjsonaudit.New()
+	confirm := ttyprompt.New()
+	env := envprobe.New()
+	presenter := cli.New()
+
+	// Use case.
+	gate := usecase.NewInstallGate(resolver, apiClient, cache, audit, confirm, env, presenter)
+
+	// PM wrappers (the order here drives `aegis --help` listing).
+	managers := []pmwrapper.PackageManager{
+		pmwrapper.NewNpm(),
+		pmwrapper.NewBun(),
+		pmwrapper.NewYarn(),
+		pmwrapper.NewPnpm(),
 	}
 
-	root.AddCommand(versionCmd())
-
-	managers := []pm.PackageManager{pm.NewNpm(), pm.NewBun(), pm.NewYarn(), pm.NewPnpm()}
-	for _, m := range managers {
-		root.AddCommand(pmCmd(m))
-	}
-
-	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "aegis:", err)
-		os.Exit(1)
-	}
-}
-
-func versionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "version",
-		Short: "Print aegis version",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("aegis %s\n", version)
-		},
-	}
-}
-
-func pmCmd(m pm.PackageManager) *cobra.Command {
-	name := m.Name()
-	return &cobra.Command{
-		Use:                fmt.Sprintf("%s [args...]", name),
-		Short:              fmt.Sprintf("Run %s with aegis supply-chain checks", name),
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return pm.NewRunner(m).Run(args)
-		},
-	}
+	clii.Execute(clii.Deps{
+		Gate:     gate,
+		Cache:    cache,
+		Audit:    audit,
+		Managers: managers,
+	})
 }
