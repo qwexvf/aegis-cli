@@ -61,17 +61,17 @@ func TestDispatcher_FiltersFilesByExtension(t *testing.T) {
 	d.Register(domain.EcoNpm, js)
 
 	src := usecase.PackageSource{Files: map[string][]byte{
-		"index.js":         []byte("a"),
-		"src/lib.ts":       []byte("a"),
-		"src/lib.tsx":      []byte("a"),
-		"src/lib.jsx":      []byte("a"),
-		"src/lib.mjs":      []byte("a"),
-		"src/lib.cjs":      []byte("a"),
-		"types.d.ts":       []byte("a"), // skipped (type-only)
+		"index.js":           []byte("a"),
+		"src/lib.ts":         []byte("a"),
+		"src/lib.tsx":        []byte("a"),
+		"src/lib.jsx":        []byte("a"),
+		"src/lib.mjs":        []byte("a"),
+		"src/lib.cjs":        []byte("a"),
+		"types.d.ts":         []byte("a"), // skipped (type-only)
 		"dist/bundle.min.js": []byte("a"), // skipped (minified)
-		"README.md":        []byte("a"), // skipped (non-source)
-		"package.json":     []byte("a"), // skipped (manifest, handled separately)
-		"src/styles.css":   []byte("a"), // skipped
+		"README.md":          []byte("a"), // skipped (non-source)
+		"package.json":       []byte("a"), // skipped (manifest, handled separately)
+		"src/styles.css":     []byte("a"), // skipped
 	}}
 	if _, err := d.Analyze(context.Background(), domain.EcoNpm, src); err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestDispatcher_AccumulatesSourceSize(t *testing.T) {
 	d := NewDispatcher()
 	d.Register(domain.EcoNpm, &fakeLanguageScanner{})
 	src := usecase.PackageSource{Files: map[string][]byte{
-		"a.js": []byte("12345"),       // 5
+		"a.js": []byte("12345"),        // 5
 		"b.js": []byte("123456789012"), // 12
 		"r.md": []byte("ignored"),
 	}}

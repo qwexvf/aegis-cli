@@ -160,19 +160,10 @@ func fromDomain(o domain.Outcome, now time.Time) entryDTO {
 }
 
 func (d entryDTO) toEntry() Entry {
-	return Entry{
-		Timestamp:      d.Timestamp,
-		Ecosystem:      d.Ecosystem,
-		Package:        d.Package,
-		Version:        d.Version,
-		Decision:       d.Decision,
-		Severity:       d.Severity,
-		Action:         d.Action,
-		Source:         d.Source,
-		OverrideUsed:   d.OverrideUsed,
-		OverrideReason: d.OverrideReason,
-		AdvisoryID:     d.AdvisoryID,
-	}
+	// Field shapes are identical (entryDTO only adds json tags); a
+	// direct conversion preserves all values without enumerating
+	// fields. staticcheck S1016.
+	return Entry(d)
 }
 
 func actionName(a domain.Action) string {

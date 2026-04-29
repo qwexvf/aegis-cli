@@ -81,7 +81,7 @@ func TestFingerprintCache_KeyIsolation(t *testing.T) {
 	b := domain.Fingerprint{Analyzed: true, Capabilities: domain.NewCapabilitySet(domain.CapNetEgress)}
 
 	c.Put(domain.EcoNpm, "lodash", "4.17.21", a)
-	c.Put(domain.EcoNpm, "lodash", "4.17.20", b) // different version
+	c.Put(domain.EcoNpm, "lodash", "4.17.20", b)  // different version
 	c.Put(domain.EcoPyPI, "lodash", "4.17.21", b) // different ecosystem
 	c.Put(domain.EcoNpm, "react", "4.17.21", b)   // different name
 

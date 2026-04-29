@@ -32,7 +32,7 @@ type Deps struct {
 	// subcommand picks up the cwd at run time (matters for project-
 	// scoped operations). When nil, the allowlist subcommand is not
 	// registered.
-	AllowlistLoader  func() *allowlist.Loader
+	AllowlistLoader    func() *allowlist.Loader
 	AllowlistPresenter *presentercli.AllowlistPresenter
 }
 
