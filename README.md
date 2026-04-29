@@ -1,14 +1,29 @@
 # aegis CLI
 
 Supply-chain install gate for the JavaScript ecosystem — wraps **npm**,
-**bun**, and **yarn** and checks each install against the Aegis API
-before letting it proceed.
+**bun**, **yarn**, **pnpm** and checks each install against the Aegis
+API before letting it proceed. Also tracks project-level dependency
+snapshots and runs an AST-based risk engine over package source.
 
-> **Status:** v0.1.0-demo, end-to-end working.
-> Done: skeleton, multi-PM support (npm/bun/yarn), argv parsing, version
-> resolution, Aegis API client, allow/warn/block/prompt UX, override flow.
-> Next: interactive prompt, local cache, audit log, additional ecosystems
-> (pip / cargo / go). See `docs/aegis-cli-demo-plan.md`.
+> **Status (2026-04):** v0.1.0-demo, end-to-end working.
+> Multi-PM gate, clean-arch refactor, real historical incident DB,
+> snapshot mechanism, tree-sitter risk engine, layered allowlist —
+> all on `main`. ~300+ tests across 14 packages.
+>
+> **Next:** pip/poetry/uv support, web-side graph view of `aegis.lock`,
+> deny rules in the allowlist, depsandbox runtime fingerprints.
+
+## Documentation index
+
+| Doc | What it covers |
+|---|---|
+| This README | User-facing: install, command summary, common flows |
+| [docs/cli-architecture.md](../../docs/cli-architecture.md) | Layer map, dependency direction, "adding a PM / ecosystem" walkthrough |
+| [docs/cli-risk-engine.md](../../docs/cli-risk-engine.md) | Capability enum, RiskScore / DriftScore weights, Verdict thresholds, allowlist suppression |
+| [docs/cli-snapshot.md](../../docs/cli-snapshot.md) | `aegis.lock` format, diff semantics, lockfile parsers, tarball cache |
+| [docs/aegis-cli-demo-plan.md](../../docs/aegis-cli-demo-plan.md) | Historical 12-step build plan + post-demo inventory |
+| [docs/aegisd-design.md](../../docs/aegisd-design.md) | Forward-looking host daemon design |
+| [docs/depsandbox-design.md](../../docs/depsandbox-design.md) | Forward-looking sandbox runtime design |
 
 ## Build
 
