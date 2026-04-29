@@ -26,9 +26,9 @@ func (f *fakeFetcher) Fetch(_ context.Context, _ domain.Ecosystem, _, _ string) 
 }
 
 type fakeAnalyzer struct {
-	calls   int
-	out     domain.Fingerprint
-	err     error
+	calls int
+	out   domain.Fingerprint
+	err   error
 }
 
 func (a *fakeAnalyzer) Analyze(_ context.Context, _ domain.Ecosystem, _ PackageSource) (domain.Fingerprint, error) {
@@ -247,9 +247,9 @@ func TestDiff_AddedDepWithFingerprintProducesVerdict(t *testing.T) {
 func TestDiff_UpgradedWithDriftProducesPrompt(t *testing.T) {
 	old := &domain.Fingerprint{Analyzed: true, SourceSizeBytes: 5000}
 	new_ := &domain.Fingerprint{
-		Analyzed: true,
-		Capabilities: domain.NewCapabilitySet(domain.CapShellSpawn, domain.CapNetEgress),
-		Hooks:        []domain.InstallHook{{Phase: domain.PhasePostInstall, Source: "scripts.postinstall"}},
+		Analyzed:        true,
+		Capabilities:    domain.NewCapabilitySet(domain.CapShellSpawn, domain.CapNetEgress),
+		Hooks:           []domain.InstallHook{{Phase: domain.PhasePostInstall, Source: "scripts.postinstall"}},
 		SourceSizeBytes: 12000,
 	}
 	store := newFakeStore()

@@ -172,4 +172,3 @@ func TestNewRoot_AllowlistRegisteredWhenWired(t *testing.T) {
 		}
 	}
 }
-

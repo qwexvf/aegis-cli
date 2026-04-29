@@ -4,13 +4,13 @@
 // File format (intentionally tiny — we want diffs of this file to be
 // reviewable on a PR):
 //
-//   version: 1
-//   rules:
-//     - ecosystem: npm
-//       name: lodash         # required, "*" allowed for any
-//       version: "^4"        # optional (default "*")
-//       capability: dynamic-eval  # optional (default "*")
-//       reason: "lodash template compiler uses Function()"
+//	version: 1
+//	rules:
+//	  - ecosystem: npm
+//	    name: lodash         # required, "*" allowed for any
+//	    version: "^4"        # optional (default "*")
+//	    capability: dynamic-eval  # optional (default "*")
+//	    reason: "lodash template compiler uses Function()"
 package allowlist
 
 import (

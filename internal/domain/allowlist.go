@@ -12,14 +12,16 @@ import (
 // AllowSet at the composition root.
 //
 // Wildcards:
-//   Name == "*"            : matches any package in the ecosystem
-//   VersionRange == ""/"*" : matches any version
-//   Capability == 0        : matches any capability
+//
+//	Name == "*"            : matches any package in the ecosystem
+//	VersionRange == ""/"*" : matches any version
+//	Capability == 0        : matches any capability
 //
 // Example matching for `lodash@4.17.21`'s `dynamic-eval` flag:
-//   {Eco:EcoNpm, Name:"lodash", VersionRange:"^4", Capability:CapDynamicEval}
-//   matches because: ecosystem equal, name equal, semver constraint
-//   ^4 admits 4.17.21, capability equal.
+//
+//	{Eco:EcoNpm, Name:"lodash", VersionRange:"^4", Capability:CapDynamicEval}
+//	matches because: ecosystem equal, name equal, semver constraint
+//	^4 admits 4.17.21, capability equal.
 type AllowRule struct {
 	Ecosystem    Ecosystem
 	Name         string
