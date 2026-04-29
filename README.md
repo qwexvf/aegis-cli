@@ -163,6 +163,78 @@ CI=true ./bin/aegis npm install <prompt-package>
 ./scripts/demo-history.sh
 ```
 
+## Allowlist
+
+The risk engine flags well-known patterns (e.g. `child_process.exec`,
+`Function()` constructor, `process.env` reads of credential names).
+Some legitimate packages legitimately use these — lodash compiles
+templates via `Function()`, webpack spawns build workers, axios is an
+HTTP client. The allowlist suppresses specific
+`(ecosystem, name, version-range, capability)` tuples while keeping
+them visible in output for transparency.
+
+### Sources (in match order)
+
+1. **Builtin** — ~20 hand-curated rules shipped with the binary.
+   Verified at compile time. Not user-editable.
+2. **User** — `~/.aegis/allowlist.yaml` (override with `AEGIS_CONFIG_DIR`).
+   Personal, **gitignored**.
+3. **Project** — `<project>/.aegis-allowlist.yaml`. Team-shared,
+   **commit this**.
+
+For a single lookup, **specific-name rules win over wildcards**, then
+input order decides ties within each bucket.
+
+### CLI
+
+```bash
+aegis allowlist list                      # all rules from all sources
+aegis allowlist list --source=builtin     # filter by source
+
+aegis allowlist add <name> \
+    --capability=<cap> \
+    [--version=<semver-range>] \
+    --reason="<required>" \
+    [--scope=user|project]                # default: user
+
+aegis allowlist remove <name> \
+    [--capability=<cap>] \
+    [--scope=user|project]
+
+aegis allowlist test npm/lodash@4.17.21   # which rules apply?
+aegis allowlist verify                    # parse user + project files
+```
+
+`--reason` is required on `add`. The allowlist is an audit trail; an
+empty reason is worse than no rule.
+
+### YAML schema
+
+```yaml
+version: 1
+rules:
+  - ecosystem: npm           # required: npm | pypi | crates | go | maven
+    name: lodash             # required, "*" allowed for any
+    version: "^4"            # optional (default "*")
+    capability: dynamic-eval # optional (default "*")
+    reason: "lodash._.template uses Function() to compile templates"
+```
+
+Strict decoding: unknown keys, unknown capabilities, and unsupported
+schema versions all error out. Run `aegis allowlist verify` to check.
+
+### Recommended .gitignore
+
+Add to your project's `.gitignore`:
+```
+# user-level (personal) — never commit
+.aegis/
+~/.aegis/
+
+# DO commit project-level
+# .aegis-allowlist.yaml   <-- keep this in git
+```
+
 ## Layout
 
 The CLI is organised in clean-architecture layers:
@@ -171,14 +243,18 @@ The CLI is organised in clean-architecture layers:
 services/cli/
 ├── cmd/aegis/main.go            # composition root (wires concrete adapters)
 ├── internal/
-│   ├── domain/                  # entities + Policy.Evaluate (pure)
-│   ├── usecase/                 # InstallGate + port interfaces
+│   ├── domain/                  # entities + Policy.Evaluate + AllowSet (pure)
+│   ├── usecase/                 # InstallGate + Snapshot + port interfaces
 │   ├── interface/cli/           # Cobra command tree
 │   ├── presenter/cli/           # Outcome → ANSI text
 │   └── infra/
 │       ├── aegisapi/            # DecisionChecker over HTTP
-│       ├── diskcache/           # DecisionCache (JSON file)
+│       ├── allowlist/           # YAML loader (user + project)
+│       ├── astscan/             # tree-sitter dispatcher + per-language
+│       ├── diskcache/           # DecisionCache + FingerprintCache
 │       ├── envprobe/            # CI markers + AEGIS_OVERRIDE/_REASON
+│       ├── jspkgsource/         # npm tarball fetcher
+│       ├── locksnap/            # lockfile parsers + zstd snapshot store
 │       ├── ndjsonaudit/         # AuditWriter (NDJSON)
 │       ├── npmregistry/         # VersionResolver
 │       ├── pmwrapper/           # PackageManager (npm/bun/yarn/pnpm)

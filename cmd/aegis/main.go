@@ -14,6 +14,7 @@ import (
 
 	clii "github.com/qwexvf/aegis/services/cli/internal/interface/cli"
 
+	"github.com/qwexvf/aegis/services/cli/internal/domain"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/allowlist"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
@@ -55,16 +56,25 @@ func main() {
 	attachRiskEngine(snapshot)
 
 	// Allowlist: layered builtin + user (~/.aegis/allowlist.yaml) +
-	// project (.aegis-allowlist.yaml at cwd). Failures fall back to
-	// builtin-only — never refuse to start because of allowlist file
-	// errors; the user will see them on the next `aegis allowlist
-	// list`.
+	// project (.aegis-allowlist.yaml at cwd). When user/project files
+	// fail to parse, we fall back to builtin-only AND surface a
+	// loud warning to stderr so the user is prompted to run
+	// `aegis allowlist verify`. Never refuse to start.
 	allowlistLoader := func() *allowlist.Loader {
 		cwd, _ := os.Getwd()
 		return allowlist.New(cwd)
 	}
 	if set, err := allowlistLoader().Load(); err != nil {
-		fmt.Fprintln(os.Stderr, "aegis: allowlist load warning:", err)
+		fmt.Fprintln(os.Stderr, "aegis: WARNING — allowlist file failed to parse:", err)
+		fmt.Fprintln(os.Stderr, "aegis:   falling back to builtin rules only;",
+			"run `aegis allowlist verify` to inspect")
+		// Fall back to builtin-only so we keep at least the curated
+		// false-positive suppressions. Builtin is verified at
+		// compile time so this NewAllowSet cannot fail in practice;
+		// if it does, propagate empty.
+		if builtin, berr := domain.NewAllowSet(domain.BuiltinAllowRules()); berr == nil {
+			snapshot.WithAllowlist(builtin)
+		}
 	} else {
 		snapshot.WithAllowlist(set)
 	}

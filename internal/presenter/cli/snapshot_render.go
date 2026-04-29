@@ -176,11 +176,12 @@ func (sp *SnapshotPresenter) renderEntry(e usecase.DiffEntry) {
 }
 
 // renderFlag prints one flag line. Suppressed flags swap their marker
-// to ~ and append a dim "(allowlisted: <reason>)" suffix so users see
-// what was found AND why it was excused.
+// to ~ and show "(suppressed +N, allowlisted: <reason>)" so the
+// reader sees the original weight while making it clear it wasn't
+// added to Score.
 func (sp *SnapshotPresenter) renderFlag(marker, color string, f domain.RiskFlag) {
 	if f.Suppressed {
-		fmt.Fprintf(sp.p.w, "           %s~ %s%s%s — %s  %s(+%d, allowlisted: %s)%s\n",
+		fmt.Fprintf(sp.p.w, "           %s~ %s%s%s — %s  %s(suppressed +%d, allowlisted: %s)%s\n",
 			sp.p.dim(),
 			sp.p.dim(), f.Code, sp.p.reset(),
 			f.Detail,

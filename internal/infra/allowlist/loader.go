@@ -9,6 +9,40 @@ import (
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
 )
 
+// VerifyResult is one row in the per-file verification output.
+// Path == "" indicates the (synthetic) builtin scope.
+type VerifyResult struct {
+	Source    string // "builtin" | "user" | "project"
+	Path      string
+	RuleCount int
+	Err       error
+}
+
+// Verify parses each layer independently and reports per-file
+// success/failure. Used by `aegis allowlist verify` to give the user
+// a hard pass/fail per file rather than the merged-set view of Load.
+//
+// The builtin layer always succeeds (verified at compile time via
+// builtin_allowlist_test.go) but is reported for completeness.
+func (l *Loader) Verify() []VerifyResult {
+	results := []VerifyResult{
+		{Source: "builtin", RuleCount: len(domain.BuiltinAllowRules())},
+	}
+	results = append(results, l.verifyOne("user", l.UserPath()))
+	if l.projectDir != "" {
+		results = append(results, l.verifyOne("project", l.ProjectPath()))
+	}
+	return results
+}
+
+func (l *Loader) verifyOne(source, path string) VerifyResult {
+	rules, err := l.readFile(path, source)
+	if err != nil {
+		return VerifyResult{Source: source, Path: path, Err: err}
+	}
+	return VerifyResult{Source: source, Path: path, RuleCount: len(rules)}
+}
+
 // Scope identifies which allowlist file an Add/Remove targets.
 type Scope int
 
@@ -60,11 +94,24 @@ type Loader struct {
 // scope and projectDir for the project scope. projectDir may be empty
 // (e.g. for `aegis allowlist list` when not in a project) — in which
 // case the project layer is skipped.
+//
+// If both AEGIS_CONFIG_DIR is unset AND os.UserHomeDir() fails (rare:
+// no $HOME and no /etc/passwd entry, common in some container
+// images), the user dir falls back to ".aegis" relative to cwd. We
+// surface a one-line warning to stderr so the user sees the surprise
+// rather than silently writing into their cwd.
 func New(projectDir string) *Loader {
 	user := os.Getenv("AEGIS_CONFIG_DIR")
 	if user == "" {
-		home, _ := os.UserHomeDir()
-		user = filepath.Join(home, ".aegis")
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			fmt.Fprintln(os.Stderr,
+				"aegis: warning: cannot determine user home directory; "+
+					"using ./.aegis (set AEGIS_CONFIG_DIR to override)")
+			user = ".aegis"
+		} else {
+			user = filepath.Join(home, ".aegis")
+		}
 	}
 	return &Loader{userDir: user, projectDir: projectDir}
 }
@@ -143,30 +190,55 @@ func (l *Loader) readFile(path, source string) ([]domain.AllowRule, error) {
 	return decodeFile(body, source)
 }
 
-// AddRule appends a rule to the user or project file. Existing rules
-// in the file are preserved. The rule's Source field is overwritten
-// with the scope name on the way out.
+// AddRule appends or replaces a rule in the user or project file.
+// Existing rules in the file are preserved. The rule's Source field
+// is overwritten with the scope name on the way out.
+//
+// Deduplication: if the file already contains a rule with the same
+// (Ecosystem, Name, VersionRange, Capability) key, the existing rule
+// is replaced (the second return value `replaced` is true). This
+// prevents the file from accumulating duplicates as users iterate.
 //
 // Validation: the rule must satisfy NewAllowSet's checks (ecosystem
 // non-empty, name non-empty, semver valid). The check uses a
 // single-rule AllowSet so we get the same error path everywhere.
-func (l *Loader) AddRule(scope Scope, r domain.AllowRule) error {
+func (l *Loader) AddRule(scope Scope, r domain.AllowRule) (replaced bool, err error) {
 	r.Source = scope.String()
-	if _, err := domain.NewAllowSet([]domain.AllowRule{r}); err != nil {
-		return err
+	if _, verr := domain.NewAllowSet([]domain.AllowRule{r}); verr != nil {
+		return false, verr
 	}
 	path, ok := l.pathFor(scope)
 	if !ok {
-		return fmt.Errorf("scope %s not available (no project dir)", scope)
+		return false, fmt.Errorf("scope %s not available (no project dir)", scope)
 	}
 
-	existing, err := l.readFile(path, scope.String())
-	if err != nil {
-		return err
+	existing, rerr := l.readFile(path, scope.String())
+	if rerr != nil {
+		return false, rerr
 	}
-	updated := append(existing, r)
 
-	return l.writeFile(path, updated)
+	// Replace by key if present; else append.
+	updated := make([]domain.AllowRule, 0, len(existing)+1)
+	for _, e := range existing {
+		if sameRuleKey(e, r) {
+			replaced = true
+			continue
+		}
+		updated = append(updated, e)
+	}
+	updated = append(updated, r)
+
+	return replaced, l.writeFile(path, updated)
+}
+
+// sameRuleKey reports whether two rules collide on the dedup key
+// (Ecosystem, Name, VersionRange, Capability). Reason and Source are
+// not part of the key.
+func sameRuleKey(a, b domain.AllowRule) bool {
+	return a.Ecosystem == b.Ecosystem &&
+		a.Name == b.Name &&
+		a.VersionRange == b.VersionRange &&
+		a.Capability == b.Capability
 }
 
 // RemoveRule deletes rules matching predicate from the scope's file.

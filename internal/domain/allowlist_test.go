@@ -133,15 +133,31 @@ func TestAllowSet_MatchReturnsRuleReason(t *testing.T) {
 	}
 }
 
-func TestAllowSet_MultipleRulesFirstWins(t *testing.T) {
-	// Both match; first one in order returned.
+func TestAllowSet_SpecificNameWinsOverWildcard(t *testing.T) {
+	// Both match; the exact-name rule should win regardless of
+	// input order (it sits in the per-name index, walked first).
+	// Documented behavior: specific > wildcard.
 	s := mustSet(t,
 		AllowRule{Ecosystem: EcoNpm, Name: "*", Capability: CapDynamicEval, Reason: "wide", Source: "user"},
 		AllowRule{Ecosystem: EcoNpm, Name: "lodash", Capability: CapDynamicEval, Reason: "narrow", Source: "builtin"},
 	)
 	_, got := s.Suppresses(EcoNpm, "lodash", "4.17.21", CapDynamicEval)
-	if got.Source != "user" {
-		t.Errorf("first matching rule should win; got Source=%q", got.Source)
+	if got.Source != "builtin" {
+		t.Errorf("specific-name rule should win over wildcard; got Source=%q", got.Source)
+	}
+}
+
+func TestAllowSet_MultipleSpecificRulesFirstWins(t *testing.T) {
+	// When two exact-name rules both match (e.g. one with version
+	// constraint, one without), input order decides — first wins
+	// inside the per-name bucket.
+	s := mustSet(t,
+		AllowRule{Ecosystem: EcoNpm, Name: "lodash", VersionRange: "^4", Capability: CapDynamicEval, Reason: "narrow", Source: "builtin"},
+		AllowRule{Ecosystem: EcoNpm, Name: "lodash", Capability: CapDynamicEval, Reason: "broad", Source: "user"},
+	)
+	_, got := s.Suppresses(EcoNpm, "lodash", "4.17.21", CapDynamicEval)
+	if got.Source != "builtin" {
+		t.Errorf("first matching specific rule should win; got Source=%q", got.Source)
 	}
 }
 
