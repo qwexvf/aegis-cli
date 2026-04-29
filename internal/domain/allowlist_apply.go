@@ -79,17 +79,29 @@ func capabilityForFlag(f RiskFlag) (Capability, bool) {
 
 // parseCapabilityFromDetail extracts the trailing capability token
 // from a "capability-added" drift flag's Detail string.
+//
+// The prefix is owned by risk.go (capabilityAddedDetailPrefix); we
+// reference the constant rather than duplicating the string, so the
+// producer and the parser cannot drift apart.
 func parseCapabilityFromDetail(detail string) (Capability, bool) {
-	const prefix = "new capability since prior version: "
-	idx := strings.Index(detail, prefix)
+	idx := strings.Index(detail, capabilityAddedDetailPrefix)
 	if idx < 0 {
 		return 0, false
 	}
-	name := strings.TrimSpace(detail[idx+len(prefix):])
-	for _, c := range AllCapabilities() {
-		if c.String() == name {
-			return c, true
-		}
+	name := strings.TrimSpace(detail[idx+len(capabilityAddedDetailPrefix):])
+	if c, ok := capabilityNameLookup[name]; ok {
+		return c, true
 	}
 	return 0, false
 }
+
+// capabilityNameLookup is a name → Capability table, populated once
+// at package init. Replaces the O(N) loop that previously walked
+// AllCapabilities() on every Detail parse.
+var capabilityNameLookup = func() map[string]Capability {
+	m := make(map[string]Capability, len(AllCapabilities()))
+	for _, c := range AllCapabilities() {
+		m[c.String()] = c
+	}
+	return m
+}()

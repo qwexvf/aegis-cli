@@ -54,10 +54,13 @@ func TestAllowlistPresenter_TestNoMatches(t *testing.T) {
 func TestAllowlistPresenter_TestShowsMatches(t *testing.T) {
 	ap, buf := allowlistPresenterTest(t)
 	ap.OnTest(domain.EcoNpm, "lodash", "4.17.21", []MatchedRule{
-		NewMatchedRule(domain.CapDynamicEval, domain.AllowRule{
-			Ecosystem: domain.EcoNpm, Name: "lodash", Capability: domain.CapDynamicEval,
-			Reason: "tpl compiler", Source: "builtin",
-		}),
+		{
+			Capability: domain.CapDynamicEval,
+			Rule: domain.AllowRule{
+				Ecosystem: domain.EcoNpm, Name: "lodash", Capability: domain.CapDynamicEval,
+				Reason: "tpl compiler", Source: "builtin",
+			},
+		},
 	})
 	out := buf.String()
 	for _, want := range []string{"lodash@4.17.21", "dynamic-eval", "tpl compiler", "builtin"} {
@@ -86,7 +89,8 @@ func TestAllowlistPresenter_RuleRemoved(t *testing.T) {
 }
 
 func TestSnapshotPresenter_SuppressedFlagShownWithMarker(t *testing.T) {
-	// Suppressed flags must use ~ marker and show "(allowlisted: ...)".
+	// Suppressed flags must use ~ marker and show
+	// "(suppressed +N, allowlisted: ...)".
 	sp, buf := snapshotPresenterTest(t)
 	old := domain.Dependency{Name: "lodash", Version: "4.17.20"}
 	new_ := domain.Dependency{Name: "lodash", Version: "4.17.21"}
@@ -107,8 +111,8 @@ func TestSnapshotPresenter_SuppressedFlagShownWithMarker(t *testing.T) {
 	if !strings.Contains(out, "~ dynamic-eval") {
 		t.Errorf("expected ~ marker on suppressed flag:\n%s", out)
 	}
-	if !strings.Contains(out, "allowlisted: lodash._.template") {
-		t.Errorf("expected allowlist reason in suffix:\n%s", out)
+	if !strings.Contains(out, "(suppressed +25, allowlisted: lodash._.template") {
+		t.Errorf("expected (suppressed +N, allowlisted: ...) suffix:\n%s", out)
 	}
 }
 

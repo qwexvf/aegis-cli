@@ -154,7 +154,7 @@ func TestLoader_AddRuleCreatesFile(t *testing.T) {
 		Capability: domain.CapShellSpawn,
 		Reason:     "ok",
 	}
-	if err := l.AddRule(ScopeUser, r); err != nil {
+	if _, err := l.AddRule(ScopeUser, r); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(userDir, UserFileName))
@@ -189,7 +189,7 @@ func TestLoader_AddRulePreservesExisting(t *testing.T) {
 
 func TestLoader_AddRuleRejectsInvalid(t *testing.T) {
 	l := loaderAt(t.TempDir(), "")
-	err := l.AddRule(ScopeUser, domain.AllowRule{
+	_, err := l.AddRule(ScopeUser, domain.AllowRule{
 		Ecosystem: domain.EcoNpm, Name: "x", VersionRange: "not-a-range",
 	})
 	if err == nil {
@@ -199,7 +199,7 @@ func TestLoader_AddRuleRejectsInvalid(t *testing.T) {
 
 func TestLoader_AddRuleProjectScopeRequiresDir(t *testing.T) {
 	l := loaderAt(t.TempDir(), "") // no project dir
-	err := l.AddRule(ScopeProject, domain.AllowRule{Ecosystem: domain.EcoNpm, Name: "x"})
+	_, err := l.AddRule(ScopeProject, domain.AllowRule{Ecosystem: domain.EcoNpm, Name: "x"})
 	if err == nil {
 		t.Error("project scope without dir must error")
 	}

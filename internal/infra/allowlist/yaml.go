@@ -21,10 +21,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SchemaVersion is the on-disk version. Bump on breaking changes;
-// new optional fields don't require a bump (decoder ignores unknown
-// fields when KnownFields is off, but we set it on for safety —
-// see encodeFile/decodeFile).
+// SchemaVersion is the on-disk version this binary writes.
+//
+// Bump policy:
+//   - Adding a new OPTIONAL field to ruleYAML → no bump (older
+//     readers reject unknowns via KnownFields=true, so we'll need
+//     a future "lenient mode for forward-compat" path; for now,
+//     prefer not to add fields without a bump).
+//   - Removing or renaming a field, or changing a default → bump.
+//
+// version: 0 (i.e., key omitted in YAML — Go's zero value) is
+// grandfathered as v1: this is the only version a binary has ever
+// written, so any in-the-wild file without an explicit version came
+// from a v1 binary. Future v2+ binaries MUST require explicit
+// `version: <N>` and reject v0.
 const SchemaVersion = 1
 
 // fileSchema is the on-disk YAML shape.

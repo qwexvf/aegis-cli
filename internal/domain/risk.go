@@ -163,9 +163,7 @@ func DriftScore(prev, next *Fingerprint) RiskAssessment {
 			// Counted by hookDiff; skip.
 			continue
 		}
-		add("capability-added",
-			"new capability since prior version: "+c.String(),
-			WeightCapabilityAdd)
+		add("capability-added", capabilityAddedDetail(c), WeightCapabilityAdd)
 	}
 
 	// 3. Source size delta. We flag massive jumps either direction —
@@ -252,6 +250,20 @@ func upperASCII(s string) string {
 		}
 	}
 	return string(buf)
+}
+
+// capabilityAddedDetailPrefix is the literal prefix prepended to the
+// Capability name in the Detail field of a "capability-added" drift
+// flag. Defined as a const so producer (DriftScore in this file) and
+// parser (allowlist_apply.go) stay in sync — changing it in one place
+// would break the allowlist match.
+const capabilityAddedDetailPrefix = "new capability since prior version: "
+
+// capabilityAddedDetail produces the Detail string for a
+// "capability-added" drift flag. allowlist_apply.go's
+// parseCapabilityFromDetail is the matching reader.
+func capabilityAddedDetail(c Capability) string {
+	return capabilityAddedDetailPrefix + c.String()
 }
 
 func joinNames(names []string, max int) string {

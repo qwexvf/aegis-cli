@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
@@ -24,7 +23,35 @@ func allowlistCommand(loaderFactory func() *allowlist.Loader, presenter *present
 	cmd.AddCommand(allowlistAddCommand(loaderFactory, presenter))
 	cmd.AddCommand(allowlistRemoveCommand(loaderFactory, presenter))
 	cmd.AddCommand(allowlistTestCommand(loaderFactory, presenter))
+	cmd.AddCommand(allowlistVerifyCommand(loaderFactory, presenter))
 	return cmd
+}
+
+func allowlistVerifyCommand(loaderFactory func() *allowlist.Loader, p *presentercli.AllowlistPresenter) *cobra.Command {
+	return &cobra.Command{
+		Use:   "verify",
+		Short: "Validate user and project allowlist YAML files",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			results := loaderFactory().Verify()
+			anyFailed := false
+			for _, r := range results {
+				if r.Err != nil {
+					anyFailed = true
+					p.OnVerifyFailed(r.Source+": "+r.Path, r.Err)
+				} else {
+					path := r.Path
+					if path == "" {
+						path = "(builtin)"
+					}
+					p.OnVerifyOK(r.Source+": "+path, r.RuleCount)
+				}
+			}
+			if anyFailed {
+				return fmt.Errorf("one or more allowlist files failed verification")
+			}
+			return nil
+		},
+	}
 }
 
 func allowlistListCommand(loaderFactory func() *allowlist.Loader, p *presentercli.AllowlistPresenter) *cobra.Command {
@@ -68,6 +95,12 @@ func allowlistAddCommand(loaderFactory func() *allowlist.Loader, p *presentercli
 			if !ok {
 				return fmt.Errorf("invalid --scope %q (use user or project)", scopeFlag)
 			}
+			// Reason is required for audit trail. Allow opt-out via
+			// --no-reason for one-off testing, but the default makes
+			// the safe path the easy path.
+			if reasonFlag == "" {
+				return fmt.Errorf("--reason is required (audit trail); pass an explanation, e.g. --reason='legitimate build tool'")
+			}
 			rule := domain.AllowRule{
 				Ecosystem:    domain.Ecosystem(ecoFlag),
 				Name:         args[0],
@@ -75,17 +108,22 @@ func allowlistAddCommand(loaderFactory func() *allowlist.Loader, p *presentercli
 				Reason:       reasonFlag,
 			}
 			if capFlag != "" && capFlag != "*" {
-				cap, ok := capabilityByName(capFlag)
+				c, ok := capabilityByName(capFlag)
 				if !ok {
 					return fmt.Errorf("unknown capability %q", capFlag)
 				}
-				rule.Capability = cap
+				rule.Capability = c
 			}
-			if err := loaderFactory().AddRule(scope, rule); err != nil {
+			replaced, err := loaderFactory().AddRule(scope, rule)
+			if err != nil {
 				p.OnError(err)
 				return err
 			}
-			p.OnRuleAdded(scopeFlag, rule)
+			if replaced {
+				p.OnRuleReplaced(scopeFlag, rule)
+			} else {
+				p.OnRuleAdded(scopeFlag, rule)
+			}
 			return nil
 		},
 	}
@@ -160,13 +198,20 @@ func allowlistTestCommand(loaderFactory func() *allowlist.Loader, p *presentercl
 				p.OnError(err)
 				return err
 			}
-			matches := []presentercli.MatchedRule{}
-			for _, c := range domain.AllCapabilities() {
-				if ok, rule := set.Suppresses(eco, name, version, c); ok {
-					matches = append(matches, presentercli.NewMatchedRule(c, rule))
-				}
+			// MatchAll walks rules once (not Capabilities × rules),
+			// so Capability=0 rules collapse into a single
+			// "any-capability" line in the output instead of
+			// flooding with one line per Capability.
+			matches := set.MatchAll(eco, name, version)
+			out := make([]presentercli.MatchedRule, 0, len(matches))
+			for _, m := range matches {
+				out = append(out, presentercli.MatchedRule{
+					Capability:    m.Capability,
+					CapabilityAny: m.Kind == domain.MatchAny,
+					Rule:          m.Rule,
+				})
 			}
-			p.OnTest(eco, name, version, matches)
+			p.OnTest(eco, name, version, out)
 			return nil
 		},
 	}
@@ -198,6 +243,3 @@ func capabilityByName(s string) (domain.Capability, bool) {
 	}
 	return 0, false
 }
-
-// stub usage of os to keep imports tidy if future expansions need it.
-var _ = os.Stdout
