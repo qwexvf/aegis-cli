@@ -28,9 +28,29 @@ snapshots and runs an AST-based risk engine over package source.
 ## Build
 
 ```bash
-make build
+make build           # debug build, all four PMs registered
 ./bin/aegis version
 ```
+
+### Build flavors
+
+| Target           | Output            | Tags                       | Use |
+|------------------|-------------------|----------------------------|-----|
+| `make build`     | `bin/aegis` (12 MB) | —                        | local dev |
+| `make build-release` | `bin/aegis` (8.6 MB) | `-ldflags='-s -w'`    | full features, smallest full build |
+| `make build-core`    | `bin/aegis-core` (7.8 MB) | `nojsscan`        | size-constrained CI runners (no AST scanner, no cgo) |
+| `make build-npm`     | `bin/aegis-npm` (8.6 MB)  | `nobun,noyarn,nopnpm` | per-team binary that only registers `aegis npm` |
+| `make build-bun`     | `bin/aegis-bun`           | `nonpm,noyarn,nopnpm` | only registers `aegis bun` |
+| `make build-yarn`    | `bin/aegis-yarn`          | `nonpm,nobun,nopnpm`  | only registers `aegis yarn` |
+| `make build-pnpm`    | `bin/aegis-pnpm`          | `nonpm,nobun,noyarn`  | only registers `aegis pnpm` |
+| `make build-each-pm` | all four per-PM           | —                     | shorthand to build all four |
+| `make size`          | (no binary)               | —                     | size comparison across all flavors |
+
+The per-PM tags don't shrink the binary (Go's dead-code elimination
+already strips unused PM wrappers); they exist for **distribution**
+clarity — a binary named `aegis-npm` whose `--help` only mentions
+`aegis npm` is easier to reason about for an org that only uses one
+package manager.
 
 ## Quickstart
 
