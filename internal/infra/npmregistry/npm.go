@@ -11,9 +11,9 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/httpx"
 )
 
 // DefaultRegistry is the public npm registry. Override with WithRegistry.
@@ -25,6 +25,7 @@ const DefaultRegistry = "https://registry.npmjs.org"
 type Client struct {
 	baseURL string
 	http    *http.Client
+	retry   httpx.RetryPolicy
 
 	mu    sync.Mutex
 	cache map[string]*packument
@@ -43,11 +44,19 @@ func WithHTTPClient(h *http.Client) Option {
 	return func(c *Client) { c.http = h }
 }
 
+// WithRetryPolicy overrides the retry policy used by Resolve and
+// PublishedAt. Default: httpx.DefaultRetry. Pass httpx.NoRetry to
+// disable retries (rarely useful here — registry queries are GETs).
+func WithRetryPolicy(p httpx.RetryPolicy) Option {
+	return func(c *Client) { c.retry = p }
+}
+
 // New constructs a Client with sensible defaults.
 func New(opts ...Option) *Client {
 	c := &Client{
 		baseURL: DefaultRegistry,
-		http:    &http.Client{Timeout: 10 * time.Second},
+		http:    httpx.NewClient(httpx.Config{}),
+		retry:   httpx.DefaultRetry,
 		cache:   make(map[string]*packument),
 	}
 	for _, opt := range opts {
@@ -63,6 +72,55 @@ type packument struct {
 	Versions map[string]struct {
 		Version string `json:"version"`
 	} `json:"versions"`
+}
+
+// PublishedAt fetches the npm `time[version]` value for a specific
+// version. Returns "" with a nil error when the registry doesn't
+// expose that field for the version.
+//
+// Uses the *full* packument (no Accept header) because the abbreviated
+// metadata format omits the `time` map.
+func (c *Client) PublishedAt(ctx context.Context, pkg, version string) (string, error) {
+	if pkg == "" || version == "" {
+		return "", fmt.Errorf("empty package name or version")
+	}
+
+	encoded := url.PathEscape(pkg)
+	if strings.HasPrefix(pkg, "@") {
+		encoded = strings.Replace(encoded, "/", "%2F", 1)
+	}
+	reqURL := c.baseURL + "/" + encoded
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return "", err
+	}
+	// No Accept header here — the abbreviated install-v1 packument
+	// strips the `time` map we need.
+
+	resp, err := httpx.Do(ctx, c.http, req, c.retry)
+	if err != nil {
+		return "", fmt.Errorf("registry fetch %s: %w", pkg, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return "", fmt.Errorf("package %q not found on registry", pkg)
+	}
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("registry returned %d for %s", resp.StatusCode, pkg)
+	}
+
+	var p struct {
+		Time map[string]string `json:"time"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		return "", fmt.Errorf("decode packument time map for %s: %w", pkg, err)
+	}
+	if t, ok := p.Time[version]; ok {
+		return t, nil
+	}
+	return "", nil
 }
 
 // Resolve returns the concrete version of pkg that matches the given range,
@@ -145,9 +203,8 @@ func (c *Client) fetchPackument(ctx context.Context, pkg string) (*packument, er
 	}
 	// Abbreviated metadata is much smaller and contains everything we need.
 	req.Header.Set("Accept", "application/vnd.npm.install-v1+json")
-	req.Header.Set("User-Agent", "aegis-cli/0.1.0-demo")
 
-	resp, err := c.http.Do(req)
+	resp, err := httpx.Do(ctx, c.http, req, c.retry)
 	if err != nil {
 		return nil, fmt.Errorf("registry fetch %s: %w", pkg, err)
 	}

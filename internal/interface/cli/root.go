@@ -9,6 +9,7 @@ import (
 
 	"github.com/qwexvf/aegis/services/cli/internal/infra/allowlist"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/logx"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/pmwrapper"
 	presentercli "github.com/qwexvf/aegis/services/cli/internal/presenter/cli"
@@ -34,19 +35,51 @@ type Deps struct {
 	// registered.
 	AllowlistLoader    func() *allowlist.Loader
 	AllowlistPresenter *presentercli.AllowlistPresenter
+
+	// InvocationID is stamped onto slog records and HTTP X-Request-ID
+	// headers. Set by the composition root; tests may pass "".
+	InvocationID string
 }
 
 // NewRoot returns the root cobra.Command with every subcommand wired.
+//
+// Persistent flags --verbose / --log-format apply to every subcommand
+// and reconfigure the slog default. The composition root installs an
+// initial logger at WARN; --verbose flips it to DEBUG before any
+// command body runs.
 func NewRoot(d Deps) *cobra.Command {
+	var verbose bool
+	var logFormat string
+
 	root := &cobra.Command{
 		Use:           "aegis",
 		Short:         "Aegis supply-chain CLI — install gate for npm, bun, yarn, pnpm",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			format := logx.FormatAuto
+			switch logFormat {
+			case "text":
+				format = logx.FormatText
+			case "json":
+				format = logx.FormatJSON
+			}
+			logx.SetDefault(logx.New(logx.Config{
+				Verbose:      verbose,
+				Format:       format,
+				InvocationID: d.InvocationID,
+			}))
+		},
 	}
+	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false,
+		"enable debug-level structured logging to stderr")
+	root.PersistentFlags().StringVar(&logFormat, "log-format", "auto",
+		"log format: auto|text|json")
+
 	root.AddCommand(versionCommand())
 	root.AddCommand(cacheCommand(d.Cache))
 	root.AddCommand(auditCommand(d.Audit))
+	root.AddCommand(adminCommand())
 	if d.Snapshot != nil {
 		root.AddCommand(snapshotCommand(d.Snapshot))
 	}

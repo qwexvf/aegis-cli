@@ -85,6 +85,10 @@ install:
 test:
 	go test ./...
 
+.PHONY: test-race
+test-race:                      ## run tests with the race detector
+	go test -race ./...
+
 .PHONY: vet
 vet:
 	go vet ./...

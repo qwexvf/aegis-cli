@@ -2,12 +2,29 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
 )
+
+// enrichWorkers is the cap on parallel AST scans during Enrich. AST
+// parsing is CPU-bound; over-saturating with > NumCPU workers fights
+// the GC. The cap also keeps memory predictable: each worker holds
+// one in-flight tarball + parse buffer.
+const enrichWorkers = 8
+
+// submitWorkers is the cap on parallel /reports POSTs during Submit.
+// Lower than enrichWorkers because submit is network-bound and we
+// want to be polite to the API: a CI matrix of 50 jobs each making
+// dozens of submits already produces fan-in we don't want to amplify.
+const submitWorkers = 4
 
 // Snapshot is the use case for project snapshots: save the current
 // lockfile state to disk, show it back, enrich each dep with a
@@ -29,6 +46,18 @@ type Snapshot struct {
 	fetcher  PackageSourceFetcher
 	analyzer ASTAnalyzer
 	fpCache  FingerprintCache
+
+	// Optional submit pipeline. All three must be non-nil for Submit
+	// to work. evidenceAnalyzer is typically the same concrete
+	// dispatcher as analyzer, exposed under the EvidenceAnalyzer port.
+	evidenceAnalyzer EvidenceAnalyzer
+	submitter        ReportSubmitter
+	reporter         ReporterIdentity
+
+	// Optional provenance resolver — best-effort lookup of the
+	// registry-reported publish time. Submit attaches an empty string
+	// when nil or when the lookup fails.
+	publishedAt PublishedAtResolver
 
 	// allowlist is applied post-RiskScore/DriftScore in Diff so
 	// known-benign capabilities (lodash dynamic-eval, build tools'
@@ -57,6 +86,25 @@ func (s *Snapshot) WithRiskEngine(fetcher PackageSourceFetcher, analyzer ASTAnal
 	s.fetcher = fetcher
 	s.analyzer = analyzer
 	s.fpCache = fpCache
+	return s
+}
+
+// WithSubmitter attaches the cloud submit pipeline. All three deps
+// are required; if any is nil, Submit reports the misconfiguration
+// and returns nil error.
+func (s *Snapshot) WithSubmitter(analyzer EvidenceAnalyzer, submitter ReportSubmitter, reporter ReporterIdentity) *Snapshot {
+	s.evidenceAnalyzer = analyzer
+	s.submitter = submitter
+	s.reporter = reporter
+	return s
+}
+
+// WithPublishedAtResolver attaches an optional registry lookup for the
+// per-version publish time. Submit calls this once per dep before
+// posting; failures are non-fatal (the report is still sent with
+// PackagePublishedAt="").
+func (s *Snapshot) WithPublishedAtResolver(r PublishedAtResolver) *Snapshot {
+	s.publishedAt = r
 	return s
 }
 
@@ -120,6 +168,13 @@ func (s *Snapshot) Show(projectDir string, directOnly bool) error {
 // that doesn't yet have an Analyzed fingerprint, and writes the
 // updated snapshot back. Idempotent — re-running enriches new entries
 // only.
+//
+// Parallelism: up to enrichWorkers (or NumCPU, whichever is smaller)
+// AST scans run concurrently. Progress messages stream in completion
+// order, not input order — the user sees finished work as it arrives.
+// Cancellation: ctx.Done is honored both inside the per-dep workers
+// and between finished tasks; partial progress is persisted to disk
+// before returning.
 func (s *Snapshot) Enrich(ctx context.Context, projectDir string) error {
 	if !s.riskEngineEnabled() {
 		s.presenter.OnSnapshotEmpty("risk engine not configured (build with AST scanner)")
@@ -147,24 +202,72 @@ func (s *Snapshot) Enrich(ctx context.Context, projectDir string) error {
 		return nil
 	}
 
-	for n, i := range pending {
-		dep := snap.Deps[i]
-		s.presenter.OnSnapshotEnrichProgress(n+1, len(pending), dep.Name)
-		fp, err := s.analyzeOne(ctx, dep)
-		if err != nil {
-			// Best-effort: skip and continue. We log via presenter.
-			s.presenter.OnSnapshotInfo(fmt.Sprintf("skip %s@%s: %v", dep.Name, dep.Version, err))
-			continue
-		}
-		fp.Analyzed = true
-		snap.Deps[i].Fingerprint = &fp
-	}
+	completed := s.runEnrichWorkers(ctx, snap.Deps, pending)
+
 	if err := s.store.Save(projectDir, snap); err != nil {
 		s.presenter.OnSnapshotError(err)
 		return err
 	}
-	s.presenter.OnSnapshotInfo(fmt.Sprintf("enriched %d deps", len(pending)))
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		s.presenter.OnSnapshotInfo(fmt.Sprintf("interrupted after %d/%d deps (saved partial)", completed, len(pending)))
+		return ctxErr
+	}
+	s.presenter.OnSnapshotInfo(fmt.Sprintf("enriched %d deps", completed))
 	return nil
+}
+
+// runEnrichWorkers fans pending indices out to a worker pool, writes
+// fingerprints back into deps[i] as results arrive, and returns the
+// count of successful completions. Caller persists deps after we
+// return so partial progress survives cancellation.
+func (s *Snapshot) runEnrichWorkers(ctx context.Context, deps []domain.Dependency, pending []int) int {
+	workerCount := min(enrichWorkers, runtime.NumCPU(), len(pending))
+
+	tasks := make(chan int, len(pending))
+	for _, i := range pending {
+		tasks <- i
+	}
+	close(tasks)
+
+	type result struct {
+		index int
+		fp    domain.Fingerprint
+		err   error
+		dep   domain.Dependency
+	}
+	results := make(chan result, len(pending))
+
+	var wg sync.WaitGroup
+	for range workerCount {
+		wg.Go(func() {
+			for i := range tasks {
+				if ctx.Err() != nil {
+					return
+				}
+				dep := deps[i]
+				fp, err := s.analyzeOne(ctx, dep)
+				results <- result{index: i, fp: fp, err: err, dep: dep}
+			}
+		})
+	}
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	completed := 0
+	total := len(pending)
+	for r := range results {
+		completed++
+		s.presenter.OnSnapshotEnrichProgress(completed, total, r.dep.Name)
+		if r.err != nil {
+			s.presenter.OnSnapshotInfo(fmt.Sprintf("skip %s@%s: %v", r.dep.Name, r.dep.Version, r.err))
+			continue
+		}
+		r.fp.Analyzed = true
+		deps[r.index].Fingerprint = &r.fp
+	}
+	return completed
 }
 
 func (s *Snapshot) analyzeOne(ctx context.Context, dep domain.Dependency) (domain.Fingerprint, error) {
@@ -296,6 +399,296 @@ func (s *Snapshot) loadDiffOperands(projectDir, fileA, fileB string) (domain.Sna
 		return domain.Snapshot{}, domain.Snapshot{}, fmt.Errorf("diff requires either zero arguments (saved vs live) or two file paths")
 	}
 }
+
+// Submit posts every analyzed dep in the saved snapshot to the Aegis
+// API as a community report. Each dep is fetched, re-analyzed with
+// evidence collection enabled, and POSTed as one PackageReportRequest.
+//
+// Idempotent in the API's sense: re-submitting the same (reporter,
+// package, version) updates the existing row instead of creating
+// duplicates. Re-fetching is unavoidable because evidence wasn't
+// recorded during enrich (the hot path stays cheap).
+func (s *Snapshot) Submit(ctx context.Context, projectDir string) error {
+	if s.fetcher == nil || s.evidenceAnalyzer == nil || s.submitter == nil || s.reporter == nil {
+		s.presenter.OnSnapshotEmpty("submit pipeline not configured")
+		return nil
+	}
+	snap, ok, err := s.store.Load(projectDir)
+	if err != nil {
+		s.presenter.OnSnapshotError(err)
+		return err
+	}
+	if !ok {
+		s.presenter.OnSnapshotEmpty("no snapshot saved — run 'aegis snapshot save' first")
+		return nil
+	}
+	reporterID, err := s.reporter.ID()
+	if err != nil {
+		s.presenter.OnSnapshotError(fmt.Errorf("reporter id: %w", err))
+		return err
+	}
+
+	// Only submit deps that have been analyzed — the user expects a
+	// risk-engine-backed report, not a placeholder. Pre-filter so
+	// progress counters reflect work actually done.
+	pending := make([]int, 0, len(snap.Deps))
+	for i, d := range snap.Deps {
+		if d.Fingerprint == nil || !d.Fingerprint.Analyzed {
+			continue
+		}
+		pending = append(pending, i)
+	}
+	if len(pending) == 0 {
+		s.presenter.OnSnapshotEmpty("nothing to submit (run 'aegis snapshot enrich' first)")
+		return nil
+	}
+
+	s.runSubmitWorkers(ctx, snap.Deps, pending, reporterID)
+	return ctx.Err()
+}
+
+// runSubmitWorkers fans submit work out to submitWorkers goroutines.
+// Each task fetches, analyzes-with-evidence, and POSTs one report.
+// Errors are best-effort and surfaced through the presenter so a
+// failing dep doesn't abort the batch.
+func (s *Snapshot) runSubmitWorkers(ctx context.Context, deps []domain.Dependency, pending []int, reporterID string) {
+	workerCount := min(submitWorkers, len(pending))
+
+	tasks := make(chan int, len(pending))
+	for _, i := range pending {
+		tasks <- i
+	}
+	close(tasks)
+
+	type result struct {
+		dep    domain.Dependency
+		ack    PackageReportAck
+		err    error
+		errMsg string
+	}
+	results := make(chan result, len(pending))
+
+	var wg sync.WaitGroup
+	for range workerCount {
+		wg.Go(func() {
+			for i := range tasks {
+				if ctx.Err() != nil {
+					return
+				}
+				dep := deps[i]
+				ack, errMsg, err := s.submitOne(ctx, dep, reporterID)
+				results <- result{dep: dep, ack: ack, errMsg: errMsg, err: err}
+			}
+		})
+	}
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	completed := 0
+	total := len(pending)
+	for r := range results {
+		completed++
+		s.presenter.OnSnapshotEnrichProgress(completed, total, r.dep.Name)
+		if r.err != nil {
+			s.presenter.OnSnapshotInfo(fmt.Sprintf("skip %s@%s: %s: %v",
+				r.dep.Name, r.dep.Version, r.errMsg, r.err))
+			continue
+		}
+		s.presenter.OnSnapshotInfo(fmt.Sprintf("submitted %s@%s (reporters=%d) → %s",
+			r.dep.Name, r.dep.Version, r.ack.ReporterCount, r.ack.URL))
+	}
+}
+
+// submitOne handles the per-dep pipeline: fetch tarball, analyze with
+// evidence, attach provenance, POST. The errMsg return distinguishes
+// which stage failed so the presenter can show "fetch" vs "analyze"
+// vs "submit" — useful for debugging flaky tarballs vs flaky API.
+func (s *Snapshot) submitOne(ctx context.Context, dep domain.Dependency, reporterID string) (PackageReportAck, string, error) {
+	src, err := s.fetcher.Fetch(ctx, dep.Ecosystem, dep.Name, dep.Version)
+	if err != nil {
+		return PackageReportAck{}, "fetch", err
+	}
+	fp, evidence, err := s.evidenceAnalyzer.AnalyzeWithEvidence(ctx, dep.Ecosystem, src)
+	if err != nil {
+		return PackageReportAck{}, "analyze", err
+	}
+
+	risk := domain.RiskScore(&fp).
+		ApplyAllowlist(dep.Ecosystem, dep.Name, dep.Version, s.allowlist)
+
+	// Provenance: tarball hash from the fetcher's PackageSource (if
+	// it filled the field), maintainer emails parsed from the
+	// manifest, and a best-effort registry publish-time lookup. All
+	// three are non-fatal: an empty value flows through to the API.
+	emails := parseMaintainerEmails(src.Manifest)
+	publishedAt := ""
+	if s.publishedAt != nil {
+		if t, err := s.publishedAt.PublishedAt(ctx, dep.Ecosystem, dep.Name, dep.Version); err == nil {
+			publishedAt = t
+		}
+	}
+
+	req := buildReportRequest(reporterID, s.aegisVersion, dep, fp, evidence, risk,
+		src.TarballSha256, emails, publishedAt)
+	ack, err := s.submitter.SubmitReport(ctx, req)
+	if err != nil {
+		return PackageReportAck{}, "submit", err
+	}
+	return ack, "", nil
+}
+
+func buildReportRequest(
+	reporterID, aegisVersion string,
+	dep domain.Dependency,
+	fp domain.Fingerprint,
+	evidence []domain.Evidence,
+	risk domain.RiskAssessment,
+	tarballSha256 string,
+	maintainerEmails []string,
+	publishedAt string,
+) PackageReportRequest {
+	caps := make([]string, 0, len(fp.Capabilities))
+	for _, c := range fp.Capabilities {
+		caps = append(caps, c.String())
+	}
+	hooks := make([]ReportHook, 0, len(fp.Hooks))
+	for _, h := range fp.Hooks {
+		hooks = append(hooks, ReportHook{
+			Phase:  h.Phase.String(),
+			Source: h.Source,
+			Sha256: h.Sha256,
+		})
+	}
+	ev := make([]ReportEvidence, 0, len(evidence))
+	for _, e := range evidence {
+		ev = append(ev, ReportEvidence{
+			Capability: e.Capability.String(),
+			File:       e.File,
+			Line:       e.Line,
+			Snippet:    e.Snippet,
+		})
+	}
+	flags := make([]ReportRiskFlag, 0, len(risk.Flags))
+	for _, f := range risk.Flags {
+		if f.Suppressed {
+			continue
+		}
+		flags = append(flags, ReportRiskFlag{
+			Code: f.Code, Detail: f.Detail, Weight: f.Weight,
+		})
+	}
+	if maintainerEmails == nil {
+		maintainerEmails = []string{}
+	}
+	return PackageReportRequest{
+		ReporterID:         reporterID,
+		AegisVersion:       aegisVersion,
+		Ecosystem:          string(dep.Ecosystem),
+		Name:               dep.Name,
+		Version:            dep.Version,
+		Capabilities:       caps,
+		EnvReads:           fp.EnvReads,
+		Hooks:              hooks,
+		Evidence:           ev,
+		RiskScore:          risk.Score,
+		RiskFlags:          flags,
+		TarballSha256:      tarballSha256,
+		MaintainerEmails:   maintainerEmails,
+		PackagePublishedAt: publishedAt,
+	}
+}
+
+// parseMaintainerEmails pulls every email visible in package.json's
+// `author`, `maintainers`, and `contributors` fields. Each may be a
+// string ("Name <email@host>") or an object ({name, email}); the npm
+// spec allows either shape per field. Returns deduplicated, sorted
+// addresses; returns an empty (non-nil) slice when the manifest is
+// empty or unparseable.
+func parseMaintainerEmails(manifest []byte) []string {
+	if len(manifest) == 0 {
+		return []string{}
+	}
+	// Use json.RawMessage so we can branch by JSON shape per-field
+	// without committing to a struct that could fail the whole decode.
+	var raw struct {
+		Author       json.RawMessage `json:"author"`
+		Maintainers  json.RawMessage `json:"maintainers"`
+		Contributors json.RawMessage `json:"contributors"`
+	}
+	if err := json.Unmarshal(manifest, &raw); err != nil {
+		return []string{}
+	}
+	seen := map[string]struct{}{}
+	collectPersonField(raw.Author, seen)
+	collectPersonField(raw.Maintainers, seen)
+	collectPersonField(raw.Contributors, seen)
+	out := make([]string, 0, len(seen))
+	for e := range seen {
+		out = append(out, e)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// collectPersonField handles all three legal shapes for a person-or-
+// list-of-persons field: a single string, a single object, or an array
+// of either.
+func collectPersonField(raw json.RawMessage, seen map[string]struct{}) {
+	if len(raw) == 0 {
+		return
+	}
+	// Try array first.
+	var asArray []json.RawMessage
+	if err := json.Unmarshal(raw, &asArray); err == nil {
+		for _, item := range asArray {
+			collectOne(item, seen)
+		}
+		return
+	}
+	collectOne(raw, seen)
+}
+
+// collectOne extracts an email from one person value (string or object).
+func collectOne(raw json.RawMessage, seen map[string]struct{}) {
+	if len(raw) == 0 {
+		return
+	}
+	// Object form: {name, email, url}
+	var asObj struct {
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal(raw, &asObj); err == nil && asObj.Email != "" {
+		add := strings.TrimSpace(asObj.Email)
+		if add != "" {
+			seen[add] = struct{}{}
+		}
+		return
+	}
+	// String form: "Name <email@host> (url)"
+	var asStr string
+	if err := json.Unmarshal(raw, &asStr); err == nil {
+		if email := extractEmailFromPersonString(asStr); email != "" {
+			seen[email] = struct{}{}
+		}
+	}
+}
+
+// extractEmailFromPersonString returns the email from a "Name <email>"
+// person string, or "" if no email is present.
+func extractEmailFromPersonString(s string) string {
+	open := strings.Index(s, "<")
+	if open < 0 {
+		return ""
+	}
+	close := strings.Index(s[open+1:], ">")
+	if close < 0 {
+		return ""
+	}
+	return strings.TrimSpace(s[open+1 : open+1+close])
+}
+
 
 // Verify checks the saved snapshot is loadable and structurally valid.
 func (s *Snapshot) Verify(projectDir string) error {

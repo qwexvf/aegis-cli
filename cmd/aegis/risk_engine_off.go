@@ -10,9 +10,15 @@
 
 package main
 
-import "github.com/qwexvf/aegis/services/cli/internal/usecase"
+import (
+	"net/http"
 
-func attachRiskEngine(_ *usecase.Snapshot) {
+	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
+	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+)
+
+func attachRiskEngine(_ *usecase.Snapshot, _ *aegisapi.Client, _ *http.Client) {
 	// no-op: snapshot.WithRiskEngine never called, so Enrich/Diff
-	// will report "risk engine not configured".
+	// will report "risk engine not configured". Submit reports the
+	// same configuration error.
 }

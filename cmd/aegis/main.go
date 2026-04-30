@@ -9,7 +9,10 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"os"
 
 	clii "github.com/qwexvf/aegis/services/cli/internal/interface/cli"
@@ -19,7 +22,9 @@ import (
 	"github.com/qwexvf/aegis/services/cli/internal/infra/allowlist"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/envprobe"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/httpx"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/locksnap"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/logx"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/npmregistry"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ttyprompt"
@@ -27,12 +32,51 @@ import (
 	"github.com/qwexvf/aegis/services/cli/internal/usecase"
 )
 
+// newInvocationID returns a 128-bit hex token used to correlate one
+// CLI run's audit entries, HTTP requests, and (later) structured logs.
+// Falls back to a fixed sentinel only on the (effectively impossible)
+// case that crypto/rand fails — we never block startup on it.
+func newInvocationID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "00000000000000000000000000000000"
+	}
+	return hex.EncodeToString(b[:])
+}
+
 func main() {
+	// One per-process invocation ID + shared HTTP client. Every
+	// outbound call (Aegis API, npm registry, tarball downloads)
+	// shares the connection pool and stamps User-Agent + X-Request-ID
+	// so server logs can correlate a single CLI run.
+	cwd, _ := os.Getwd()
+	invocationID := newInvocationID()
+
+	// Structured logger as the slog default — every infra package can
+	// `slog.Warn(...)` without threading a logger explicitly. Format
+	// auto-picks JSON in CI and on non-TTY stderr.
+	logx.SetDefault(logx.New(logx.Config{
+		Verbose:      os.Getenv("AEGIS_VERBOSE") != "",
+		InvocationID: invocationID,
+	}))
+
+	httpClient := httpx.NewClient(httpx.Config{
+		UserAgent: httpx.UserAgent(clii.Version),
+		RequestID: invocationID,
+	})
+
 	// Adapters.
-	resolver := npmregistry.NewResolver()
-	apiClient := aegisapi.New()
+	resolver := npmregistry.NewResolver(npmregistry.WithHTTPClient(httpClient))
+	// AEGIS_API_KEY is the server-issued submit key. The /check
+	// endpoint stays unauthenticated; only /reports requires it.
+	// Empty key still produces a 401 from the API, which the CLI
+	// surfaces verbatim — that's the right UX.
+	apiClient := aegisapi.New(
+		aegisapi.WithAPIKey(os.Getenv("AEGIS_API_KEY")),
+		aegisapi.WithHTTPClient(httpClient),
+	)
 	cache := diskcache.New()
-	audit := ndjsonaudit.New()
+	audit := ndjsonaudit.New().WithProvenance(clii.Version, invocationID, cwd)
 	confirm := ttyprompt.New()
 	env := envprobe.New()
 	presenter := cli.New()
@@ -49,10 +93,10 @@ func main() {
 	gate := usecase.NewInstallGate(resolver, apiClient, cache, audit, confirm, env, presenter)
 	snapshot := usecase.NewSnapshot(store, scanner, cli.NewSnapshotPresenter(presenter), clii.Version)
 
-	// Optionally attach the risk engine (AST scanner). The
-	// implementation is selected at compile time via build tags;
-	// see risk_engine.go (default) and risk_engine_off.go.
-	attachRiskEngine(snapshot)
+	// Optionally attach the risk engine (AST scanner) + submit
+	// pipeline. The implementation is selected at compile time via
+	// build tags; see risk_engine.go (default) and risk_engine_off.go.
+	attachRiskEngine(snapshot, apiClient, httpClient)
 
 	// Allowlist: layered builtin + user (~/.aegis/allowlist.yaml) +
 	// project (.aegis-allowlist.yaml at cwd). When user/project files
@@ -64,9 +108,14 @@ func main() {
 		return allowlist.New(cwd)
 	}
 	if set, err := allowlistLoader().Load(); err != nil {
+		// Surface as both stderr (every user sees this) and a slog
+		// warning (correlates via invocation_id). The CLI keeps
+		// running with builtin rules.
 		fmt.Fprintln(os.Stderr, "aegis: WARNING — allowlist file failed to parse:", err)
 		fmt.Fprintln(os.Stderr, "aegis:   falling back to builtin rules only;",
 			"run `aegis allowlist verify` to inspect")
+		slog.Warn("allowlist parse failed; using builtin rules only",
+			"err", err)
 		// Fall back to builtin-only so we keep at least the curated
 		// false-positive suppressions. Builtin is verified at
 		// compile time so this NewAllowSet cannot fail in practice;
@@ -96,5 +145,6 @@ func main() {
 		Managers:           registeredPMs,
 		AllowlistLoader:    allowlistLoader,
 		AllowlistPresenter: cli.NewAllowlistPresenter(presenter),
+		InvocationID:       invocationID,
 	})
 }

@@ -3,14 +3,20 @@ package usecase
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
 )
 
 // --- mocks for risk-engine ports ---------------------------------------
+// All three fakes are concurrency-safe so the parallel worker pool in
+// Snapshot.Enrich/Submit can hammer them under -race without the
+// detector flagging the fakes themselves. Production adapters have
+// their own thread safety story (atomic file writes per key).
 
 type fakeFetcher struct {
+	mu       sync.Mutex
 	calls    int
 	err      error
 	manifest []byte
@@ -18,6 +24,8 @@ type fakeFetcher struct {
 }
 
 func (f *fakeFetcher) Fetch(_ context.Context, _ domain.Ecosystem, _, _ string) (PackageSource, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	if f.err != nil {
 		return PackageSource{}, f.err
@@ -26,12 +34,15 @@ func (f *fakeFetcher) Fetch(_ context.Context, _ domain.Ecosystem, _, _ string) 
 }
 
 type fakeAnalyzer struct {
+	mu    sync.Mutex
 	calls int
 	out   domain.Fingerprint
 	err   error
 }
 
 func (a *fakeAnalyzer) Analyze(_ context.Context, _ domain.Ecosystem, _ PackageSource) (domain.Fingerprint, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.calls++
 	if a.err != nil {
 		return domain.Fingerprint{}, a.err
@@ -40,6 +51,7 @@ func (a *fakeAnalyzer) Analyze(_ context.Context, _ domain.Ecosystem, _ PackageS
 }
 
 type fakeFPCache struct {
+	mu    sync.Mutex
 	store map[string]domain.Fingerprint
 	gets  int
 	puts  int
@@ -51,11 +63,15 @@ func (c *fakeFPCache) key(eco domain.Ecosystem, name, version string) string {
 	return string(eco) + "/" + name + "@" + version
 }
 func (c *fakeFPCache) Get(eco domain.Ecosystem, name, version string) (domain.Fingerprint, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.gets++
 	fp, ok := c.store[c.key(eco, name, version)]
 	return fp, ok
 }
 func (c *fakeFPCache) Put(eco domain.Ecosystem, name, version string, fp domain.Fingerprint) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.puts++
 	c.store[c.key(eco, name, version)] = fp
 	return nil

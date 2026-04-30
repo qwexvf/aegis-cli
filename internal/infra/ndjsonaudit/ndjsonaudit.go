@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/flock"
 )
 
 // Writer appends NDJSON entries to a file.
@@ -21,6 +22,13 @@ type Writer struct {
 	path string
 	mu   sync.Mutex
 	now  func() time.Time // injectable for tests
+
+	// Provenance, set via WithProvenance. All optional — empty values
+	// are simply omitted from the output (the JSON shape stays stable
+	// for old readers).
+	aegisVersion string
+	invocationID string
+	projectDir   string
 }
 
 // New returns a Writer at AEGIS_AUDIT_DIR/audit.jsonl (default
@@ -45,11 +53,27 @@ func NewAt(path string) *Writer {
 	}
 }
 
+// WithProvenance attaches per-process context that gets stamped on
+// every audit entry. Additive: empty strings are omitted from the
+// JSON, so callers may pass "" for fields they don't have. Returns
+// the receiver for chaining at composition root.
+func (w *Writer) WithProvenance(aegisVersion, invocationID, projectDir string) *Writer {
+	w.aegisVersion = aegisVersion
+	w.invocationID = invocationID
+	w.projectDir = projectDir
+	return w
+}
+
 // Path returns the on-disk audit file path.
 func (w *Writer) Path() string { return w.path }
 
 // Write implements usecase.AuditWriter. Best-effort — failures here
 // must NOT abort an install (the caller logs and continues).
+//
+// Concurrency: the per-process mutex protects against in-process
+// races; the per-file flock protects against parallel `aegis`
+// invocations (e.g. CI matrix jobs) that would otherwise interleave
+// NDJSON lines and corrupt the audit log.
 func (w *Writer) Write(o domain.Outcome) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -63,11 +87,20 @@ func (w *Writer) Write(o domain.Outcome) error {
 	}
 	defer f.Close()
 
-	dto := fromDomain(o, w.now())
+	unlock, err := flock.LockExclusive(f)
+	if err != nil {
+		return fmt.Errorf("audit flock: %w", err)
+	}
+	defer unlock()
+
+	dto := w.fromDomain(o)
 	b, err := json.Marshal(dto)
 	if err != nil {
 		return err
 	}
+	// Single Write call after flock — POSIX guarantees the append
+	// reaches the file at the current end-of-file under O_APPEND, so
+	// the lock + single write is sufficient for atomicity.
 	if _, err := f.Write(append(b, '\n')); err != nil {
 		return err
 	}
@@ -122,6 +155,9 @@ type Entry struct {
 	OverrideUsed   bool
 	OverrideReason string
 	AdvisoryID     string
+	AegisVersion   string
+	InvocationID   string
+	ProjectDir     string
 }
 
 // --- DTOs -------------------------------------------------------------
@@ -138,11 +174,14 @@ type entryDTO struct {
 	OverrideUsed   bool      `json:"override,omitempty"`
 	OverrideReason string    `json:"override_reason,omitempty"`
 	AdvisoryID     string    `json:"advisory_id,omitempty"`
+	AegisVersion   string    `json:"aegis_version,omitempty"`
+	InvocationID   string    `json:"cli_invocation_id,omitempty"`
+	ProjectDir     string    `json:"project_dir,omitempty"`
 }
 
-func fromDomain(o domain.Outcome, now time.Time) entryDTO {
+func (w *Writer) fromDomain(o domain.Outcome) entryDTO {
 	dto := entryDTO{
-		Timestamp:      now,
+		Timestamp:      w.now(),
 		Ecosystem:      string(o.Decision.Spec.Ecosystem),
 		Package:        o.Decision.Spec.Name,
 		Version:        o.Decision.Resolved,
@@ -152,6 +191,9 @@ func fromDomain(o domain.Outcome, now time.Time) entryDTO {
 		Source:         string(o.Decision.Source),
 		OverrideUsed:   o.OverrideUsed,
 		OverrideReason: o.OverrideReason,
+		AegisVersion:   w.aegisVersion,
+		InvocationID:   w.invocationID,
+		ProjectDir:     w.projectDir,
 	}
 	if o.Decision.Incident != nil {
 		dto.AdvisoryID = o.Decision.Incident.AdvisoryID

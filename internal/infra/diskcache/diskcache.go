@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/atomicwrite"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/flock"
 )
 
 // DefaultTTL is how long cached decisions are considered fresh when no
@@ -76,9 +78,23 @@ func (c *Cache) Get(key string) (domain.Decision, bool) {
 }
 
 // Put implements usecase.DecisionCache.
+//
+// Concurrency: a coarse cross-process lock around (load, modify,
+// save) prevents the lost-update race where two parallel `aegis`
+// invocations both read state {a}, each adds a different key, and
+// the later writer's atomic rename clobbers the other's addition.
 func (c *Cache) Put(key string, d domain.Decision) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
+		return err
+	}
+	unlock, err := c.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	data, err := c.load()
 	if err != nil {
@@ -90,6 +106,27 @@ func (c *Cache) Put(key string, d domain.Decision) error {
 		ExpiresAt: time.Now().Add(c.ttl),
 	}
 	return c.save(data)
+}
+
+// lock takes an exclusive cross-process lock on a sentinel file
+// alongside decisions.json. We don't lock decisions.json itself
+// because it's renamed-into-place by save; flocks on the old inode
+// stop coordinating once the rename happens.
+func (c *Cache) lock() (func(), error) {
+	lockPath := c.path + ".lock"
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("cache lockfile: %w", err)
+	}
+	unlock, err := flock.LockExclusive(f)
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("cache flock: %w", err)
+	}
+	return func() {
+		unlock()
+		f.Close()
+	}, nil
 }
 
 // Clear deletes the cache file. Missing-file is not an error.
@@ -222,21 +259,7 @@ func (c *Cache) save(data *fileSchema) error {
 	}
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("cache encode: %w", err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(c.path), ".decisions.*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return err
-	}
-	return os.Rename(tmpPath, c.path)
+	return atomicwrite.WriteFile(c.path, b, 0o600)
 }

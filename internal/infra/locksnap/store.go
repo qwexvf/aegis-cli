@@ -12,12 +12,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/atomicwrite"
 )
 
 // LockfileName is the canonical project-root snapshot filename. It is
@@ -59,27 +61,15 @@ func (s *Store) Save(projectDir string, snap domain.Snapshot) error {
 		return fmt.Errorf("marshal snapshot: %w", err)
 	}
 
-	compressed := s.encoder.EncodeAll(rawJSON, nil)
-
 	path := s.Path(projectDir)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".aegis.lock.*.tmp")
-	if err != nil {
+	return atomicwrite.WriteFileFunc(path, 0o644, func(w io.Writer) error {
+		compressed := s.encoder.EncodeAll(rawJSON, nil)
+		_, err := w.Write(compressed)
 		return err
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.Write(compressed); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return err
-	}
-	return os.Rename(tmpPath, path)
+	})
 }
 
 // Load implements usecase.SnapshotStore. Missing-file returns

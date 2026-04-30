@@ -3,10 +3,12 @@ package diskcache
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/atomicwrite"
 )
 
 // fingerprintDTO mirrors locksnap's wire-format for a Fingerprint but
@@ -127,26 +129,11 @@ func (c *FingerprintCache) Put(eco domain.Ecosystem, name, version string, fp do
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	dto := fpToDTO(fp)
-	body, err := json.MarshalIndent(dto, "", "  ")
+	body, err := json.MarshalIndent(fpToDTO(fp), "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("fingerprint encode: %w", err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".fp.*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.Write(body); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return err
-	}
-	return os.Rename(tmpPath, path)
+	return atomicwrite.WriteFile(path, body, 0o644)
 }
 
 // Path returns the on-disk file path for a given key. Useful for

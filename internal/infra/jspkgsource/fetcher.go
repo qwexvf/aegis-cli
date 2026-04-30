@@ -18,6 +18,8 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +31,7 @@ import (
 	"time"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/httpx"
 	"github.com/qwexvf/aegis/services/cli/internal/usecase"
 )
 
@@ -46,6 +49,7 @@ type Fetcher struct {
 	http         *http.Client
 	cacheDir     string
 	maxFileBytes int64
+	retry        httpx.RetryPolicy
 }
 
 // Option configures a Fetcher.
@@ -71,8 +75,15 @@ func WithMaxFileBytes(n int64) Option {
 	return func(f *Fetcher) { f.maxFileBytes = n }
 }
 
+// WithRetryPolicy overrides the retry policy used by metadata and
+// tarball requests. Default: httpx.DefaultRetry.
+func WithRetryPolicy(p httpx.RetryPolicy) Option {
+	return func(f *Fetcher) { f.retry = p }
+}
+
 // New builds a Fetcher with sensible defaults: public npm registry,
-// 30s HTTP timeout, ~/.aegis/cache/sources cache dir.
+// 60s HTTP timeout (tarballs can be hundreds of KB), ~/.aegis/cache/sources
+// cache dir.
 func New(opts ...Option) *Fetcher {
 	cacheDir := os.Getenv("AEGIS_CACHE_DIR")
 	if cacheDir == "" {
@@ -81,9 +92,10 @@ func New(opts ...Option) *Fetcher {
 	}
 	f := &Fetcher{
 		registryURL:  strings.TrimRight(DefaultRegistryURL, "/"),
-		http:         &http.Client{Timeout: 30 * time.Second},
+		http:         httpx.NewClient(httpx.Config{Timeout: 60 * time.Second}),
 		cacheDir:     filepath.Join(cacheDir, "sources"),
 		maxFileBytes: defaultMaxFileBytes,
+		retry:        httpx.DefaultRetry,
 	}
 	if v := os.Getenv("AEGIS_NPM_REGISTRY"); v != "" {
 		f.registryURL = strings.TrimRight(v, "/")
@@ -125,6 +137,9 @@ func (f *Fetcher) Fetch(ctx context.Context, eco domain.Ecosystem, name, version
 	if err != nil {
 		return usecase.PackageSource{}, fmt.Errorf("extract %s@%s: %w", name, version, err)
 	}
+	// Hash before caching so saveCache can persist it for warm reloads.
+	sum := sha256.Sum256(body)
+	src.TarballSha256 = hex.EncodeToString(sum[:])
 
 	// 5. Best-effort persist to cache.
 	_ = f.saveCache(name, version, src)
@@ -142,7 +157,7 @@ func (f *Fetcher) tarballURL(ctx context.Context, name, version string) (string,
 	}
 	// abbreviated metadata is enough for tarball URLs
 	req.Header.Set("Accept", "application/vnd.npm.install-v1+json")
-	resp, err := f.http.Do(req)
+	resp, err := httpx.Do(ctx, f.http, req, f.retry)
 	if err != nil {
 		return "", fmt.Errorf("metadata GET %s: %w", url, err)
 	}
@@ -173,7 +188,7 @@ func (f *Fetcher) downloadTarball(ctx context.Context, url string) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	resp, err := f.http.Do(req)
+	resp, err := httpx.Do(ctx, f.http, req, f.retry)
 	if err != nil {
 		return nil, fmt.Errorf("tarball GET %s: %w", url, err)
 	}

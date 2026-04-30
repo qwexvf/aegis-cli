@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/qwexvf/aegis/services/cli/internal/infra/atomicwrite"
 	"github.com/qwexvf/aegis/services/cli/internal/usecase"
 )
 
@@ -30,7 +31,7 @@ func (f *Fetcher) loadCached(name, version string) (usecase.PackageSource, bool,
 			return nil
 		}
 		base := filepath.Base(path)
-		if base == ".ok" {
+		if base == ".ok" || base == ".tarball-sha256" {
 			return nil
 		}
 		body, err := os.ReadFile(path)
@@ -52,6 +53,11 @@ func (f *Fetcher) loadCached(name, version string) (usecase.PackageSource, bool,
 	if err != nil {
 		return usecase.PackageSource{}, false, err
 	}
+	// Best-effort: a side file holds the tarball sha so warm cache hits
+	// still carry provenance. Old caches predate this and simply lack it.
+	if sum, err := os.ReadFile(filepath.Join(dir, ".tarball-sha256")); err == nil {
+		src.TarballSha256 = strings.TrimSpace(string(sum))
+	}
 	return src, true, nil
 }
 
@@ -64,20 +70,37 @@ func (f *Fetcher) saveCache(name, version string, src usecase.PackageSource) err
 		return err
 	}
 	for path, body := range src.Files {
-		if strings.Contains(path, "..") {
+		if !isSafeRel(path) {
 			// defense in depth: refuse path traversal in tarball entries.
 			continue
 		}
 		full := filepath.Join(dir, filepath.FromSlash(path))
+		// Belt and suspenders: confirm Clean+Join didn't escape `dir`.
+		if rel, err := filepath.Rel(dir, full); err != nil || strings.HasPrefix(rel, "..") {
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(full, body, 0o644); err != nil {
+		if err := atomicwrite.WriteFile(full, body, 0o644); err != nil {
 			return err
 		}
 	}
+	if src.TarballSha256 != "" {
+		_ = atomicwrite.WriteFile(filepath.Join(dir, ".tarball-sha256"), []byte(src.TarballSha256), 0o644)
+	}
 	// Sentinel last so the cache only "appears valid" if writes succeeded.
-	return os.WriteFile(filepath.Join(dir, ".ok"), []byte(""), 0o644)
+	return atomicwrite.WriteFile(filepath.Join(dir, ".ok"), []byte(""), 0o644)
+}
+
+// isSafeRel rejects any path that, after cleaning, escapes the
+// containing directory. We rely on filepath.IsLocal (Go 1.20+) which
+// rejects absolute paths, "..", reserved Windows names, and trailing
+// dots in segments. Tarball entries arriving as `foo/../bar` survive
+// the simple `strings.Contains("..")` test in the legacy code; IsLocal
+// catches them properly.
+func isSafeRel(p string) bool {
+	return filepath.IsLocal(filepath.FromSlash(p))
 }
 
 // cachePath returns <cacheDir>/npm/<safe-name>/<version>. Scoped names
