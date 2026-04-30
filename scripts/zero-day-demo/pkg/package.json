@@ -1,0 +1,10 @@
+{
+  "name": "@aegis/zero-day-demo",
+  "version": "1.0.0",
+  "description": "Synthetic malicious package for AST-only detection demo (no CVE published).",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "node ./postinstall.js"
+  },
+  "license": "UNLICENSED"
+}

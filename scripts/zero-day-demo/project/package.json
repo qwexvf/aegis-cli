@@ -1,0 +1,8 @@
+{
+  "name": "zero-day-demo-project",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "@aegis/zero-day-demo": "1.0.0"
+  }
+}

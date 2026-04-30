@@ -20,7 +20,22 @@ func snapshotCommand(uc *usecase.Snapshot) *cobra.Command {
 	cmd.AddCommand(snapshotDiffCommand(uc))
 	cmd.AddCommand(snapshotEnrichCommand(uc))
 	cmd.AddCommand(snapshotVerifyCommand(uc))
+	cmd.AddCommand(snapshotSubmitCommand(uc))
 	return cmd
+}
+
+func snapshotSubmitCommand(uc *usecase.Snapshot) *cobra.Command {
+	return &cobra.Command{
+		Use:   "submit",
+		Short: "Post analyzed deps as community reports to the Aegis API",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			return uc.Submit(cmd.Context(), cwd)
+		},
+	}
 }
 
 func snapshotEnrichCommand(uc *usecase.Snapshot) *cobra.Command {

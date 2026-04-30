@@ -24,3 +24,14 @@ func (r *Resolver) Resolve(ctx context.Context, eco domain.Ecosystem, name, rang
 	}
 	return r.c.Resolve(ctx, name, rangeOrTag)
 }
+
+// PublishedAt implements usecase.PublishedAtResolver. Returns the npm
+// registry's `time[version]` value for a (name, version), or "" when
+// the registry doesn't expose it. Errors propagate so the caller can
+// log "skipped" without bubbling up.
+func (r *Resolver) PublishedAt(ctx context.Context, eco domain.Ecosystem, name, version string) (string, error) {
+	if eco != domain.EcoNpm {
+		return "", fmt.Errorf("npmregistry: cannot resolve ecosystem %q", eco)
+	}
+	return r.c.PublishedAt(ctx, name, version)
+}

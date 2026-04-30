@@ -103,6 +103,10 @@ func (s *Scanner) AnalyzeFile(path string, body []byte, f *astscan.Findings) {
 		for _, cap := range m.Captures {
 			if c, ok := s.captureToCap[uint(cap.Index)]; ok {
 				f.AddCapability(c)
+				if f.CollectEvidence {
+					line := int(cap.Node.StartPosition().Row) + 1
+					f.AddEvidence(c, path, line, string(cap.Node.Utf8Text(body)))
+				}
 				continue
 			}
 			if int(cap.Index) == s.envReadCaptureIdx {

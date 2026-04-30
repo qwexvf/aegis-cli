@@ -45,6 +45,16 @@ type Findings struct {
 	EnvReads     map[string]struct{}
 	SourceBytes  int
 	FilesScanned int
+
+	// Evidence is the per-capture file/line/snippet detail. Optional:
+	// only populated when CollectEvidence is true. The submit pipeline
+	// posts this verbatim to the API so the server can construct
+	// graphs without re-running the scanner.
+	Evidence []domain.Evidence
+
+	// CollectEvidence toggles per-match evidence recording. False by
+	// default to keep the hot path of `aegis snapshot enrich` cheap.
+	CollectEvidence bool
 }
 
 // NewFindings returns an empty accumulator with maps initialized.
@@ -55,9 +65,44 @@ func NewFindings() *Findings {
 	}
 }
 
+// NewFindingsWithEvidence returns an accumulator that also records
+// per-capture evidence rows. Used by the submit pipeline.
+func NewFindingsWithEvidence() *Findings {
+	f := NewFindings()
+	f.CollectEvidence = true
+	return f
+}
+
 // AddCapability records a Capability detection.
 func (f *Findings) AddCapability(c domain.Capability) {
 	f.Capabilities[c] = struct{}{}
+}
+
+// AddEvidence appends one capture's location + snippet. No-op when
+// CollectEvidence is false. Snippet is truncated to ~120 chars and
+// flattened to a single line for transport.
+func (f *Findings) AddEvidence(c domain.Capability, file string, line int, snippet string) {
+	if !f.CollectEvidence {
+		return
+	}
+	f.Evidence = append(f.Evidence, domain.Evidence{
+		Capability: c,
+		File:       file,
+		Line:       line,
+		Snippet:    flattenSnippet(snippet),
+	})
+}
+
+// flattenSnippet collapses whitespace and caps length so the wire
+// payload stays small.
+func flattenSnippet(s string) string {
+	const max = 120
+	out := strings.ReplaceAll(s, "\n", " ")
+	out = strings.ReplaceAll(out, "\t", " ")
+	if len(out) > max {
+		out = out[:max] + "…"
+	}
+	return out
 }
 
 // AddEnvRead records a process.env name. Duplicates are deduplicated
@@ -90,12 +135,30 @@ func (d *Dispatcher) Register(eco domain.Ecosystem, s LanguageScanner) {
 
 // Analyze implements usecase.ASTAnalyzer.
 func (d *Dispatcher) Analyze(ctx context.Context, eco domain.Ecosystem, src usecase.PackageSource) (domain.Fingerprint, error) {
+	fp, _, err := d.analyze(eco, src, false)
+	return fp, err
+}
+
+// AnalyzeWithEvidence runs the same per-file walk as Analyze but also
+// returns flat per-capture evidence rows (file/line/snippet). Used by
+// the submit pipeline; the API builds graphs from these.
+// Implements usecase.EvidenceAnalyzer.
+func (d *Dispatcher) AnalyzeWithEvidence(ctx context.Context, eco domain.Ecosystem, src usecase.PackageSource) (domain.Fingerprint, []domain.Evidence, error) {
+	return d.analyze(eco, src, true)
+}
+
+func (d *Dispatcher) analyze(eco domain.Ecosystem, src usecase.PackageSource, withEvidence bool) (domain.Fingerprint, []domain.Evidence, error) {
 	scanner, ok := d.scanners[eco]
 	if !ok {
-		return domain.Fingerprint{}, fmt.Errorf("astscan: no scanner for ecosystem %q", eco)
+		return domain.Fingerprint{}, nil, fmt.Errorf("astscan: no scanner for ecosystem %q", eco)
 	}
 
-	findings := NewFindings()
+	var findings *Findings
+	if withEvidence {
+		findings = NewFindingsWithEvidence()
+	} else {
+		findings = NewFindings()
+	}
 
 	// Detect install hooks declaratively from the manifest first; the
 	// language scanner may also flag them via the hook code itself.
@@ -113,7 +176,7 @@ func (d *Dispatcher) Analyze(ctx context.Context, eco domain.Ecosystem, src usec
 		scanner.AnalyzeFile(path, body, findings)
 	}
 
-	return findingsToFingerprint(findings, hooks), nil
+	return findingsToFingerprint(findings, hooks), findings.Evidence, nil
 }
 
 // findingsToFingerprint produces the final Fingerprint. Capabilities
