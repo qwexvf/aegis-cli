@@ -172,7 +172,11 @@ func (f *Fetcher) tarballURL(ctx context.Context, name, version string) (string,
 			} `json:"dist"`
 		} `json:"versions"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+	body, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return "", fmt.Errorf("read metadata %s: %w", url, err)
+	}
+	if err := json.Unmarshal(body, &meta); err != nil {
 		return "", fmt.Errorf("decode metadata: %w", err)
 	}
 	v, ok := meta.Versions[version]
@@ -182,7 +186,10 @@ func (f *Fetcher) tarballURL(ctx context.Context, name, version string) (string,
 	return v.Dist.Tarball, nil
 }
 
-// downloadTarball returns the raw bytes of a .tgz.
+// downloadTarball returns the raw bytes of a .tgz. Bounded by
+// httpx.MaxTarballBytes so a hostile or compromised registry can't
+// OOM the CLI by serving a multi-GB response. Real npm tarballs are
+// <100MB; the cap is generous headroom.
 func (f *Fetcher) downloadTarball(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -196,7 +203,11 @@ func (f *Fetcher) downloadTarball(ctx context.Context, url string) ([]byte, erro
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tarball %s: HTTP %d", url, resp.StatusCode)
 	}
-	return io.ReadAll(resp.Body)
+	body, err := httpx.ReadCapped(resp.Body, httpx.MaxTarballBytes)
+	if err != nil {
+		return nil, fmt.Errorf("tarball %s: %w", url, err)
+	}
+	return body, nil
 }
 
 // escapeName URL-escapes scoped package names: `@scope/name` becomes

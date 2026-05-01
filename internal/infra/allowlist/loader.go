@@ -3,9 +3,10 @@ package allowlist
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
 )
@@ -106,8 +107,7 @@ func New(projectDir string) *Loader {
 	if user == "" {
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
-			slog.Warn("cannot determine user home directory; falling back to ./.aegis (set AEGIS_CONFIG_DIR to override)",
-				"err", err)
+			log.Warn().Err(err).Msg("cannot determine user home directory; falling back to ./.aegis (set AEGIS_CONFIG_DIR to override)")
 			user = ".aegis"
 		} else {
 			user = filepath.Join(home, ".aegis")

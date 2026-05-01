@@ -21,7 +21,7 @@ import (
 	"github.com/qwexvf/aegis/services/cli/internal/usecase"
 )
 
-func attachRiskEngine(snapshot *usecase.Snapshot, apiClient *aegisapi.Client, httpClient *http.Client) {
+func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiClient *aegisapi.Client, httpClient *http.Client) {
 	jsScanner, err := jsscan.New()
 	if err != nil {
 		// Embedded queries malformed = developer bug. Don't refuse to
@@ -44,4 +44,10 @@ func attachRiskEngine(snapshot *usecase.Snapshot, apiClient *aegisapi.Client, ht
 	// the submit pipeline doesn't share a packument cache with the
 	// hot-path version resolver.
 	snapshot.WithPublishedAtResolver(npmregistry.NewResolver(npmregistry.WithHTTPClient(httpClient)))
+
+	// Analyze shares the same fetcher + dispatcher — one composition
+	// root, one HTTP pool, one tarball cache across both use cases.
+	if analyze != nil {
+		analyze.WithRiskEngine(fetcher, dispatcher)
+	}
 }

@@ -1,0 +1,95 @@
+# Example GitHub Actions workflow for aegis CI audit.
+#
+# Drop this into your repo at .github/workflows/aegis.yml (rename
+# `aegis-audit` if you'd like) and adjust the install + build step
+# for your package manager.
+#
+# Behavior:
+#   - Runs on every push and PR
+#   - Installs deps, then runs `aegis ci --fail-on=block`
+#   - PR fails if any dep crosses the BLOCK verdict threshold
+#   - Caches ~/.aegis between runs so AST scans only happen for
+#     newly-added or version-changed deps (warm runs are seconds)
+
+name: aegis-audit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------- 1. Install your project's dependencies ------------
+      # Adjust this block for your package manager.
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      # ---------- 2. Install aegis ----------------------------------
+      # Until pre-built releases land, build from source. Swap to a
+      # release-binary download when one is published:
+      #
+      #   - run: |
+      #       curl -sSL https://github.com/qwexvf/aegis/releases/latest/download/aegis-linux-amd64 \
+      #         -o /usr/local/bin/aegis
+      #       chmod +x /usr/local/bin/aegis
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Build aegis
+        run: |
+          git clone --depth=1 https://github.com/qwexvf/aegis /tmp/aegis
+          cd /tmp/aegis/services/cli && make build
+          sudo mv bin/aegis /usr/local/bin/aegis
+
+      # ---------- 3. Cache the AST fingerprint cache ----------------
+      # Warm cache means new PRs only re-scan deps that actually
+      # changed. Cold first run still re-scans everything but only
+      # once.
+
+      - name: Cache aegis fingerprints
+        uses: actions/cache@v4
+        with:
+          path: ~/.aegis/cache
+          key: aegis-${{ runner.os }}-${{ hashFiles('bun.lock', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            aegis-${{ runner.os }}-
+
+      # ---------- 4. Run the audit ---------------------------------
+      # Exit codes:
+      #   0  passed (no findings ≥ --fail-on)
+      #   1  failed (one or more findings ≥ --fail-on)
+      #   2  couldn't reach a verdict (network / config error)
+      #
+      # Tighten by switching to --fail-on=prompt or --fail-on=review.
+
+      - name: Run aegis ci
+        run: aegis ci --fail-on=block
+
+      # ---------- 5. (Optional) Post the findings as a JSON --------
+      # artifact so reviewers can browse the full report even when
+      # the build passes.
+
+      - name: Upload findings artifact
+        if: always()
+        run: aegis ci --fail-on=block --json > aegis-report.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aegis-report
+          path: aegis-report.json
+          retention-days: 14

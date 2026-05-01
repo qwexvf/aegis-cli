@@ -114,7 +114,11 @@ func (c *Client) PublishedAt(ctx context.Context, pkg, version string) (string, 
 	var p struct {
 		Time map[string]string `json:"time"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+	body, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return "", fmt.Errorf("read packument %s: %w", pkg, err)
+	}
+	if err := json.Unmarshal(body, &p); err != nil {
 		return "", fmt.Errorf("decode packument time map for %s: %w", pkg, err)
 	}
 	if t, ok := p.Time[version]; ok {
@@ -218,7 +222,11 @@ func (c *Client) fetchPackument(ctx context.Context, pkg string) (*packument, er
 	}
 
 	var p packument
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+	body, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return nil, fmt.Errorf("read packument %s: %w", pkg, err)
+	}
+	if err := json.Unmarshal(body, &p); err != nil {
 		return nil, fmt.Errorf("decode registry response for %s: %w", pkg, err)
 	}
 

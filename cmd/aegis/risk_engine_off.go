@@ -17,8 +17,9 @@ import (
 	"github.com/qwexvf/aegis/services/cli/internal/usecase"
 )
 
-func attachRiskEngine(_ *usecase.Snapshot, _ *aegisapi.Client, _ *http.Client) {
+func attachRiskEngine(_ *usecase.Snapshot, _ *usecase.Analyze, _ *aegisapi.Client, _ *http.Client) {
 	// no-op: snapshot.WithRiskEngine never called, so Enrich/Diff
 	// will report "risk engine not configured". Submit reports the
-	// same configuration error.
+	// same configuration error. Analyze.Run also surfaces the same
+	// "risk engine not configured" message from the use case itself.
 }

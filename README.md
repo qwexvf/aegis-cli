@@ -270,6 +270,28 @@ Add to your project's `.gitignore`:
 # .aegis-allowlist.yaml   <-- keep this in git
 ```
 
+## CI integration
+
+Drop-in templates live under [`examples/ci/`](examples/ci/):
+
+| File | For |
+|---|---|
+| [`github-actions.yml`](examples/ci/github-actions.yml) | GitHub Actions |
+| [`gitlab-ci.yml`](examples/ci/gitlab-ci.yml) | GitLab CI |
+| [`generic.sh`](examples/ci/generic.sh) | Buildkite / Jenkins / cron / any shell |
+
+Each template caches `~/.aegis/cache` between runs so warm runs only re-scan deps that actually changed. The default threshold is `block`; tighten with `--fail-on=prompt` or `--fail-on=review`.
+
+Exit codes from `aegis ci`:
+
+| Code | Meaning |
+|---|---|
+| `0` | passed (no findings ≥ `--fail-on`) |
+| `1` | failed (one or more findings ≥ `--fail-on`) |
+| `2` | couldn't reach a verdict (config / network error) |
+
+JSON output (`aegis ci --json`) is stable for tooling — see [`examples/ci/README.md`](examples/ci/README.md) for the schema.
+
 ## Layout
 
 The CLI is organised in clean-architecture layers:

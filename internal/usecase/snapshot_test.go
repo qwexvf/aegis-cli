@@ -3,6 +3,7 @@ package usecase
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,30 +62,87 @@ func (f *fakeScanner) ScanProject(string) ([]domain.Dependency, error) {
 }
 
 type snapshotCapturingPresenter struct {
-	saved    int
-	shown    []domain.Snapshot
-	diffs    []DiffReport
-	progress int
-	infos    []string
-	empties  []string
-	errors   []error
+	mu          sync.Mutex
+	saved       int
+	shown       []domain.Snapshot
+	diffs       []DiffReport
+	progress    int
+	infos       []string
+	empties     []string
+	errors      []error
+	beginTotal  int
+	beginCount  int
+	endCount    int
+	slotStarts  int
+	slotStages  int
+	slotDones   int
+	slotOKCount int
 }
 
-func (p *snapshotCapturingPresenter) OnSnapshotSaved(string, int) { p.saved++ }
+func (p *snapshotCapturingPresenter) OnSnapshotSaved(string, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.saved++
+}
 func (p *snapshotCapturingPresenter) OnSnapshotShow(s domain.Snapshot, _ bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.shown = append(p.shown, s)
 }
 func (p *snapshotCapturingPresenter) OnSnapshotDiff(r DiffReport) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.diffs = append(p.diffs, r)
 }
 func (p *snapshotCapturingPresenter) OnSnapshotEnrichProgress(int, int, string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.progress++
 }
 func (p *snapshotCapturingPresenter) OnSnapshotEmpty(reason string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.empties = append(p.empties, reason)
 }
-func (p *snapshotCapturingPresenter) OnSnapshotInfo(m string) { p.infos = append(p.infos, m) }
-func (p *snapshotCapturingPresenter) OnSnapshotError(e error) { p.errors = append(p.errors, e) }
+func (p *snapshotCapturingPresenter) OnSnapshotInfo(m string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.infos = append(p.infos, m)
+}
+func (p *snapshotCapturingPresenter) OnSnapshotError(e error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.errors = append(p.errors, e)
+}
+func (p *snapshotCapturingPresenter) OnEnrichBegin(total int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.beginCount++
+	p.beginTotal = total
+}
+func (p *snapshotCapturingPresenter) OnEnrichEnd() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.endCount++
+}
+func (p *snapshotCapturingPresenter) OnEnrichSlotStart(int, string, string, string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.slotStarts++
+}
+func (p *snapshotCapturingPresenter) OnEnrichSlotStage(int, EnrichStage) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.slotStages++
+}
+func (p *snapshotCapturingPresenter) OnEnrichSlotDone(_ int, _, _, _ string, ok bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.slotDones++
+	if ok {
+		p.slotOKCount++
+	}
+}
 
 func dep(name, ver string) domain.Dependency {
 	return domain.Dependency{Ecosystem: domain.EcoNpm, Name: name, Version: ver}

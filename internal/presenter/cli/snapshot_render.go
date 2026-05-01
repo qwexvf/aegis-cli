@@ -101,6 +101,16 @@ func (sp *SnapshotPresenter) OnSnapshotEnrichProgress(done, total int, name stri
 		sp.p.dim(), sp.p.reset(), done, total, name)
 }
 
+// OnEnrichBegin / OnEnrichEnd / OnEnrichSlot* are intentionally no-ops
+// on the plain (non-TTY) presenter — its progress UX is the per-dep
+// line written by OnSnapshotEnrichProgress. The live presenter
+// (enrich_live.go) overrides these to render a windowed view.
+func (sp *SnapshotPresenter) OnEnrichBegin(int)                              {}
+func (sp *SnapshotPresenter) OnEnrichEnd()                                   {}
+func (sp *SnapshotPresenter) OnEnrichSlotStart(int, string, string, string)  {}
+func (sp *SnapshotPresenter) OnEnrichSlotStage(int, usecase.EnrichStage)     {}
+func (sp *SnapshotPresenter) OnEnrichSlotDone(int, string, string, string, bool) {}
+
 // OnSnapshotEmpty prints a one-line "nothing to do" message.
 func (sp *SnapshotPresenter) OnSnapshotEmpty(reason string) {
 	fmt.Fprintf(sp.p.w, "%s[aegis]%s %s\n", sp.p.dim(), sp.p.reset(), reason)

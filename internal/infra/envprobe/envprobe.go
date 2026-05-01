@@ -13,7 +13,13 @@ type Probe struct{}
 func New() *Probe { return &Probe{} }
 
 // IsCI returns true if any common CI marker is set in the environment.
-func (Probe) IsCI() bool {
+func (Probe) IsCI() bool { return IsCI() }
+
+// IsCI is a package-level CI-marker probe — the same logic as
+// Probe.IsCI but callable without constructing a Probe. Use this from
+// places that just need a yes/no (logger format selection, live-region
+// fallback) rather than a stateful adapter.
+func IsCI() bool {
 	for _, key := range []string{
 		"AEGIS_CI",       // explicit override
 		"CI",             // generic

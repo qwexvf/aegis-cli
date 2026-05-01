@@ -120,9 +120,19 @@ func (s *Snapshot) riskEngineEnabled() bool {
 	return s.fetcher != nil && s.analyzer != nil
 }
 
+// RiskEngineEnabled is the public probe used by adjacent use cases
+// (CI) that want to fail fast when AST scanning was requested but
+// the binary was built with `nojsscan`.
+func (s *Snapshot) RiskEngineEnabled() bool { return s.riskEngineEnabled() }
+
 // Save scans the project's lockfile(s) and writes a fresh snapshot to
 // the canonical location (aegis.lock). Fingerprints are NOT computed
 // here — Save is fast and side-effect-free against the network.
+//
+// When an existing aegis.lock is present at the destination, an info
+// line is emitted so the user knows hand-edits (rare but possible)
+// will be replaced. We don't refuse — `save` is the explicit "rewrite
+// from lockfile" verb.
 func (s *Snapshot) Save(projectDir string) error {
 	deps, err := s.scanner.ScanProject(projectDir)
 	if err != nil {
@@ -132,6 +142,10 @@ func (s *Snapshot) Save(projectDir string) error {
 	if len(deps) == 0 {
 		s.presenter.OnSnapshotEmpty("no lockfile found in " + projectDir)
 		return nil
+	}
+
+	if _, existed, _ := s.store.Load(projectDir); existed {
+		s.presenter.OnSnapshotInfo("overwriting existing " + s.store.Path(projectDir))
 	}
 
 	snap := domain.Snapshot{
@@ -202,25 +216,60 @@ func (s *Snapshot) Enrich(ctx context.Context, projectDir string) error {
 		return nil
 	}
 
-	completed := s.runEnrichWorkers(ctx, snap.Deps, pending)
+	s.presenter.OnEnrichBegin(len(pending))
+	processed, succeeded := s.runEnrichWorkers(ctx, snap.Deps, pending)
+	s.presenter.OnEnrichEnd()
 
 	if err := s.store.Save(projectDir, snap); err != nil {
 		s.presenter.OnSnapshotError(err)
 		return err
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		s.presenter.OnSnapshotInfo(fmt.Sprintf("interrupted after %d/%d deps (saved partial)", completed, len(pending)))
+		s.presenter.OnSnapshotInfo(fmt.Sprintf(
+			"interrupted after %d/%d processed (%d enriched, saved partial)",
+			processed, len(pending), succeeded))
 		return ctxErr
 	}
-	s.presenter.OnSnapshotInfo(fmt.Sprintf("enriched %d deps", completed))
+	if failed := processed - succeeded; failed > 0 {
+		s.presenter.OnSnapshotInfo(fmt.Sprintf("enriched %d deps (%d failed)", succeeded, failed))
+	} else {
+		s.presenter.OnSnapshotInfo(fmt.Sprintf("enriched %d deps", succeeded))
+	}
 	return nil
 }
 
+// EnrichDeps runs the AST scanner over deps in place, using the same
+// worker pool + presenter lifecycle as Snapshot.Enrich but without
+// the load-from/save-to-disk steps. Used by adjacent use cases (CI
+// --baseline) that hold an in-memory snapshot they don't want to
+// persist.
+//
+// Caller is responsible for calling RiskEngineEnabled() first.
+// Returns (processed, succeeded) per the same contract as the
+// internal worker pool.
+func (s *Snapshot) EnrichDeps(ctx context.Context, deps []domain.Dependency) (processed, succeeded int) {
+	pending := make([]int, 0, len(deps))
+	for i, d := range deps {
+		if d.Fingerprint != nil && d.Fingerprint.Analyzed {
+			continue
+		}
+		pending = append(pending, i)
+	}
+	if len(pending) == 0 {
+		return 0, 0
+	}
+	s.presenter.OnEnrichBegin(len(pending))
+	defer s.presenter.OnEnrichEnd()
+	return s.runEnrichWorkers(ctx, deps, pending)
+}
+
 // runEnrichWorkers fans pending indices out to a worker pool, writes
-// fingerprints back into deps[i] as results arrive, and returns the
-// count of successful completions. Caller persists deps after we
-// return so partial progress survives cancellation.
-func (s *Snapshot) runEnrichWorkers(ctx context.Context, deps []domain.Dependency, pending []int) int {
+// fingerprints back into deps[i] as results arrive, and returns
+// (processed, succeeded). processed counts every result drained from
+// the worker channel (including per-dep errors); succeeded counts only
+// the results that produced an Analyzed fingerprint. Caller persists
+// deps after we return so partial progress survives cancellation.
+func (s *Snapshot) runEnrichWorkers(ctx context.Context, deps []domain.Dependency, pending []int) (processed, succeeded int) {
 	workerCount := min(enrichWorkers, runtime.NumCPU(), len(pending))
 
 	tasks := make(chan int, len(pending))
@@ -238,14 +287,19 @@ func (s *Snapshot) runEnrichWorkers(ctx context.Context, deps []domain.Dependenc
 	results := make(chan result, len(pending))
 
 	var wg sync.WaitGroup
-	for range workerCount {
+	for w := range workerCount {
+		slot := w
 		wg.Go(func() {
 			for i := range tasks {
 				if ctx.Err() != nil {
 					return
 				}
 				dep := deps[i]
-				fp, err := s.analyzeOne(ctx, dep)
+				fp, fromCache, err := s.analyzeOneSlot(ctx, dep, slot)
+				if !fromCache {
+					s.presenter.OnEnrichSlotDone(slot,
+						string(dep.Ecosystem), dep.Name, dep.Version, err == nil)
+				}
 				results <- result{index: i, fp: fp, err: err, dep: dep}
 			}
 		})
@@ -255,52 +309,90 @@ func (s *Snapshot) runEnrichWorkers(ctx context.Context, deps []domain.Dependenc
 		close(results)
 	}()
 
-	completed := 0
 	total := len(pending)
 	for r := range results {
-		completed++
-		s.presenter.OnSnapshotEnrichProgress(completed, total, r.dep.Name)
+		processed++
+		s.presenter.OnSnapshotEnrichProgress(processed, total, r.dep.Name)
 		if r.err != nil {
 			s.presenter.OnSnapshotInfo(fmt.Sprintf("skip %s@%s: %v", r.dep.Name, r.dep.Version, r.err))
 			continue
 		}
 		r.fp.Analyzed = true
 		deps[r.index].Fingerprint = &r.fp
+		succeeded++
 	}
-	return completed
+	return processed, succeeded
 }
 
-func (s *Snapshot) analyzeOne(ctx context.Context, dep domain.Dependency) (domain.Fingerprint, error) {
+// analyzeOneSlot is the slot-aware variant used by Enrich workers. It
+// emits SlotStart/Stage events around fetch + analyze. Cache hits skip
+// slot events entirely (the live UI doesn't flash for instant returns)
+// and signal that to the caller via fromCache=true so it can also skip
+// the matching SlotDone.
+func (s *Snapshot) analyzeOneSlot(ctx context.Context, dep domain.Dependency, slot int) (fp domain.Fingerprint, fromCache bool, err error) {
 	if s.fpCache != nil {
-		if fp, ok := s.fpCache.Get(dep.Ecosystem, dep.Name, dep.Version); ok {
-			return fp, nil
+		if cached, ok := s.fpCache.Get(dep.Ecosystem, dep.Name, dep.Version); ok {
+			return cached, true, nil
 		}
 	}
+	s.presenter.OnEnrichSlotStart(slot, string(dep.Ecosystem), dep.Name, dep.Version)
+	s.presenter.OnEnrichSlotStage(slot, EnrichStageFetch)
 	src, err := s.fetcher.Fetch(ctx, dep.Ecosystem, dep.Name, dep.Version)
 	if err != nil {
-		return domain.Fingerprint{}, fmt.Errorf("fetch: %w", err)
+		return domain.Fingerprint{}, false, fmt.Errorf("fetch: %w", err)
 	}
-	fp, err := s.analyzer.Analyze(ctx, dep.Ecosystem, src)
+	s.presenter.OnEnrichSlotStage(slot, EnrichStageScan)
+	fp, err = s.analyzer.Analyze(ctx, dep.Ecosystem, src)
 	if err != nil {
-		return domain.Fingerprint{}, fmt.Errorf("analyze: %w", err)
+		return domain.Fingerprint{}, false, fmt.Errorf("analyze: %w", err)
 	}
 	if s.fpCache != nil {
 		_ = s.fpCache.Put(dep.Ecosystem, dep.Name, dep.Version, fp)
 	}
-	return fp, nil
+	return fp, false, nil
 }
 
-// Diff compares two snapshots and emits a DiffReport with per-entry
-// Verdicts. Argument semantics:
+// Diff compares two snapshots and emits a DiffReport via the
+// presenter. Argument semantics:
 //
 //	()                — saved snapshot vs live re-scan of lockfile
 //	(a.lock, b.lock)  — explicit two-file diff
+//
+// Sister method BuildDiffReport returns the report without firing
+// the presenter — used by adjacent use cases (CI --baseline) that
+// render their own format.
 func (s *Snapshot) Diff(projectDir, fileA, fileB string) error {
-	a, b, err := s.loadDiffOperands(projectDir, fileA, fileB)
+	report, err := s.BuildDiffReport(projectDir, fileA, fileB)
 	if err != nil {
 		s.presenter.OnSnapshotError(err)
 		return err
 	}
+	s.presenter.OnSnapshotDiff(report)
+	return nil
+}
+
+// BuildDiffReport produces the DiffReport without touching the
+// presenter. Same operand semantics as Diff. Errors are returned
+// raw — caller decides whether to surface them via its own
+// presenter or wrap into a richer error.
+func (s *Snapshot) BuildDiffReport(projectDir, fileA, fileB string) (DiffReport, error) {
+	a, b, err := s.loadDiffOperands(projectDir, fileA, fileB)
+	if err != nil {
+		return DiffReport{}, err
+	}
+	return s.buildReportFromSnapshots(a, b), nil
+}
+
+// BuildDiffReportFromSnapshots is the in-memory variant: caller
+// supplies both operands directly. Used by CI --baseline which
+// constructs the live snapshot in memory rather than from disk.
+func (s *Snapshot) BuildDiffReportFromSnapshots(baseline, live domain.Snapshot) DiffReport {
+	return s.buildReportFromSnapshots(baseline, live)
+}
+
+// buildReportFromSnapshots is the shared core. Pure: same inputs →
+// same output, no I/O, no presenter side-effects.
+func (s *Snapshot) buildReportFromSnapshots(a, b domain.Snapshot) DiffReport {
 	delta := domain.DiffSnapshots(a, b)
 
 	report := DiffReport{}
@@ -332,9 +424,7 @@ func (s *Snapshot) Diff(projectDir, fileA, fileB string) error {
 		updateReportFlags(&report, entry.Verdict)
 		report.Entries = append(report.Entries, entry)
 	}
-
-	s.presenter.OnSnapshotDiff(report)
-	return nil
+	return report
 }
 
 func updateReportFlags(r *DiffReport, v domain.VerdictKind) {

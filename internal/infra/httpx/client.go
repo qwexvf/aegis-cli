@@ -14,10 +14,48 @@
 package httpx
 
 import (
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"runtime"
 	"time"
 )
+
+// MaxJSONResponseBytes caps decoded HTTP responses (registry packuments,
+// API decisions, GHSA pages). Real npm packuments for the largest
+// packages are <10MB; 50MB is enough headroom while preventing a
+// hostile or misbehaving server from exhausting memory.
+const MaxJSONResponseBytes = 50 * 1024 * 1024
+
+// MaxTarballBytes caps tarball downloads. The largest legitimate npm
+// tarballs are tens of MB; 200MB is generous while keeping a hostile
+// registry from sending GBs to OOM the CLI.
+const MaxTarballBytes = 200 * 1024 * 1024
+
+// ErrResponseTooLarge is returned by ReadCapped when the server
+// sent (or attempted to send) more bytes than the cap allows. We
+// return ErrResponseTooLarge rather than truncated bytes so callers
+// can't accidentally process partial payloads as valid responses.
+var ErrResponseTooLarge = errors.New("response body exceeds maximum allowed size")
+
+// ReadCapped reads at most n bytes from r and returns
+// ErrResponseTooLarge if r had more data. Use this in place of
+// io.ReadAll for any body we don't fully control. The +1 sentinel
+// is the standard idiom — read one extra byte to detect overflow.
+func ReadCapped(r io.Reader, n int64) ([]byte, error) {
+	if n <= 0 {
+		return nil, fmt.Errorf("ReadCapped: invalid limit %d", n)
+	}
+	body, err := io.ReadAll(io.LimitReader(r, n+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > n {
+		return nil, ErrResponseTooLarge
+	}
+	return body, nil
+}
 
 // DefaultTimeout is the per-request hard cap on http.Client. Callers
 // that need a longer deadline (tarball downloads) should set their own

@@ -12,8 +12,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log/slog"
+	"io"
 	"os"
+	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	clii "github.com/qwexvf/aegis/services/cli/internal/interface/cli"
 
@@ -22,9 +26,9 @@ import (
 	"github.com/qwexvf/aegis/services/cli/internal/infra/allowlist"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/envprobe"
+	"github.com/qwexvf/aegis/services/cli/internal/infra/hookfs"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/httpx"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/locksnap"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/logx"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/npmregistry"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/ttyprompt"
@@ -44,6 +48,48 @@ func newInvocationID() string {
 	return hex.EncodeToString(b[:])
 }
 
+// configureLogger installs the global zerolog logger. Pretty
+// ConsoleWriter on dev TTYs (no CI marker, stderr is a terminal),
+// JSON elsewhere. Level: warn by default, debug when verbose.
+//
+// Called exactly once at process start. The root command's
+// PersistentPreRun later flips the level via zerolog.SetGlobalLevel
+// after Cobra parses --verbose; it does NOT call configureLogger
+// again. The output writer and the invocation ID are stable for the
+// process lifetime.
+func configureLogger(invocationID string, verbose bool) {
+	zerolog.TimeFieldFormat = time.RFC3339
+	level := zerolog.WarnLevel
+	if verbose {
+		level = zerolog.DebugLevel
+	}
+	zerolog.SetGlobalLevel(level)
+
+	var w io.Writer = os.Stderr
+	if shouldPrettyLog() {
+		w = zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen}
+	}
+	logger := zerolog.New(w).With().Timestamp().
+		Str("cli_invocation_id", invocationID).
+		Logger()
+	log.Logger = logger
+}
+
+// shouldPrettyLog returns true when stderr is a TTY and no CI marker
+// is set — i.e. a developer is watching the terminal. CI runs always
+// get JSON so log shippers can parse them. CI detection is delegated
+// to envprobe.IsCI to keep the marker list in one place.
+func shouldPrettyLog() bool {
+	if envprobe.IsCI() {
+		return false
+	}
+	fi, err := os.Stderr.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
 func main() {
 	// One per-process invocation ID + shared HTTP client. Every
 	// outbound call (Aegis API, npm registry, tarball downloads)
@@ -52,13 +98,11 @@ func main() {
 	cwd, _ := os.Getwd()
 	invocationID := newInvocationID()
 
-	// Structured logger as the slog default — every infra package can
-	// `slog.Warn(...)` without threading a logger explicitly. Format
-	// auto-picks JSON in CI and on non-TTY stderr.
-	logx.SetDefault(logx.New(logx.Config{
-		Verbose:      os.Getenv("AEGIS_VERBOSE") != "",
-		InvocationID: invocationID,
-	}))
+	// Global zerolog setup — JSON to stderr by default; pretty
+	// ConsoleWriter when stderr is a TTY and we're not in CI. WARN
+	// level out of the box; AEGIS_VERBOSE flips to DEBUG. The root
+	// command's --verbose flag re-applies the level after argv parses.
+	configureLogger(invocationID, os.Getenv("AEGIS_VERBOSE") != "")
 
 	httpClient := httpx.NewClient(httpx.Config{
 		UserAgent: httpx.UserAgent(clii.Version),
@@ -91,12 +135,24 @@ func main() {
 
 	// Use cases.
 	gate := usecase.NewInstallGate(resolver, apiClient, cache, audit, confirm, env, presenter)
-	snapshot := usecase.NewSnapshot(store, scanner, cli.NewSnapshotPresenter(presenter), clii.Version)
+	snapshot := usecase.NewSnapshot(store, scanner,
+		cli.NewEnrichLivePresenter(cli.NewSnapshotPresenter(presenter)),
+		clii.Version)
+	analyzePresenter := cli.NewAnalyzePresenter(presenter)
+	analyze := usecase.NewAnalyze(analyzePresenter)
+	ciPresenter := cli.NewCIPresenter(presenter)
+	ci := usecase.NewCI(snapshot, ciPresenter)
+	recheckPresenter := cli.NewRecheckPresenter(presenter)
+	recheck := usecase.NewRecheck(scanner, apiClient, recheckPresenter)
+	explainPresenter := cli.NewExplainPresenter(presenter)
+	explain := usecase.NewExplain(store, analyze, explainPresenter)
+	hookPresenter := cli.NewHookPresenter(presenter)
+	hook := usecase.NewHook(hookfs.New(), hookPresenter)
 
 	// Optionally attach the risk engine (AST scanner) + submit
 	// pipeline. The implementation is selected at compile time via
 	// build tags; see risk_engine.go (default) and risk_engine_off.go.
-	attachRiskEngine(snapshot, apiClient, httpClient)
+	attachRiskEngine(snapshot, analyze, apiClient, httpClient)
 
 	// Allowlist: layered builtin + user (~/.aegis/allowlist.yaml) +
 	// project (.aegis-allowlist.yaml at cwd). When user/project files
@@ -114,17 +170,20 @@ func main() {
 		fmt.Fprintln(os.Stderr, "aegis: WARNING — allowlist file failed to parse:", err)
 		fmt.Fprintln(os.Stderr, "aegis:   falling back to builtin rules only;",
 			"run `aegis allowlist verify` to inspect")
-		slog.Warn("allowlist parse failed; using builtin rules only",
-			"err", err)
+		log.Warn().Err(err).Msg("allowlist parse failed; using builtin rules only")
 		// Fall back to builtin-only so we keep at least the curated
 		// false-positive suppressions. Builtin is verified at
 		// compile time so this NewAllowSet cannot fail in practice;
 		// if it does, propagate empty.
 		if builtin, berr := domain.NewAllowSet(domain.BuiltinAllowRules()); berr == nil {
 			snapshot.WithAllowlist(builtin)
+			analyze.WithAllowlist(builtin)
+			explain.WithAllowlist(builtin)
 		}
 	} else {
 		snapshot.WithAllowlist(set)
+		analyze.WithAllowlist(set)
+		explain.WithAllowlist(set)
 	}
 
 	// PM wrappers — registered per-file with `no<pm>` build tags.
@@ -140,6 +199,16 @@ func main() {
 	clii.Execute(clii.Deps{
 		Gate:               gate,
 		Snapshot:           snapshot,
+		Analyze:            analyze,
+		AnalyzePresenter:   analyzePresenter,
+		CI:                 ci,
+		CIPresenter:        ciPresenter,
+		Recheck:            recheck,
+		RecheckPresenter:   recheckPresenter,
+		Explain:            explain,
+		ExplainPresenter:   explainPresenter,
+		Hook:               hook,
+		API:                apiClient,
 		Cache:              cache,
 		Audit:              audit,
 		Managers:           registeredPMs,

@@ -75,6 +75,29 @@ func New(opts ...Option) *Client {
 	return c
 }
 
+// BaseURL returns the configured API base. Used by `aegis doctor`
+// for diagnostic output ("which endpoint did we just probe?").
+func (c *Client) BaseURL() string { return c.baseURL }
+
+// Ping does a cheap reachability check against the API. It HEADs the
+// /check endpoint — most servers reply with 405 (Method Not Allowed)
+// to a HEAD on a POST route, which is a perfectly fine "I'm alive"
+// signal. Returns nil if the connection succeeded with any HTTP
+// status; the caller can decide whether 5xx counts as healthy.
+func (c *Client) Ping(ctx context.Context) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead,
+		c.baseURL+"/api/v1/supply-chain/check", nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("ping %s: %w", c.baseURL, err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode, nil
+}
+
 // Check implements usecase.DecisionChecker. It posts a supply-chain
 // check request, decodes the response DTO, and translates to a domain
 // Decision (Spec/Resolved/Source are filled by the use case).
@@ -106,7 +129,11 @@ func (c *Client) Check(ctx context.Context, eco domain.Ecosystem, pkg, version s
 	}
 
 	var dto decisionDTO
-	if err := json.NewDecoder(resp.Body).Decode(&dto); err != nil {
+	body, err = httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return domain.Decision{}, fmt.Errorf("read decision: %w", err)
+	}
+	if err := json.Unmarshal(body, &dto); err != nil {
 		return domain.Decision{}, fmt.Errorf("decode decision: %w", err)
 	}
 	return dto.toDomain(), nil
@@ -157,7 +184,11 @@ func (c *Client) SubmitReport(ctx context.Context, r usecase.PackageReportReques
 	}
 
 	var ack usecase.PackageReportAck
-	if err := json.NewDecoder(resp.Body).Decode(&ack); err != nil {
+	body, err = httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return usecase.PackageReportAck{}, fmt.Errorf("read ack: %w", err)
+	}
+	if err := json.Unmarshal(body, &ack); err != nil {
 		return usecase.PackageReportAck{}, fmt.Errorf("decode ack: %w", err)
 	}
 	return ack, nil

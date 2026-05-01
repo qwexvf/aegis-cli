@@ -218,9 +218,35 @@ type DiffReport struct {
 	AnyPrompt  bool
 }
 
-// SnapshotPresenter renders snapshot operations to the user. Note
-// that OnSnapshotDiff now takes a DiffReport (not a raw
-// SnapshotDelta) — presenters render risk verdicts inline.
+// EnrichStage names the per-package phase a worker is currently in.
+// The live presenter renders this in the stage column so the user can
+// see whether time is being spent on the network or on AST parsing.
+type EnrichStage int
+
+const (
+	EnrichStageFetch EnrichStage = iota + 1
+	EnrichStageScan
+)
+
+// String returns the lowercase label used by presenters.
+func (s EnrichStage) String() string {
+	switch s {
+	case EnrichStageFetch:
+		return "fetch"
+	case EnrichStageScan:
+		return "scan"
+	}
+	return ""
+}
+
+// SnapshotPresenter renders snapshot operations to the user.
+//
+// Enrich emits a coarse lifecycle (Begin/End) plus per-slot events
+// (SlotStart/Stage/Done) so live presenters can render a windowed
+// "what's running right now" view. The summary counter
+// OnSnapshotEnrichProgress still fires once per *completion* — the
+// fallback (non-TTY) presenter prints from it; the live presenter
+// no-ops it and synthesizes counts from slot events.
 type SnapshotPresenter interface {
 	OnSnapshotSaved(path string, depCount int)
 	OnSnapshotShow(s domain.Snapshot, directOnly bool)
@@ -229,4 +255,14 @@ type SnapshotPresenter interface {
 	OnSnapshotEmpty(reason string)
 	OnSnapshotInfo(message string)
 	OnSnapshotError(err error)
+
+	// Enrich lifecycle. Begin is called once with the total count of
+	// pending work; End once when the pool drains (or context is
+	// cancelled). Slot events fire from worker goroutines and MUST be
+	// safe to receive concurrently from up to enrichWorkers callers.
+	OnEnrichBegin(total int)
+	OnEnrichEnd()
+	OnEnrichSlotStart(slot int, eco, name, version string)
+	OnEnrichSlotStage(slot int, stage EnrichStage)
+	OnEnrichSlotDone(slot int, eco, name, version string, ok bool)
 }

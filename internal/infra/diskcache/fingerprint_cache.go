@@ -153,3 +153,8 @@ func (c *FingerprintCache) Clear() error {
 	}
 	return nil
 }
+
+// Dir returns the on-disk root of the fingerprint cache. Used by the
+// CLI's `cache clear --fingerprints` so it can show the user which
+// directory was wiped.
+func (c *FingerprintCache) Dir() string { return c.dir }

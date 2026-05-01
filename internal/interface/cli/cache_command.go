@@ -45,15 +45,52 @@ func cacheListCommand(c *diskcache.Cache) *cobra.Command {
 }
 
 func cacheClearCommand(c *diskcache.Cache) *cobra.Command {
-	return &cobra.Command{
+	var fingerprints, all bool
+	cmd := &cobra.Command{
 		Use:   "clear",
-		Short: "Delete the local decision cache",
+		Short: "Delete the local decision cache (and optionally the AST fingerprint cache)",
+		Long: `clear deletes the per-package /check decision cache by default.
+
+Flags:
+  --fingerprints   also delete the AST fingerprint cache used by
+                   'snapshot enrich' / 'analyze'. Forces the next
+                   enrich / analyze to re-fetch + re-scan everything.
+  --all            equivalent to passing both default-clear and
+                   --fingerprints together.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := c.Clear(); err != nil {
-				return err
+			clearedDecisions := false
+			clearedFingerprints := false
+
+			// Default behavior: clear decision cache. --fingerprints
+			// without --all means "ONLY fingerprints" — useful when
+			// you want a fresh enrich without losing /check cache.
+			if !fingerprints || all {
+				if err := c.Clear(); err != nil {
+					return fmt.Errorf("clear decisions: %w", err)
+				}
+				fmt.Fprintln(os.Stdout, "decision cache cleared:", c.Path())
+				clearedDecisions = true
 			}
-			fmt.Fprintln(os.Stdout, "cache cleared:", c.Path())
+
+			if fingerprints || all {
+				fp := diskcache.NewFingerprintCache()
+				if err := fp.Clear(); err != nil {
+					return fmt.Errorf("clear fingerprints: %w", err)
+				}
+				fmt.Fprintln(os.Stdout, "fingerprint cache cleared:", fp.Dir())
+				clearedFingerprints = true
+			}
+
+			if !clearedDecisions && !clearedFingerprints {
+				// Defensive — shouldn't happen given the logic above.
+				return fmt.Errorf("nothing cleared (this is a bug; report it)")
+			}
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&fingerprints, "fingerprints", false,
+		"clear the AST fingerprint cache instead of the decision cache")
+	cmd.Flags().BoolVar(&all, "all", false,
+		"clear both the decision cache and the fingerprint cache")
+	return cmd
 }

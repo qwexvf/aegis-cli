@@ -92,6 +92,32 @@ func (c Capability) String() string {
 	return "unknown"
 }
 
+// Description returns a one-line human-readable explanation of what
+// this capability means and why it's risky. Used by `aegis explain`
+// to teach non-security users what the gate is flagging without them
+// having to read source comments. Keep these short (≤ 80 chars).
+func (c Capability) Description() string {
+	switch c {
+	case CapShellSpawn:
+		return "spawns subprocesses (e.g. child_process.exec, subprocess.run, system())"
+	case CapDynamicEval:
+		return "constructs and executes code at runtime (eval, new Function, exec)"
+	case CapBase64Decode:
+		return "decodes base64 — common obfuscation step when paired with eval/spawn"
+	case CapNetEgress:
+		return "makes outbound network connections (http, fetch, sockets)"
+	case CapEnvRead:
+		return "reads process environment variables (often secrets / credentials)"
+	case CapFSWriteOutsideRoot:
+		return "writes files outside its own install dir (touches user config / system)"
+	case CapRawIPLiteral:
+		return "contains a hard-coded IP literal (legitimate code uses hostnames)"
+	case CapInstallHookExec:
+		return "declares an install-time script the package manager runs automatically"
+	}
+	return "no description available"
+}
+
 // AllCapabilities returns every defined Capability in declaration
 // order. Useful for serialization and exhaustive iteration.
 func AllCapabilities() []Capability {
