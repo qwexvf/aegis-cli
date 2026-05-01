@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"time"
 	"text/tabwriter"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
@@ -132,6 +133,33 @@ func (ap *AllowlistPresenter) OnVerifyFailed(path string, err error) {
 // OnInfo is a generic single-line status message.
 func (ap *AllowlistPresenter) OnInfo(message string) {
 	fmt.Fprintf(ap.p.w, "%s[aegis]%s %s\n", ap.p.dim(), ap.p.reset(), message)
+}
+
+// OnSyncOK reports a successful server-allowlist fetch + cache write.
+func (ap *AllowlistPresenter) OnSyncOK(ruleCount int, cachePath string) {
+	fmt.Fprintf(ap.p.w, "%s[aegis]%s %s✓%s synced %d server rule(s) → %s\n",
+		ap.p.dim(), ap.p.reset(),
+		ap.p.green(), ap.p.reset(),
+		ruleCount, cachePath)
+}
+
+// OnSyncSkipped reports that the cache was reused because it's still
+// fresh. The user can pass --force to bypass.
+func (ap *AllowlistPresenter) OnSyncSkipped(age time.Duration) {
+	fmt.Fprintf(ap.p.w, "%s[aegis]%s cache is fresh (%s old); skipping fetch — pass --force to refresh\n",
+		ap.p.dim(), ap.p.reset(),
+		formatAge(age))
+}
+
+func formatAge(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	default:
+		return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+	}
 }
 
 // OnError prints a single-line error.

@@ -159,9 +159,15 @@ func main() {
 	// fail to parse, we fall back to builtin-only AND surface a
 	// loud warning to stderr so the user is prompted to run
 	// `aegis allowlist verify`. Never refuse to start.
+	// allowlistLoader returns a fresh Loader on each call (cwd may have
+	// changed between commands). When the API client has an API key,
+	// we attach a ServerLoader so the merged AllowSet picks up the
+	// org overlay between user and project layers.
 	allowlistLoader := func() *allowlist.Loader {
 		cwd, _ := os.Getwd()
-		return allowlist.New(cwd)
+		l := allowlist.New(cwd)
+		l.WithServer(allowlist.NewServerLoader(l, apiClient))
+		return l
 	}
 	if set, err := allowlistLoader().Load(); err != nil {
 		// Surface as both stderr (every user sees this) and a slog

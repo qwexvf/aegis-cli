@@ -24,7 +24,44 @@ func allowlistCommand(loaderFactory func() *allowlist.Loader, presenter *present
 	cmd.AddCommand(allowlistRemoveCommand(loaderFactory, presenter))
 	cmd.AddCommand(allowlistTestCommand(loaderFactory, presenter))
 	cmd.AddCommand(allowlistVerifyCommand(loaderFactory, presenter))
+	cmd.AddCommand(allowlistSyncCommand(loaderFactory, presenter))
 	return cmd
+}
+
+// allowlistSyncCommand: `aegis allowlist sync`. Pulls the org overlay
+// from the server and writes it to ~/.aegis/cache/org-allowlist.yaml.
+// Subsequent `aegis bun add ...` invocations layer it between user
+// and project rules without further network calls.
+//
+// Without `--force` the cache is reused while it's younger than the
+// loader's TTL (1h by default). CI pipelines should pass --force to
+// guarantee they have the latest org policy.
+func allowlistSyncCommand(loaderFactory func() *allowlist.Loader, p *presentercli.AllowlistPresenter) *cobra.Command {
+	var force bool
+	c := &cobra.Command{
+		Use:   "sync",
+		Short: "Fetch the org allowlist overlay from the API and cache it locally",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			s := loaderFactory().Server()
+			if s == nil {
+				return fmt.Errorf("server allowlist not configured (set AEGIS_API_URL + AEGIS_API_KEY)")
+			}
+			if !force && s.IsFresh() {
+				age, _ := s.CacheAge()
+				p.OnSyncSkipped(age)
+				return nil
+			}
+			n, err := s.Sync(cmd.Context())
+			if err != nil {
+				p.OnError(err)
+				return err
+			}
+			p.OnSyncOK(n, s.CachePath())
+			return nil
+		},
+	}
+	c.Flags().BoolVar(&force, "force", false, "ignore cache freshness and re-fetch")
+	return c
 }
 
 func allowlistVerifyCommand(loaderFactory func() *allowlist.Loader, p *presentercli.AllowlistPresenter) *cobra.Command {

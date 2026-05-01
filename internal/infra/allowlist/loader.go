@@ -90,7 +90,22 @@ const UserFileName = "allowlist.yaml"
 type Loader struct {
 	userDir    string // dir containing UserFileName
 	projectDir string // dir containing ProjectFileName
+	server     *ServerLoader
 }
+
+// WithServer attaches a ServerLoader so Load/LoadRaw layer in the
+// org-fetched cache between the user and project files. When nil
+// (the default), the server layer is skipped — same behavior as
+// before this method existed. Returns the loader for chaining.
+func (l *Loader) WithServer(s *ServerLoader) *Loader {
+	l.server = s
+	return l
+}
+
+// Server returns the attached ServerLoader (or nil). Used by the
+// `aegis allowlist sync` subcommand to reach the network from a
+// place that already has the loader.
+func (l *Loader) Server() *ServerLoader { return l.server }
 
 // New builds a Loader using AEGIS_CONFIG_DIR or ~/.aegis for the user
 // scope and projectDir for the project scope. projectDir may be empty
@@ -148,6 +163,19 @@ func (l *Loader) Load() (domain.AllowSet, error) {
 		all = append(all, rules...)
 	}
 
+	// Server layer sits between user and project so org-wide rules
+	// override personal ones (governance > individual choice) but
+	// per-project files always win for repo-specific overrides.
+	// A corrupt cache logs a warning and contributes zero rules
+	// rather than failing the install.
+	if l.server != nil {
+		if rules, err := l.server.Load(); err != nil {
+			log.Warn().Err(err).Msg("server allowlist cache load failed; skipping server layer")
+		} else {
+			all = append(all, rules...)
+		}
+	}
+
 	if l.projectDir != "" {
 		if rules, err := l.readFile(l.ProjectPath(), "project"); err != nil {
 			return domain.AllowSet{}, fmt.Errorf("project allowlist: %w", err)
@@ -168,6 +196,16 @@ func (l *Loader) LoadRaw() ([]domain.AllowRule, error) {
 		return nil, err
 	} else {
 		all = append(all, rules...)
+	}
+	if l.server != nil {
+		if rules, err := l.server.Load(); err != nil {
+			// Same defensive read as Load — `aegis allowlist list`
+			// shouldn't blow up on a stale cache; surface a warning
+			// and proceed.
+			log.Warn().Err(err).Msg("server allowlist cache load failed; skipping server layer")
+		} else {
+			all = append(all, rules...)
+		}
 	}
 	if l.projectDir != "" {
 		if rules, err := l.readFile(l.ProjectPath(), "project"); err != nil {

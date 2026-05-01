@@ -157,6 +157,48 @@ type reasonDTO struct {
 	Detail   string `json:"detail"`
 }
 
+// FetchAllowlist implements allowlist.AllowlistFetcher. Pulls the
+// org-wide allowlist YAML from the API. The server uses the X-API-Key
+// header to identify the org — there's no orgId parameter.
+//
+// Returns the raw YAML bytes; the caller (ServerLoader) validates +
+// persists. Caps the response at httpx.MaxYAMLResponseBytes so a
+// hostile or runaway server can't fill the user's disk.
+func (c *Client) FetchAllowlist(ctx context.Context) ([]byte, error) {
+	if c.apiKey == "" {
+		return nil, fmt.Errorf("aegis api: AEGIS_API_KEY is required for allowlist sync")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/api/v1/allowlist", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/yaml")
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := httpx.Do(ctx, c.http, req, c.retry)
+	if err != nil {
+		return nil, fmt.Errorf("aegis api: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("aegis api: 401 — check AEGIS_API_KEY")
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return nil, fmt.Errorf("aegis api: 403 — key is not org-scoped (re-issue from /admin?tab=api-keys)")
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("aegis api: returned %d", resp.StatusCode)
+	}
+
+	body, err := httpx.ReadCapped(resp.Body, httpx.MaxYAMLResponseBytes)
+	if err != nil {
+		return nil, fmt.Errorf("read allowlist: %w", err)
+	}
+	return body, nil
+}
+
 // SubmitReport implements usecase.ReportSubmitter. Posts a community
 // report to /api/v1/supply-chain/reports and returns the API's ack.
 func (c *Client) SubmitReport(ctx context.Context, r usecase.PackageReportRequest) (usecase.PackageReportAck, error) {

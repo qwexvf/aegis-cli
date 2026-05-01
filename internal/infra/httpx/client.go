@@ -33,6 +33,13 @@ const MaxJSONResponseBytes = 50 * 1024 * 1024
 // registry from sending GBs to OOM the CLI.
 const MaxTarballBytes = 200 * 1024 * 1024
 
+// MaxYAMLResponseBytes caps YAML responses (currently only the org
+// allowlist endpoint). Allowlists are rule lists keyed by package
+// name — even a paranoid org with thousands of suppressions is well
+// under 1MB. 4MB is a comfortable headroom that still rejects a
+// runaway server.
+const MaxYAMLResponseBytes = 4 * 1024 * 1024
+
 // ErrResponseTooLarge is returned by ReadCapped when the server
 // sent (or attempted to send) more bytes than the cap allows. We
 // return ErrResponseTooLarge rather than truncated bytes so callers
