@@ -110,6 +110,34 @@ func (cp *CIPresenter) renderFinding(f usecase.CIFinding) {
 
 	cp.renderFlagBlock("Risk flags", "+", f.Risk.Flags)
 	cp.renderFlagBlock("Drift flags (vs baseline)", "Δ", f.Drift.Flags)
+	cp.renderAdvisoryBlock(f.Dep.Advisories)
+}
+
+// renderAdvisoryBlock prints known vulnerabilities for the dep, one
+// per line with the source ID + severity + summary. No-op when the
+// dep has no advisories. Critical / High get red; Medium yellow;
+// Low / Info dim — matches the verdict-marker palette.
+func (cp *CIPresenter) renderAdvisoryBlock(advs []domain.Advisory) {
+	if len(advs) == 0 {
+		return
+	}
+	fmt.Fprintf(cp.p.w, "  %sAdvisories:%s\n", cp.p.dim(), cp.p.reset())
+	for _, a := range advs {
+		var sevColor string
+		switch a.Severity {
+		case domain.SevCritical, domain.SevHigh:
+			sevColor = cp.p.red()
+		case domain.SevMedium:
+			sevColor = cp.p.yellow()
+		default:
+			sevColor = cp.p.dim()
+		}
+		fmt.Fprintf(cp.p.w, "    %s•%s %s%s%s %s[%s]%s — %s\n",
+			cp.p.dim(), cp.p.reset(),
+			sevColor, a.ID, cp.p.reset(),
+			cp.p.dim(), a.Severity, cp.p.reset(),
+			a.Summary)
+	}
 }
 
 // renderFlagBlock prints one labeled list of risk flags. Suppressed
@@ -176,15 +204,24 @@ type ciSummaryJSON struct {
 }
 
 type ciFindingJSON struct {
-	Ecosystem  string              `json:"ecosystem"`
-	Name       string              `json:"name"`
-	Version    string              `json:"version"`
-	Direct     bool                `json:"direct"`
-	Verdict    string              `json:"verdict"`
-	RiskScore  int                 `json:"risk_score"`
-	DriftScore int                 `json:"drift_score,omitempty"`
-	Flags      []ciFindingFlagJSON `json:"flags,omitempty"`
-	DriftFlags []ciFindingFlagJSON `json:"drift_flags,omitempty"`
+	Ecosystem  string                  `json:"ecosystem"`
+	Name       string                  `json:"name"`
+	Version    string                  `json:"version"`
+	Direct     bool                    `json:"direct"`
+	Verdict    string                  `json:"verdict"`
+	RiskScore  int                     `json:"risk_score"`
+	DriftScore int                     `json:"drift_score,omitempty"`
+	Flags      []ciFindingFlagJSON     `json:"flags,omitempty"`
+	DriftFlags []ciFindingFlagJSON     `json:"drift_flags,omitempty"`
+	Advisories []ciFindingAdvisoryJSON `json:"advisories,omitempty"`
+}
+
+type ciFindingAdvisoryJSON struct {
+	ID       string `json:"id"`
+	Severity string `json:"severity"`
+	Summary  string `json:"summary"`
+	URL      string `json:"url,omitempty"`
+	Source   string `json:"source"`
 }
 
 type ciFindingFlagJSON struct {
@@ -239,6 +276,27 @@ func toCIJSONResult(r usecase.CIResult) ciJSONResult {
 			DriftScore: f.Drift.Score,
 			Flags:      flagsToJSON(f.Risk.Flags),
 			DriftFlags: flagsToJSON(f.Drift.Flags),
+			Advisories: advisoriesToJSON(f.Dep.Advisories),
+		})
+	}
+	return out
+}
+
+// advisoriesToJSON copies the domain Advisory list to the JSON shape.
+// Returns nil for an empty input so the omitempty tag does its job and
+// keeps quiet snapshots out of the JSON output.
+func advisoriesToJSON(advs []domain.Advisory) []ciFindingAdvisoryJSON {
+	if len(advs) == 0 {
+		return nil
+	}
+	out := make([]ciFindingAdvisoryJSON, 0, len(advs))
+	for _, a := range advs {
+		out = append(out, ciFindingAdvisoryJSON{
+			ID:       a.ID,
+			Severity: string(a.Severity),
+			Summary:  a.Summary,
+			URL:      a.URL,
+			Source:   a.Source,
 		})
 	}
 	return out

@@ -293,7 +293,15 @@ func (c *CI) scoreSnapshot(snap domain.Snapshot, failOn domain.VerdictKind) CIRe
 			ApplyAllowlist(d.Ecosystem, d.Name, d.Version, c.snapshot.allowlist)
 		// Single-version score (no drift, no prior fingerprint to
 		// diff against — CI audits the current state, not changes).
-		verdict := domain.Verdict(risk, domain.RiskAssessment{})
+		astVerdict := domain.Verdict(risk, domain.RiskAssessment{})
+		// Fold in any known vulnerabilities from the public feed
+		// (OSV.dev). A Critical CVE outranks a clean AST every
+		// time — `max(ast, advisory)` is the right combinator.
+		advVerdict := domain.VerdictForAdvisories(d.Advisories)
+		verdict := astVerdict
+		if advVerdict > verdict {
+			verdict = advVerdict
+		}
 
 		switch verdict {
 		case domain.VerdictSafe:

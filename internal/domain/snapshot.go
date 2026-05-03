@@ -34,6 +34,13 @@ type Dependency struct {
 	// Empty in the MVP snapshot — populated by `aegis snapshot enrich`
 	// in a follow-up PR.
 	Fingerprint *Fingerprint
+	// Advisories lists known vulnerabilities matched against this
+	// (Ecosystem, Name, Version) tuple by `aegis snapshot enrich`
+	// (via OSV.dev or other public feeds). Empty slice means
+	// "looked up, none found"; nil means "not yet looked up". The
+	// distinction matters: nil triggers a lookup on next enrich,
+	// empty slice doesn't.
+	Advisories []Advisory `json:",omitempty"`
 }
 
 // Fingerprint summarizes observable behaviors of a (name, version) in

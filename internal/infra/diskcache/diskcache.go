@@ -29,11 +29,38 @@ type Cache struct {
 	mu   sync.Mutex
 }
 
+// CacheRoot returns AEGIS_CACHE_DIR (or ~/.aegis/cache). Empty
+// string when neither the env var is set nor a home directory
+// resolvable — caller decides whether to fall back to a temp dir
+// or skip caching entirely. Lives here so every cache adapter
+// (decisions, fingerprints, advisories) computes the same root.
+func CacheRoot() string {
+	if dir := os.Getenv("AEGIS_CACHE_DIR"); dir != "" {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".aegis", "cache")
+}
+
+// AdvisoryDir returns the directory where the OSV adapter persists
+// fetched advisory documents. Empty string when CacheRoot() is empty
+// (caller should disable persistence in that case).
+func AdvisoryDir() string {
+	root := CacheRoot()
+	if root == "" {
+		return ""
+	}
+	return filepath.Join(root, "advisories")
+}
+
 // New returns a Cache at AEGIS_CACHE_DIR/decisions.json (default
 // ~/.aegis/cache/decisions.json). TTL comes from AEGIS_CACHE_TTL or
 // DefaultTTL.
 func New() *Cache {
-	dir := os.Getenv("AEGIS_CACHE_DIR")
+	dir := CacheRoot()
 	if dir == "" {
 		home, _ := os.UserHomeDir()
 		dir = filepath.Join(home, ".aegis", "cache")
