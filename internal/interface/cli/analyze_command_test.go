@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 func TestParsePkgSpec(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	presentercli "github.com/qwexvf/aegis/services/cli/internal/presenter/cli"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	presentercli "github.com/qwexvf/aegis-cli/internal/presenter/cli"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
 )
 

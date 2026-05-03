@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // Confirmer asks the user a y/N question via /dev/tty.

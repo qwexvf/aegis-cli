@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // Analyze is the on-demand single-package use case: fetch a package's

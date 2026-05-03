@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // InstallGate is the install-time policy gate. Given a list of

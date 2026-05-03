@@ -13,8 +13,8 @@ package main
 import (
 	"net/http"
 
-	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 func attachRiskEngine(_ *usecase.Snapshot, _ *usecase.Analyze, _ *aegisapi.Client, _ *http.Client) {

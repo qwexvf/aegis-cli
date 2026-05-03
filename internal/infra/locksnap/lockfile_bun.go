@@ -3,7 +3,7 @@ package locksnap
 import (
 	"encoding/json"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // parseBunLock parses bun.lock. Bun's text lockfile (introduced after

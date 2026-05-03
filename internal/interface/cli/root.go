@@ -9,13 +9,13 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/allowlist"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/ndjsonaudit"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/pmwrapper"
-	presentercli "github.com/qwexvf/aegis/services/cli/internal/presenter/cli"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
+	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
+	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
+	"github.com/qwexvf/aegis-cli/internal/infra/ndjsonaudit"
+	"github.com/qwexvf/aegis-cli/internal/infra/pmwrapper"
+	presentercli "github.com/qwexvf/aegis-cli/internal/presenter/cli"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
 )
 

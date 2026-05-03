@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/atomicwrite"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/atomicwrite"
 )
 
 // fingerprintDTO mirrors locksnap's wire-format for a Fingerprint but

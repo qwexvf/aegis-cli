@@ -23,8 +23,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // LanguageScanner is the per-ecosystem analyzer interface. Today only

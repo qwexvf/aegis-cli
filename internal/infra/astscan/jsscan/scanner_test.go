@@ -3,8 +3,8 @@ package jsscan
 import (
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/astscan"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/astscan"
 )
 
 // scan is a one-shot helper: parse src and return Findings.

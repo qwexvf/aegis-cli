@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 func tmpCache(t *testing.T) *Cache {

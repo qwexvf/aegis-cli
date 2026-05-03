@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // RecheckPresenter satisfies usecase.RecheckPresenter. Mirrors the

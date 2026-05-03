@@ -11,7 +11,7 @@ package pmwrapper
 import (
 	"strings"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // PackageManager describes a single CLI tool the gate wraps.

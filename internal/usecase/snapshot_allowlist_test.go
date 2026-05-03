@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // allowlistSetup creates a snapshot with a saved "lodash@4.17.21" with

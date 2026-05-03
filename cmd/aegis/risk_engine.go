@@ -10,15 +10,15 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/astscan"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/astscan/jsscan"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/jspkgsource"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/npmregistry"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/reporterid"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
+	"github.com/qwexvf/aegis-cli/internal/infra/astscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/astscan/jsscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
+	"github.com/qwexvf/aegis-cli/internal/infra/jspkgsource"
+	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
+	"github.com/qwexvf/aegis-cli/internal/infra/reporterid"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiClient *aegisapi.Client, httpClient *http.Client) {

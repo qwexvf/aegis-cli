@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // Explain answers "why is this dep flagged?" for a single package.

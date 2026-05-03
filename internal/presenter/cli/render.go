@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // ANSI color codes. We honor NO_COLOR (https://no-color.org) and skip

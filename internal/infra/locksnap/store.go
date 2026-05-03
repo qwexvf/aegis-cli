@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/atomicwrite"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/atomicwrite"
 )
 
 // LockfileName is the canonical project-root snapshot filename. It is

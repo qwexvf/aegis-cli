@@ -3,7 +3,7 @@ package cli
 import (
 	"os"
 
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
 )
 

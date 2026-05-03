@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // loaderAt builds a Loader rooted at the given user dir with no

@@ -30,9 +30,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/httpx"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/httpx"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // DefaultRegistryURL is the public npm registry. Override via

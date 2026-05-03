@@ -6,7 +6,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // VersionResolver turns a range/tag into a concrete version.

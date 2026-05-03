@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qwexvf/aegis/services/cli/internal/infra/envprobe"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/infra/envprobe"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // enrichWindowRows caps how many in-flight slots are shown at once.

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 func upgEntry(name, oldV, newV string, v domain.VerdictKind, risk, drift domain.RiskAssessment) usecase.DiffEntry {

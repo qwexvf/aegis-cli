@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	presentercli "github.com/qwexvf/aegis/services/cli/internal/presenter/cli"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	presentercli "github.com/qwexvf/aegis-cli/internal/presenter/cli"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
 )
 

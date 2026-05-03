@@ -1,6 +1,6 @@
 package pmwrapper
 
-import "github.com/qwexvf/aegis/services/cli/internal/domain"
+import "github.com/qwexvf/aegis-cli/internal/domain"
 
 // Pnpm wraps the `pnpm` CLI. pnpm reads the npm registry; the
 // install-subcommand surface is similar to npm/yarn (`add`, `install`,

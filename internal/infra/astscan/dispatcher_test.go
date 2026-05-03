@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // fakeLanguageScanner records which files it was asked to analyze and

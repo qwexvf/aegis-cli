@@ -7,7 +7,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // recheckWorkers caps concurrent /check calls during Recheck. Higher

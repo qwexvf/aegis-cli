@@ -6,7 +6,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/qwexvf/aegis/services/cli/internal/infra/diskcache"
+	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
 	"github.com/spf13/cobra"
 )
 

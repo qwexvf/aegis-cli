@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // enrichWorkers is the cap on parallel AST scans during Enrich. AST

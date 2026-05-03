@@ -1,6 +1,6 @@
 package main
 
-import "github.com/qwexvf/aegis/services/cli/internal/infra/pmwrapper"
+import "github.com/qwexvf/aegis-cli/internal/infra/pmwrapper"
 
 // registeredPMs is populated by per-PM init() functions, each guarded
 // by a build tag (see pm_npm.go, pm_bun.go, pm_yarn.go, pm_pnpm.go).

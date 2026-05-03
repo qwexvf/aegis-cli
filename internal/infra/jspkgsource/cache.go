@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/qwexvf/aegis/services/cli/internal/infra/atomicwrite"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/infra/atomicwrite"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // loadCached returns a previously-extracted package source from

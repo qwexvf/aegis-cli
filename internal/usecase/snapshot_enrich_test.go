@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // --- mocks for risk-engine ports ---------------------------------------

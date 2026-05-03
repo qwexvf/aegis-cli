@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 func TestParseTestSpec_Cases(t *testing.T) {

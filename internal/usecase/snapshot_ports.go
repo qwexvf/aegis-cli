@@ -3,7 +3,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // SnapshotStore persists a snapshot to local disk. Implementation:

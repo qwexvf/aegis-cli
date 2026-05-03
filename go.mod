@@ -1,4 +1,4 @@
-module github.com/qwexvf/aegis/services/cli
+module github.com/qwexvf/aegis-cli
 
 go 1.26
 

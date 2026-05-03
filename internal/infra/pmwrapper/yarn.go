@@ -1,6 +1,6 @@
 package pmwrapper
 
-import "github.com/qwexvf/aegis/services/cli/internal/domain"
+import "github.com/qwexvf/aegis-cli/internal/domain"
 
 // Yarn wraps the `yarn` CLI. It targets both classic (v1) and berry
 // (v2/3/4) since both share the install-subcommand surface (`add`,

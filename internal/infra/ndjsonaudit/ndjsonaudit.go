@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/flock"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/flock"
 )
 
 // Writer appends NDJSON entries to a file.

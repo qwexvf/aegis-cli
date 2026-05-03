@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/atomicwrite"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/flock"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/atomicwrite"
+	"github.com/qwexvf/aegis-cli/internal/infra/flock"
 )
 
 // DefaultTTL is how long cached decisions are considered fresh when no

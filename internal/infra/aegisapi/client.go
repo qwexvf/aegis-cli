@@ -13,9 +13,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/httpx"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/httpx"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // DefaultURL is the default Aegis API base URL. Override with AEGIS_API_URL.

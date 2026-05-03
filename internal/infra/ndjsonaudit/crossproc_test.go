@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // TestWriter_CrossProcessAppend re-execs the test binary as N child

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // newTestLive constructs an EnrichLivePresenter writing to an

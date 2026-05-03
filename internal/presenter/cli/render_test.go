@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // presenterTest builds a Presenter pointed at a buffer with NO_COLOR

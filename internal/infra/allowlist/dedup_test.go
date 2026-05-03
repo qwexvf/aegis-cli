@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 func TestAddRule_DedupReplacesByKey(t *testing.T) {

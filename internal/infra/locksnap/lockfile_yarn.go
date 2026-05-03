@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"strings"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // parseYarnLock parses yarn.lock (classic v1 + berry v2/3/4). Both

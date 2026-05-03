@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/allowlist"
+	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
+	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
 )
 
 func TestCheckRuntime_AlwaysPasses(t *testing.T) {

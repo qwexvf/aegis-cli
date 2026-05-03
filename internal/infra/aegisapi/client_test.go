@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // captureSubmitServer spins up an httptest server that records the

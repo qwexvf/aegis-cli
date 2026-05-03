@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/usecase"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // CIPresenter satisfies usecase.CIPresenter. Renders the CI audit

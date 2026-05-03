@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/astscan"
+	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/astscan"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 	tsjs "github.com/tree-sitter/tree-sitter-javascript/bindings/go"

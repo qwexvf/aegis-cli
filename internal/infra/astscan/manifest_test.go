@@ -3,7 +3,7 @@ package astscan
 import (
 	"testing"
 
-	"github.com/qwexvf/aegis/services/cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 func TestNpmManifestHooks_AllPhases(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/qwexvf/aegis/services/cli/internal/infra/httpx"
+	"github.com/qwexvf/aegis-cli/internal/infra/httpx"
 )
 
 // DefaultRegistry is the public npm registry. Override with WithRegistry.

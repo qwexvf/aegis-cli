@@ -1,6 +1,6 @@
 package pmwrapper
 
-import "github.com/qwexvf/aegis/services/cli/internal/domain"
+import "github.com/qwexvf/aegis-cli/internal/domain"
 
 // Bun wraps the `bun` CLI. bun reads the npm registry and supports the
 // same scoped-name@version spec syntax, so the parser is shared. Only
