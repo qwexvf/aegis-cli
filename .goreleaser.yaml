@@ -254,31 +254,10 @@ signs:
     certificate: '${artifact}.pem'
     signature: '${artifact}.sig'
 
-brews:
-  - name: aegis
-    ids: [default]
-    repository:
-      owner: qwexvf
-      name: homebrew-tap
-      token: '{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}'
-    homepage: https://github.com/qwexvf/aegis-cli
-    description: 'Supply-chain security CLI for npm/bun/yarn/pnpm — install gate, lockfile snapshots, AST risk scoring'
-    license: Apache-2.0
-    install: |
-      bin.install "aegis"
-    test: |
-      system "#{bin}/aegis", "version"
-
-scoops:
-  - name: aegis
-    ids: [default]
-    repository:
-      owner: qwexvf
-      name: scoop-bucket
-      token: '{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}'
-    homepage: https://github.com/qwexvf/aegis-cli
-    description: 'Supply-chain security CLI for npm/bun/yarn/pnpm'
-    license: Apache-2.0
+# Package-manager distribution (Homebrew tap, Scoop bucket, etc.) is
+# intentionally NOT configured. First releases ship as raw GitHub Release
+# tarballs only. Add `brews:` / `scoops:` / `nfpms:` blocks once the
+# project has a stable cadence and the tap/bucket repos exist.
 
 release:
   github:
