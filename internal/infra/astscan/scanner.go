@@ -133,6 +133,14 @@ func (d *Dispatcher) Register(eco domain.Ecosystem, s LanguageScanner) {
 	d.scanners[eco] = s
 }
 
+// HasScanner implements usecase.ASTAnalyzer. Reports whether a
+// language scanner exists for the ecosystem so callers can skip the
+// per-dep AST step instead of failing it.
+func (d *Dispatcher) HasScanner(eco domain.Ecosystem) bool {
+	_, ok := d.scanners[eco]
+	return ok
+}
+
 // Analyze implements usecase.ASTAnalyzer.
 func (d *Dispatcher) Analyze(ctx context.Context, eco domain.Ecosystem, src usecase.PackageSource) (domain.Fingerprint, error) {
 	fp, _, err := d.analyze(eco, src, false)

@@ -21,6 +21,10 @@ type slowAnalyzer struct {
 	totalSeen int32
 }
 
+// HasScanner — concurrency tests exercise the AST path for every
+// dep, so report scanner availability for any ecosystem.
+func (a *slowAnalyzer) HasScanner(_ domain.Ecosystem) bool { return true }
+
 func (a *slowAnalyzer) Analyze(ctx context.Context, _ domain.Ecosystem, _ PackageSource) (domain.Fingerprint, error) {
 	cur := atomic.AddInt32(&a.inflight, 1)
 	defer atomic.AddInt32(&a.inflight, -1)

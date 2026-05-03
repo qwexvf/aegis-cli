@@ -40,6 +40,13 @@ type fakeAnalyzer struct {
 	err   error
 }
 
+// HasScanner reports support for every ecosystem so existing tests
+// (written before the v0.3.0 multi-ecosystem split) keep their
+// behaviour: fake analyzer Analyze() is called for every dep.
+// Tests that want to exercise the "no scanner" skip path embed
+// fakeAnalyzer in a wrapper that returns false here.
+func (a *fakeAnalyzer) HasScanner(_ domain.Ecosystem) bool { return true }
+
 func (a *fakeAnalyzer) Analyze(_ context.Context, _ domain.Ecosystem, _ PackageSource) (domain.Fingerprint, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

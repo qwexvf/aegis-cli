@@ -364,6 +364,19 @@ func (s *Snapshot) analyzeOneSlot(ctx context.Context, dep domain.Dependency, sl
 			return cached, true, nil
 		}
 	}
+	// Skip the AST scan entirely when no language scanner is
+	// registered for this ecosystem (Python/Go/Rust/Ruby in
+	// v0.3.0 — only the JS scanner ships in-tree). Mark the dep as
+	// "analyzed" so re-runs don't keep retrying; OSV vulnerability
+	// lookup happens in a separate pass after all workers drain
+	// and applies to every ecosystem regardless of scanner support.
+	if !s.analyzer.HasScanner(dep.Ecosystem) {
+		fp := domain.Fingerprint{Analyzed: true}
+		if s.fpCache != nil {
+			_ = s.fpCache.Put(dep.Ecosystem, dep.Name, dep.Version, fp)
+		}
+		return fp, true, nil // fromCache=true suppresses SlotDone (cleaner UI for non-AST-scannable deps)
+	}
 	s.presenter.OnEnrichSlotStart(slot, string(dep.Ecosystem), dep.Name, dep.Version)
 	s.presenter.OnEnrichSlotStage(slot, EnrichStageFetch)
 	src, err := s.fetcher.Fetch(ctx, dep.Ecosystem, dep.Name, dep.Version)
