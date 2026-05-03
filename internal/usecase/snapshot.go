@@ -59,6 +59,14 @@ type Snapshot struct {
 	// when nil or when the lookup fails.
 	publishedAt PublishedAtResolver
 
+	// Optional vulnerability lookup. When set, Enrich runs a single
+	// batch query against the public OSV.dev (or equivalent) feed
+	// after the AST workers drain, and writes the resulting
+	// advisories onto each Dependency. nil disables — the snapshot
+	// then carries no Advisories and CI won't fail on known
+	// vulnerabilities, only on local AST findings.
+	vulnLookup VulnLookup
+
 	// allowlist is applied post-RiskScore/DriftScore in Diff so
 	// known-benign capabilities (lodash dynamic-eval, build tools'
 	// shell-spawn) don't manufacture false-positive verdicts.
@@ -105,6 +113,19 @@ func (s *Snapshot) WithSubmitter(analyzer EvidenceAnalyzer, submitter ReportSubm
 // PackagePublishedAt="").
 func (s *Snapshot) WithPublishedAtResolver(r PublishedAtResolver) *Snapshot {
 	s.publishedAt = r
+	return s
+}
+
+// WithVulnLookup attaches a vulnerability database adapter (OSV.dev
+// today). When set, every `aegis snapshot enrich` run batches the
+// dep list against the feed and stamps any matching advisories onto
+// the on-disk snapshot. Local AST findings still run regardless;
+// vuln lookup is additive.
+//
+// nil is the safe no-op: no advisories are populated, CI scoring
+// falls back to AST-only behaviour. Useful when running offline.
+func (s *Snapshot) WithVulnLookup(v VulnLookup) *Snapshot {
+	s.vulnLookup = v
 	return s
 }
 
@@ -219,6 +240,14 @@ func (s *Snapshot) Enrich(ctx context.Context, projectDir string) error {
 	s.presenter.OnEnrichBegin(len(pending))
 	processed, succeeded := s.runEnrichWorkers(ctx, snap.Deps, pending)
 	s.presenter.OnEnrichEnd()
+
+	// After the AST workers drain, batch-query the public
+	// vulnerability feed (OSV.dev) for every dep and stamp the
+	// matching advisories back onto the snapshot. One round-trip
+	// per Enrich call, no per-dep network cost. Best-effort: a
+	// failed lookup logs an info line but doesn't fail Enrich —
+	// the AST findings already on disk are the floor.
+	s.lookupAdvisories(ctx, snap.Deps)
 
 	if err := s.store.Save(projectDir, snap); err != nil {
 		s.presenter.OnSnapshotError(err)
@@ -800,4 +829,56 @@ func (s *Snapshot) Verify(projectDir string) error {
 		"snapshot OK: %d deps, schema v%d, saved %s",
 		len(snap.Deps), snap.SchemaVersion, snap.CreatedAt.Format(time.RFC3339)))
 	return nil
+}
+
+// lookupAdvisories does the post-AST vulnerability batch query and
+// stamps the result onto each Dependency. No-op when the lookup
+// adapter wasn't configured (offline mode); failures degrade to
+// "no advisories" + an info line so Enrich never fails on a flaky
+// network. Idempotent on its own state — re-running rewrites the
+// Advisories slices in place.
+func (s *Snapshot) lookupAdvisories(ctx context.Context, deps []domain.Dependency) {
+	if s.vulnLookup == nil {
+		return
+	}
+	if len(deps) == 0 {
+		return
+	}
+	queries := make([]domain.AdvisoryQuery, 0, len(deps))
+	indexByKey := make(map[string]int, len(deps))
+	for i, d := range deps {
+		q := domain.AdvisoryQuery{Ecosystem: d.Ecosystem, Name: d.Name, Version: d.Version}
+		queries = append(queries, q)
+		indexByKey[q.Key()] = i
+	}
+
+	results, err := s.vulnLookup.Lookup(ctx, queries)
+	if err != nil {
+		s.presenter.OnSnapshotInfo(fmt.Sprintf(
+			"vulnerability lookup failed: %v (snapshot saved without advisories)", err))
+		return
+	}
+
+	withAdvs := 0
+	totalAdvs := 0
+	for key, advs := range results {
+		i, ok := indexByKey[key]
+		if !ok {
+			continue
+		}
+		// Empty slice (not nil) marks "looked up, none found" so
+		// next Enrich doesn't re-query unchanged deps.
+		if advs == nil {
+			advs = []domain.Advisory{}
+		}
+		deps[i].Advisories = advs
+		if len(advs) > 0 {
+			withAdvs++
+			totalAdvs += len(advs)
+		}
+	}
+	if withAdvs > 0 {
+		s.presenter.OnSnapshotInfo(fmt.Sprintf(
+			"%d advisories across %d packages", totalAdvs, withAdvs))
+	}
 }

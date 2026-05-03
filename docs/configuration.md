@@ -38,6 +38,15 @@ The override is the operator's "I know what I'm doing" escape hatch. Both env va
 | `AEGIS_CONFIG_DIR` | `~/.aegis` | Where the user-level allowlist (`allowlist.yaml`), audit log, and reporter ID live. Override to keep multiple aegis profiles (e.g. work vs personal). |
 | `AEGIS_AUDIT_DIR` | (= `AEGIS_CONFIG_DIR`) | Override only the audit log location. Useful for sending to a syslog-style central path while keeping config local. |
 
+### Vulnerability lookup (OSV.dev)
+
+`aegis snapshot enrich` / `aegis ci` cross-reference every dep against the public OSV.dev vulnerability database — **no Aegis API required, no auth needed**. The two env vars below tune that lookup.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AEGIS_OSV_URL` | `https://api.osv.dev` | Override the OSV endpoint. Use this to point at a self-hosted OSV mirror or a corporate proxy. The wire shape (`/v1/querybatch`, `/v1/vulns/{id}`) must match upstream. |
+| `AEGIS_NO_VULN_LOOKUP` | (unset) | When set to anything non-empty, disables the OSV lookup entirely. The snapshot enrich step still runs the AST scanner; only the advisory column is empty. Useful for fully-offline runs or air-gapped CI. |
+
 ### Registry
 
 | Variable | Default | Purpose |
@@ -83,6 +92,7 @@ If your CI system isn't on this list, set `CI=true` or `AEGIS_CI=1` explicitly.
 | `~/.aegis/cache/decisions.json` | every install gate run | Cached `(eco, name, version) → verdict` map. Cleared by `aegis cache clear`. |
 | `~/.aegis/cache/sources/<eco>/<name>/<version>/` | `snapshot enrich`, `analyze` | Extracted package source for AST scanning. Cleared by `aegis cache clear --all`. |
 | `~/.aegis/cache/fingerprints/` | `snapshot enrich`, `ci` | Per-(name, version) AST fingerprint cache. Warm cache is the entire reason `ci` reruns are fast. Cleared by `aegis cache clear --fingerprints`. |
+| `~/.aegis/cache/advisories/` | `snapshot enrich`, `ci` | Per-advisory body cache (`<id>.json`) from OSV.dev. Cleared by `aegis cache clear --all`. |
 | `~/.aegis/cache/org-allowlist.yaml` | `aegis allowlist sync` | Org-wide allowlist overlay fetched from the API. Layered between user and project rules. |
 | `~/.aegis/allowlist.yaml` | `aegis allowlist add --scope=user` | User-level allowlist. Personal — gitignore it. |
 | `~/.aegis/audit.jsonl` | every install gate / override / sync | NDJSON audit log: one line per outcome with timestamp, decision, reason, actor. Append-only. |

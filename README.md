@@ -6,10 +6,26 @@
 
 Supply-chain analysis CLI for the JavaScript ecosystem. Parses
 **npm / bun / yarn / pnpm** lockfiles, walks the AST of every package
-source via tree-sitter, and surfaces capabilities (`net-egress`,
-`child-process`, `dynamic-eval`, `credential-read`,
-`fs-write-outside-project`, `postinstall-script`, …) — all locally,
-no network call required.
+source via tree-sitter, **and cross-references every dep against the
+public [OSV.dev](https://osv.dev) vulnerability database** —
+all without any backend or account.
+
+What you get:
+
+- **Known CVEs / GHSAs per dep** — every package version is checked
+  against OSV (which aggregates GitHub Security Advisories,
+  ecosystem-native feeds, and CVE) on each `aegis snapshot enrich`.
+  No API key, no signup, no rate limit gymnastics.
+- **Suspicious capability detection** — tree-sitter AST scanner
+  surfaces `net-egress`, `child-process`, `dynamic-eval`,
+  `credential-read`, `fs-write-outside-project`,
+  `postinstall-script`, … even on packages with no published
+  advisory yet (the typosquats and just-published malware nobody
+  has reported).
+- **Verdict folding** — Critical / High CVEs become `block`,
+  Medium becomes `prompt`, Low becomes `review` — combined with
+  AST findings via `max(astVerdict, advisoryVerdict)` so one risky
+  signal isn't masked by the other.
 
 ```text
 $ aegis snapshot save
@@ -17,22 +33,30 @@ $ aegis snapshot save
 
 $ aegis snapshot enrich
 [aegis] AST-scanning 312 deps... (8 workers)
-[aegis] done — 18 risky capabilities surfaced across 7 packages
+[aegis] 7 advisories across 4 packages
+[aegis] enriched 312 deps
 
 $ aegis ci --fail-on=block
-[aegis] ✗ ua-parser-js@0.7.29 — postinstall-script, net-egress, credential-read
-[aegis]   override: AEGIS_OVERRIDE=allow AEGIS_OVERRIDE_REASON=<reason>
+✗ npm/event-stream@3.3.6 — verdict=block  risk=0
+  Advisories:
+    • GHSA-jvqj-7wpc-9bqp [critical] — Malicious package — Bitcoin wallet credential exfiltration
+✗ npm/ua-parser-js@0.7.29 — verdict=block  risk=42
+  Risk flags:
+    + postinstall-script — declares postinstall hook  (+30)
+    + net-egress         — fetch/XMLHttpRequest/dgram (+12)
+  Advisories:
+    • GHSA-pjwm-rvh2-c87w [critical] — Embedded malware in postinstall script
 exit 1
 ```
 
-> **Status (v0.1.x):** local features (snapshot, AST analysis, CI
-> gate, allowlist) work today with no backend. The **install gate**
-> (`aegis npm install …`), **`recheck`**, **`snapshot submit`**, and
-> **`allowlist sync`** require an Aegis API server — that platform
-> ([qwexvf/aegis](https://github.com/qwexvf/aegis)) is not yet
-> public, so those commands depend on a self-hosted backend that
-> doesn't exist for most users yet. Skip to [Local-only quickstart](#local-only-quickstart)
-> for what works out of the box.
+> **About the optional Aegis Cloud:** the install-gate commands
+> (`aegis npm install …`, `recheck`, `snapshot submit`, `allowlist
+> sync`) require an Aegis API server. The platform repo is not yet
+> public, so these are documented but not usable for most users in
+> v0.1.x. **Vulnerability detection itself does NOT need Aegis
+> Cloud** — it uses the public OSV.dev backend. Skip to
+> [Local-only quickstart](#local-only-quickstart) for what works
+> today.
 
 ## Install
 
@@ -133,7 +157,7 @@ When the platform becomes available, these commands will work without
 any binary change — they're already wired and shipped, just waiting on
 a deployed server.
 
-## What `aegis` does locally (no API needed)
+## What `aegis` does locally (no Aegis API needed)
 
 For `aegis snapshot enrich` / `aegis ci` / `aegis analyze`:
 
@@ -147,12 +171,20 @@ For `aegis snapshot enrich` / `aegis ci` / `aegis analyze`:
    capabilities (`net-egress`, `child-process`, `dynamic-eval`,
    `credential-read`, `fs-write-outside-project`,
    `postinstall-script`, …).
-4. **Allowlist** — suppress known-legitimate matches by
+4. **Vulnerability lookup** — single batch POST to
+   [OSV.dev](https://osv.dev)'s public `/v1/querybatch` endpoint
+   for every dep; per-advisory GETs for severity / summary, cached
+   to disk under `~/.aegis/cache/advisories/`. No auth, no signup.
+   Disable with `AEGIS_NO_VULN_LOOKUP=1` for fully-offline use; point
+   at a self-hosted OSV mirror via `AEGIS_OSV_URL=…`.
+5. **Allowlist** — suppress known-legitimate matches by
    `(ecosystem, name, version-range, capability)` tuple. Layered
    builtin → user → project; specific names beat wildcards.
-5. **Verdict** — score against thresholds, exit non-zero on findings ≥
-   `--fail-on`. Overrides require an explicit `AEGIS_OVERRIDE_REASON`
-   and are written to the audit log.
+6. **Verdict** — `max(astVerdict, advisoryVerdict)` against
+   thresholds, exit non-zero on findings ≥ `--fail-on`. Critical /
+   High advisories become `block`; Medium becomes `prompt`; Low
+   becomes `review`. Overrides require an explicit
+   `AEGIS_OVERRIDE_REASON` and are written to the audit log.
 
 ## Verified incidents (Aegis API-only, requires backend)
 

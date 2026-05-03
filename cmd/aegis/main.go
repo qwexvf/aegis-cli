@@ -27,6 +27,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/locksnap"
 	"github.com/qwexvf/aegis-cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
+	"github.com/qwexvf/aegis-cli/internal/infra/osv"
 	"github.com/qwexvf/aegis-cli/internal/infra/ttyprompt"
 	"github.com/qwexvf/aegis-cli/internal/presenter/cli"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
@@ -135,6 +136,23 @@ func main() {
 	snapshot := usecase.NewSnapshot(store, scanner,
 		cli.NewEnrichLivePresenter(cli.NewSnapshotPresenter(presenter)),
 		clii.Version)
+
+	// Local-only vulnerability lookup. OSV.dev (Google) is the
+	// default backend — public, free, no auth required. Set
+	// AEGIS_OSV_URL to point at a self-hosted OSV deployment;
+	// AEGIS_NO_VULN_LOOKUP=1 disables the lookup entirely (offline
+	// mode). Cache lives under <cache>/advisories/ so re-enrich runs
+	// don't re-fetch advisory bodies the user has already seen.
+	if os.Getenv("AEGIS_NO_VULN_LOOKUP") == "" {
+		osvOpts := []osv.Option{osv.WithHTTPClient(httpClient)}
+		if u := os.Getenv("AEGIS_OSV_URL"); u != "" {
+			osvOpts = append(osvOpts, osv.WithBaseURL(u))
+		}
+		if dir := diskcache.AdvisoryDir(); dir != "" {
+			osvOpts = append(osvOpts, osv.WithCacheDir(dir))
+		}
+		snapshot.WithVulnLookup(osv.New(osvOpts...))
+	}
 	analyzePresenter := cli.NewAnalyzePresenter(presenter)
 	analyze := usecase.NewAnalyze(analyzePresenter)
 	ciPresenter := cli.NewCIPresenter(presenter)
