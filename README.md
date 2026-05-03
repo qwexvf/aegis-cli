@@ -27,10 +27,34 @@ What you get:
   advisory yet (the typosquats and just-published malware nobody
   has reported). Other-language AST scanners are planned; until
   they ship, OSV is the entire signal for those ecosystems.
+- **Behavior-based malware heuristics (zero-day window)** — five
+  detectors fire on patterns nobody has indexed yet:
+    1. **Suspicious install hooks** — postinstall script does
+       `curl|sh`, `node -e`, `wget|bash`, base64 piped to shell,
+       fetches from Pastebin/Discord webhook/ngrok. Catches the
+       canonical event-stream / ua-parser-js / coa attack shape
+       at the manifest level.
+    2. **Obfuscated payload** — source contains
+       `eval(atob(...))`, `Function(decodeURIComponent(...))`,
+       `require(atob(...))`. The literal "decode-then-execute"
+       packed-malware idiom; benign code never does this.
+    3. **Suspicious URL targets** — string literals pointing at
+       Pastebin / Discord webhooks / Telegram bots / ngrok
+       tunnels / IP-grabbers / IDN-homoglyph hosts. The C2
+       callback patterns.
+    4. **Binary droppers** — `.exe`/`.dll`/`.so`/`.scpt`/`.ps1`
+       inside an npm tarball. Some legit packages ship native
+       bins (esbuild, sharp); pair with allowlist for those.
+    5. **Typosquat names** — package name within Levenshtein
+       distance 2 of a top-1000 npm package (`lodahs`, `expresss`,
+       `electron-stable`, ...). Catches squat-attacks before any
+       advisory exists.
 - **Verdict folding** — Critical / High CVEs become `block`,
   Medium becomes `prompt`, Low becomes `review` — combined with
-  AST findings via `max(astVerdict, advisoryVerdict)` so one risky
-  signal isn't masked by the other.
+  AST + heuristic findings via `max(astVerdict, advisoryVerdict)`
+  so one risky signal isn't masked by the other. The heuristic
+  weights are tuned so that an install-hook + obfuscation combo
+  blocks on its own; a single typosquat-name signal prompts.
 
 Supported ecosystems and lockfiles:
 

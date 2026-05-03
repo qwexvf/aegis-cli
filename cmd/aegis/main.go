@@ -153,6 +153,16 @@ func main() {
 		}
 		snapshot.WithVulnLookup(osv.New(osvOpts...))
 	}
+
+	// Behaviour-based malware heuristics: suspicious install hooks,
+	// obfuscated payloads, sketchy URL targets, binary droppers,
+	// typosquat names. Pure-function adapter, no I/O — runs on the
+	// same source bytes the AST scanner already fetched. Disable
+	// with AEGIS_NO_HEURISTICS=1 (e.g. for pure A/B comparison vs
+	// AST-only scoring).
+	if os.Getenv("AEGIS_NO_HEURISTICS") == "" {
+		snapshot.WithMalwareHeuristics(heuristicsAdapter{})
+	}
 	analyzePresenter := cli.NewAnalyzePresenter(presenter)
 	analyze := usecase.NewAnalyze(analyzePresenter)
 	ciPresenter := cli.NewCIPresenter(presenter)

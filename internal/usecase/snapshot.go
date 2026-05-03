@@ -67,6 +67,15 @@ type Snapshot struct {
 	// vulnerabilities, only on local AST findings.
 	vulnLookup VulnLookup
 
+	// Optional behavior-based malware heuristics. When set, every
+	// per-dep AST scan is followed by a Run() call that may add
+	// extra Capability values (CapInstallHookSuspicious,
+	// CapObfuscatedPayload, CapSuspiciousURL, CapBinaryDropper,
+	// CapTyposquatRisk). Heuristics fire on the same package source
+	// the AST scan saw, so there's no extra fetch cost. nil is the
+	// safe no-op.
+	heuristics MalwareHeuristics
+
 	// allowlist is applied post-RiskScore/DriftScore in Diff so
 	// known-benign capabilities (lodash dynamic-eval, build tools'
 	// shell-spawn) don't manufacture false-positive verdicts.
@@ -126,6 +135,21 @@ func (s *Snapshot) WithPublishedAtResolver(r PublishedAtResolver) *Snapshot {
 // falls back to AST-only behaviour. Useful when running offline.
 func (s *Snapshot) WithVulnLookup(v VulnLookup) *Snapshot {
 	s.vulnLookup = v
+	return s
+}
+
+// WithMalwareHeuristics attaches the optional behavior-based malware
+// detector chain. Every per-dep AST analyze call is followed by a
+// Run() over the same source bytes, surfacing suspicious install
+// hooks, obfuscated payloads, sketchy URL targets, binary droppers,
+// and typosquat names. Heuristic findings are merged into the
+// Fingerprint.Capabilities slice, riding for free through the
+// existing scoring / allowlist / presenter pipeline.
+//
+// nil disables — no heuristic capabilities are added. Useful when
+// running fully offline or to A/B test heuristic vs pure-AST scoring.
+func (s *Snapshot) WithMalwareHeuristics(h MalwareHeuristics) *Snapshot {
+	s.heuristics = h
 	return s
 }
 
@@ -387,6 +411,17 @@ func (s *Snapshot) analyzeOneSlot(ctx context.Context, dep domain.Dependency, sl
 	fp, err = s.analyzer.Analyze(ctx, dep.Ecosystem, src)
 	if err != nil {
 		return domain.Fingerprint{}, false, fmt.Errorf("analyze: %w", err)
+	}
+	// Heuristic pass — runs over the same source bytes the AST
+	// scanner just walked, so no extra fetch cost. Adds Capability
+	// values for suspicious install hooks, obfuscated payloads,
+	// sketchy URL targets, binary droppers, and typosquat names.
+	// nil heuristics is the safe no-op; merge is dedup-on-insert.
+	if s.heuristics != nil {
+		extra := s.heuristics.Run(dep.Ecosystem, dep.Name, src.Manifest, src)
+		if len(extra) > 0 {
+			fp.Capabilities = fp.Capabilities.Union(domain.NewCapabilitySet(extra...))
+		}
 	}
 	if s.fpCache != nil {
 		_ = s.fpCache.Put(dep.Ecosystem, dep.Name, dep.Version, fp)
