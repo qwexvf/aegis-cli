@@ -175,6 +175,22 @@ type PublishedAtResolver interface {
 	PublishedAt(ctx context.Context, eco domain.Ecosystem, name, version string) (string, error)
 }
 
+// MaintainerSignalFetcher pulls the registry-side metadata the
+// maintainer-hijack heuristic needs (publish time of this version,
+// previous version + its publish time, weekly downloads). One call
+// per (eco, name, version); adapter is responsible for caching /
+// rate-limiting against the registry.
+//
+// Returns a zero-value MaintainerSignal (NOT an error) when the
+// adapter doesn't support the ecosystem — the heuristic treats that
+// as "no signal" and degrades gracefully.
+//
+// Implementation: infra/npmregistry today (npm only); follow-on PRs
+// add infra/pypiregistry, infra/cratesregistry, ...
+type MaintainerSignalFetcher interface {
+	FetchMaintainerSignal(ctx context.Context, eco domain.Ecosystem, name, version string) (domain.MaintainerSignal, error)
+}
+
 // MalwareHeuristics is the port for behaviour-based malware detectors
 // that augment the AST scanner's Capabilities with extra signals
 // derived from package metadata + file-set + name analysis (suspicious
@@ -190,6 +206,13 @@ type PublishedAtResolver interface {
 // so this is automatic.
 type MalwareHeuristics interface {
 	Run(eco domain.Ecosystem, name string, manifestRaw []byte, src PackageSource) []domain.Capability
+
+	// RunMaintainerSignal is a separate entry point for the
+	// hijack heuristic because it needs registry-side data the
+	// per-package source pass doesn't have. Snapshot.Enrich calls
+	// it after FetchMaintainerSignal returns. Returns 0 when no
+	// signal fires.
+	RunMaintainerSignal(sig domain.MaintainerSignal) domain.Capability
 }
 
 // VulnLookup turns a list of (ecosystem, name, version) tuples into

@@ -60,6 +60,19 @@ const (
 	// package. Confidence is heuristic, not certain; the weight pushes
 	// to Prompt rather than Block by itself.
 	WeightTyposquatRisk = 40
+	// WeightMaintainerHijackRisk — fresh publish + long gap +
+	// low downloads. event-stream's compromise had exactly this
+	// shape; ua-parser-js's hijack was caught after the fact by
+	// noticing it. The weight is intentionally high so this
+	// combined signal blocks on its own; pair with allowlist for
+	// known-good "freshly-published-low-traffic" cases.
+	WeightMaintainerHijackRisk = 50
+	// WeightPatchVersionDrift — patch bump grew new capabilities.
+	// Strong shape signal but the weight is moderate because patch
+	// versions DO sometimes legitimately add behavior (security
+	// fixes that introduce a network call to fetch updated rules,
+	// for example).
+	WeightPatchVersionDrift = 35
 )
 
 // credentialEnvVarRoots is the list of env var name prefixes that, when
@@ -172,6 +185,14 @@ func RiskScore(fp *Fingerprint) RiskAssessment {
 			add(c.String(),
 				"name is within edit distance 2 of a top-1000 package",
 				WeightTyposquatRisk)
+		case CapMaintainerHijackRisk:
+			add(c.String(),
+				"fresh publish + long gap from previous version + low downloads (maintainer-handover hijack pattern)",
+				WeightMaintainerHijackRisk)
+		case CapPatchVersionDrift:
+			add(c.String(),
+				"patch-version bump gained new capabilities (semver violation)",
+				WeightPatchVersionDrift)
 		}
 	}
 
@@ -384,4 +405,122 @@ func Verdict(risk, drift RiskAssessment) VerdictKind {
 	default:
 		return VerdictSafe
 	}
+}
+
+// PatchVersionDriftFlag returns a RiskFlag (and true) when prev and
+// next are versions in the same minor (x.y.z → x.y.z') AND next
+// gained at least one capability prev didn't have. Returns
+// zero-value + false otherwise.
+//
+// SemVer says patch bumps are behaviourally identical; gaining
+// `child-process` or `net-egress` in a patch bump is a strong
+// "something changed that wasn't supposed to" signal — the canonical
+// shape of silent-malware-injection-via-patch attacks.
+//
+// Computed at the diff layer (caller knows the version strings) so
+// it isn't persisted in Fingerprint — the signal is contextual
+// (relative to a specific baseline), not intrinsic to the version.
+func PatchVersionDriftFlag(prevVer, nextVer string, addedCaps CapabilitySet) (RiskFlag, bool) {
+	if !samePatchPair(prevVer, nextVer) {
+		return RiskFlag{}, false
+	}
+	if len(addedCaps) == 0 {
+		return RiskFlag{}, false
+	}
+	return RiskFlag{
+		Code:   CapPatchVersionDrift.String(),
+		Detail: "patch bump " + prevVer + "→" + nextVer + " grew " + capListString(addedCaps) + " — semver says patches don't change behaviour",
+		Weight: WeightPatchVersionDrift,
+	}, true
+}
+
+// samePatchPair returns true when prev and next are in the same
+// (major, minor) but different patch — e.g. 1.2.3 and 1.2.4. Skips
+// pre-release / build-metadata suffixes (treats 1.2.3-beta as 1.2.3
+// for the major/minor comparison).
+func samePatchPair(prev, next string) bool {
+	pMajor, pMinor, pPatch, pOK := splitSemver(prev)
+	nMajor, nMinor, nPatch, nOK := splitSemver(next)
+	if !pOK || !nOK {
+		return false
+	}
+	if pMajor != nMajor || pMinor != nMinor {
+		return false
+	}
+	return pPatch != nPatch // same minor, different patch
+}
+
+// splitSemver parses "X.Y.Z" / "vX.Y.Z" / "X.Y.Z-pre+meta" into
+// (major, minor, patch, ok). Lightweight — enough for the patch
+// comparison; full semver lives in Masterminds/semver/v3 (used by
+// npmregistry.Resolve) but importing that into domain just for this
+// is overkill.
+func splitSemver(v string) (int, int, int, bool) {
+	if v == "" {
+		return 0, 0, 0, false
+	}
+	if v[0] == 'v' {
+		v = v[1:]
+	}
+	// Drop pre-release / build-metadata.
+	for i, r := range v {
+		if r == '-' || r == '+' {
+			v = v[:i]
+			break
+		}
+	}
+	parts := splitN(v, '.', 3)
+	if len(parts) != 3 {
+		return 0, 0, 0, false
+	}
+	maj, ok1 := parseInt(parts[0])
+	min, ok2 := parseInt(parts[1])
+	pat, ok3 := parseInt(parts[2])
+	if !ok1 || !ok2 || !ok3 {
+		return 0, 0, 0, false
+	}
+	return maj, min, pat, true
+}
+
+// splitN is a strings.SplitN replacement that doesn't import strings —
+// keeps domain dep-free.
+func splitN(s string, sep byte, n int) []string {
+	out := make([]string, 0, n)
+	start := 0
+	for i := 0; i < len(s) && len(out) < n-1; i++ {
+		if s[i] == sep {
+			out = append(out, s[start:i])
+			start = i + 1
+		}
+	}
+	out = append(out, s[start:])
+	return out
+}
+
+// parseInt — strconv.Atoi without the strconv dep.
+func parseInt(s string) (int, bool) {
+	if s == "" {
+		return 0, false
+	}
+	n := 0
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n, true
+}
+
+// capListString joins a CapabilitySet into a comma-separated stable
+// string for error messages.
+func capListString(caps CapabilitySet) string {
+	if len(caps) == 0 {
+		return ""
+	}
+	out := caps[0].String()
+	for _, c := range caps[1:] {
+		out += ", " + c.String()
+	}
+	return out
 }

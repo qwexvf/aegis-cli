@@ -22,15 +22,17 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
-// Run executes every heuristic over the given package and returns the
-// extra capabilities that fired. Order is stable. Idempotent — same
-// input always produces the same output.
+// Run executes every package-source-based heuristic over the given
+// package and returns the extra capabilities that fired. Order is
+// stable. Idempotent — same input always produces the same output.
 //
 // Caller (Snapshot.Enrich) merges these into the AST-derived
 // Fingerprint.Capabilities; from there the existing risk scorer
-// picks them up via the new WeightInstallHookSuspicious /
-// WeightObfuscatedPayload / WeightSuspiciousURL / WeightBinaryDropper /
-// WeightTyposquatRisk branches in domain.RiskScore.
+// picks them up via the heuristic Weight branches in domain.RiskScore.
+//
+// The maintainer-hijack heuristic is NOT included here because it
+// needs registry-side metadata not present in the package source —
+// see RunMaintainerSignal.
 func Run(eco domain.Ecosystem, name string, manifestRaw []byte, src usecase.PackageSource) []domain.Capability {
 	var caps []domain.Capability
 
@@ -48,4 +50,12 @@ func Run(eco domain.Ecosystem, name string, manifestRaw []byte, src usecase.Pack
 	}
 
 	return caps
+}
+
+// RunMaintainerSignal is the second entry point — separated from
+// Run because the input shape is different (registry metadata vs
+// package source). Snapshot.Enrich calls it after fetching
+// MaintainerSignal via the dedicated port.
+func RunMaintainerSignal(sig domain.MaintainerSignal) domain.Capability {
+	return DetectMaintainerHijackRisk(sig)
 }

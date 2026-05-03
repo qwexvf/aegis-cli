@@ -162,6 +162,13 @@ func main() {
 	// AST-only scoring).
 	if os.Getenv("AEGIS_NO_HEURISTICS") == "" {
 		snapshot.WithMalwareHeuristics(heuristicsAdapter{})
+		// Maintainer-hijack heuristic also needs registry-side
+		// metadata (publish-time + weekly-downloads). Wire the
+		// npm Resolver as the MaintainerSignalFetcher (it
+		// already has the per-ecosystem dispatch logic); non-npm
+		// ecosystems get a zero-value signal so the heuristic
+		// degrades gracefully there.
+		snapshot.WithMaintainerSignalFetcher(resolver)
 	}
 	analyzePresenter := cli.NewAnalyzePresenter(presenter)
 	analyze := usecase.NewAnalyze(analyzePresenter)

@@ -76,6 +76,14 @@ type Snapshot struct {
 	// safe no-op.
 	heuristics MalwareHeuristics
 
+	// Optional registry-side metadata fetcher used by the
+	// maintainer-hijack heuristic. When both maintainerSignal AND
+	// heuristics are set, every per-dep enrich pass also pulls
+	// publish-time + downloads via this port and feeds them to
+	// MalwareHeuristics.RunMaintainerSignal. nil disables; the
+	// other heuristics still run.
+	maintainerSignal MaintainerSignalFetcher
+
 	// allowlist is applied post-RiskScore/DriftScore in Diff so
 	// known-benign capabilities (lodash dynamic-eval, build tools'
 	// shell-spawn) don't manufacture false-positive verdicts.
@@ -150,6 +158,20 @@ func (s *Snapshot) WithVulnLookup(v VulnLookup) *Snapshot {
 // running fully offline or to A/B test heuristic vs pure-AST scoring.
 func (s *Snapshot) WithMalwareHeuristics(h MalwareHeuristics) *Snapshot {
 	s.heuristics = h
+	return s
+}
+
+// WithMaintainerSignalFetcher attaches the registry-side metadata
+// fetcher used by the maintainer-hijack heuristic. When set together
+// with WithMalwareHeuristics, every per-dep enrich pass adds one
+// network round-trip to the package's registry to pull publish-time
+// + downloads, and feeds the result to RunMaintainerSignal.
+//
+// nil disables hijack detection; the other heuristics (install hook,
+// obfuscation, URL, binary dropper, typosquat) still run because
+// they don't need registry data.
+func (s *Snapshot) WithMaintainerSignalFetcher(f MaintainerSignalFetcher) *Snapshot {
+	s.maintainerSignal = f
 	return s
 }
 
@@ -422,6 +444,20 @@ func (s *Snapshot) analyzeOneSlot(ctx context.Context, dep domain.Dependency, sl
 		if len(extra) > 0 {
 			fp.Capabilities = fp.Capabilities.Union(domain.NewCapabilitySet(extra...))
 		}
+
+		// Maintainer-hijack heuristic — needs registry-side
+		// metadata not in the package source. One additional
+		// round-trip per dep to the registry; failure is silent
+		// (the heuristic just doesn't fire). Skipped when no
+		// fetcher is wired (offline mode / non-npm ecosystem
+		// without a fetcher implementation yet).
+		if s.maintainerSignal != nil {
+			if sig, err := s.maintainerSignal.FetchMaintainerSignal(ctx, dep.Ecosystem, dep.Name, dep.Version); err == nil {
+				if c := s.heuristics.RunMaintainerSignal(sig); c != 0 {
+					fp.Capabilities = fp.Capabilities.Union(domain.NewCapabilitySet(c))
+				}
+			}
+		}
 	}
 	if s.fpCache != nil {
 		_ = s.fpCache.Put(dep.Ecosystem, dep.Name, dep.Version, fp)
@@ -497,6 +533,22 @@ func (s *Snapshot) buildReportFromSnapshots(a, b domain.Snapshot) DiffReport {
 			ApplyAllowlist(newDep.Ecosystem, newDep.Name, newDep.Version, s.allowlist)
 		entry.Drift = domain.DriftScore(oldDep.Fingerprint, newDep.Fingerprint).
 			ApplyAllowlist(newDep.Ecosystem, newDep.Name, newDep.Version, s.allowlist)
+
+		// Patch-version drift: x.y.z → x.y.z' that gained at
+		// least one capability is a strong "silent malware
+		// injection" shape. SemVer says patch bumps don't
+		// change behaviour; gaining `child-process` /
+		// `net-egress` etc. in a patch is the canonical signal.
+		// Computed here (not in DriftScore) because it needs the
+		// version strings the diff layer already holds.
+		if oldDep.Fingerprint != nil && newDep.Fingerprint != nil {
+			added := newDep.Fingerprint.Capabilities.Difference(oldDep.Fingerprint.Capabilities)
+			if flag, ok := domain.PatchVersionDriftFlag(oldDep.Version, newDep.Version, added); ok {
+				entry.Drift.Score += flag.Weight
+				entry.Drift.Flags = append(entry.Drift.Flags, flag)
+			}
+		}
+
 		entry.Verdict = domain.Verdict(entry.Risk, entry.Drift)
 		updateReportFlags(&report, entry.Verdict)
 		report.Entries = append(report.Entries, entry)
