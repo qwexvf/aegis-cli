@@ -1,0 +1,73 @@
+name: Bug report
+description: Something isn't working — broken parsing, wrong decision, crash, etc.
+title: "bug: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report. The more concrete the repro, the
+        faster the fix. **For security issues, do not file here** —
+        see [SECURITY.md](../SECURITY.md) for private disclosure.
+
+  - type: input
+    id: version
+    attributes:
+      label: aegis version
+      description: Output of `aegis version`
+      placeholder: "aegis 0.1.0 (commit abcdef0, built 2026-…)"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / arch
+      placeholder: "Ubuntu 24.04 / amd64, macOS 15 / arm64, …"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pm
+    attributes:
+      label: Package manager
+      options:
+        - npm
+        - bun
+        - yarn
+        - pnpm
+        - n/a (other command)
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal commands and (if relevant) `package.json` / lockfile snippet
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include error message verbatim. Run with `--verbose` if helpful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: |
+        Custom allowlist? Air-gapped network? Self-hosted Aegis API?
+        Anything that might make your environment unusual.

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/qwexvf/aegis-cli/security/advisories/new
+    about: Report security issues privately. Do not file public issues for vulnerabilities.
+  - name: Question / discussion
+    url: https://github.com/qwexvf/aegis-cli/discussions
+    about: Open-ended questions, design discussions, or "how do I…?" go in Discussions.
