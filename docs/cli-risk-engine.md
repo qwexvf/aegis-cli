@@ -191,7 +191,7 @@ to *no* version constraint (`VersionRange="*"`) but consider
 anchoring to a major (`^4`) for packages with a known-sabotage
 incident at a higher version.
 
-See `services/cli/README.md` § Allowlist for the user-facing CLI.
+See [README.md § Allowlist](../README.md#allowlist) for the user-facing CLI.
 
 ## Tuning workflow
 

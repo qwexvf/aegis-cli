@@ -25,16 +25,11 @@ aegis-audit:
     # ---------- 1. Install your project's dependencies ----------
     - bun install --frozen-lockfile
 
-    # ---------- 2. Install aegis (build from source for now) ----
-    # Switch to release-binary download once available:
-    #   - apk add --no-cache curl
-    #   - curl -sSL https://github.com/qwexvf/aegis/releases/latest/download/aegis-linux-amd64 \
-    #       -o /usr/local/bin/aegis && chmod +x /usr/local/bin/aegis
-    - apk add --no-cache go git make gcc musl-dev
-    - git clone --depth=1 https://github.com/qwexvf/aegis /tmp/aegis
-    - cd /tmp/aegis/services/cli && make build
-    - mv bin/aegis /usr/local/bin/aegis
-    - cd $CI_PROJECT_DIR
+    # ---------- 2. Install aegis (pre-built binary, cosign + SLSA verified) ----
+    - apk add --no-cache curl tar
+    - export AEGIS_VERSION=v0.1.0
+    - curl -sSL "https://github.com/qwexvf/aegis-cli/releases/download/${AEGIS_VERSION}/aegis-cli_${AEGIS_VERSION#v}_linux_amd64.tar.gz" | tar -xz -C /usr/local/bin aegis
+    - aegis version
 
     # ---------- 3. Wire the cache into AEGIS_CACHE_DIR ----------
     - export AEGIS_CACHE_DIR="$CI_PROJECT_DIR/.aegis-cache"
