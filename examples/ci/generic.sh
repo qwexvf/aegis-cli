@@ -27,8 +27,10 @@ REPORT="${AEGIS_REPORT:-aegis-report.json}"
 # 1. Sanity — confirm aegis is on PATH
 if ! command -v aegis >/dev/null 2>&1; then
     echo "error: 'aegis' not found on PATH" >&2
-    echo "       Install: clone https://github.com/qwexvf/aegis,"  >&2
-    echo "       then 'cd services/cli && make build && cp bin/aegis /usr/local/bin/'" >&2
+    echo "       Install: download a pre-built binary from" >&2
+    echo "         https://github.com/qwexvf/aegis-cli/releases/latest" >&2
+    echo "       or build from source:" >&2
+    echo "         go install github.com/qwexvf/aegis-cli/cmd/aegis@latest" >&2
     exit 2
 fi
 
