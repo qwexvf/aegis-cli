@@ -6,9 +6,8 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
-
-	"github.com/rs/zerolog"
 
 	"github.com/qwexvf/aegis/services/cli/internal/infra/aegisapi"
 	"github.com/qwexvf/aegis/services/cli/internal/infra/allowlist"
@@ -74,10 +73,11 @@ type Deps struct {
 
 // NewRoot returns the root cobra.Command with every subcommand wired.
 //
-// The persistent --verbose flag flips the global zerolog level to
-// DEBUG before any command body runs; without it we stay at WARN.
-// The dev-pretty / CI-JSON output choice is made once in main and
-// doesn't need a flag (zerolog auto-detects via TTY + CI markers).
+// The persistent --verbose flag flips the global slog level to DEBUG
+// before any command body runs (via the LogLevel LevelVar installed by
+// cmd/aegis/main.configureLogger); without it we stay at WARN. The
+// dev-pretty / CI-JSON handler choice is made once in main and doesn't
+// need a flag (auto-detected via TTY + CI markers).
 func NewRoot(d Deps) *cobra.Command {
 	var verbose bool
 
@@ -88,7 +88,7 @@ func NewRoot(d Deps) *cobra.Command {
 		SilenceErrors: true,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
 			if verbose {
-				zerolog.SetGlobalLevel(zerolog.DebugLevel)
+				LogLevel.Set(slog.LevelDebug)
 			}
 		},
 	}

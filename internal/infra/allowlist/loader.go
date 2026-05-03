@@ -3,10 +3,9 @@ package allowlist
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
-
-	"github.com/rs/zerolog/log"
 
 	"github.com/qwexvf/aegis/services/cli/internal/domain"
 )
@@ -122,7 +121,7 @@ func New(projectDir string) *Loader {
 	if user == "" {
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
-			log.Warn().Err(err).Msg("cannot determine user home directory; falling back to ./.aegis (set AEGIS_CONFIG_DIR to override)")
+			slog.Warn("cannot determine user home directory; falling back to ./.aegis (set AEGIS_CONFIG_DIR to override)", "error", err)
 			user = ".aegis"
 		} else {
 			user = filepath.Join(home, ".aegis")
@@ -170,7 +169,7 @@ func (l *Loader) Load() (domain.AllowSet, error) {
 	// rather than failing the install.
 	if l.server != nil {
 		if rules, err := l.server.Load(); err != nil {
-			log.Warn().Err(err).Msg("server allowlist cache load failed; skipping server layer")
+			slog.Warn("server allowlist cache load failed; skipping server layer", "error", err)
 		} else {
 			all = append(all, rules...)
 		}
@@ -202,7 +201,7 @@ func (l *Loader) LoadRaw() ([]domain.AllowRule, error) {
 			// Same defensive read as Load — `aegis allowlist list`
 			// shouldn't blow up on a stale cache; surface a warning
 			// and proceed.
-			log.Warn().Err(err).Msg("server allowlist cache load failed; skipping server layer")
+			slog.Warn("server allowlist cache load failed; skipping server layer", "error", err)
 		} else {
 			all = append(all, rules...)
 		}

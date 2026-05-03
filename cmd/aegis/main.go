@@ -12,12 +12,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"io"
+	"log/slog"
 	"os"
-	"time"
-
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	clii "github.com/qwexvf/aegis/services/cli/internal/interface/cli"
 
@@ -48,31 +44,32 @@ func newInvocationID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// configureLogger installs the global zerolog logger. Pretty
-// ConsoleWriter on dev TTYs (no CI marker, stderr is a terminal),
-// JSON elsewhere. Level: warn by default, debug when verbose.
+// configureLogger installs the global slog logger.
+//
+// Output: TextHandler on dev TTYs (no CI marker, stderr is a terminal),
+// JSONHandler elsewhere so log shippers in CI can parse cleanly.
+// Level: warn by default, flipped to debug when verbose=true.
 //
 // Called exactly once at process start. The root command's
-// PersistentPreRun later flips the level via zerolog.SetGlobalLevel
-// after Cobra parses --verbose; it does NOT call configureLogger
-// again. The output writer and the invocation ID are stable for the
-// process lifetime.
+// PersistentPreRun later flips the level via clii.LogLevel.Set after
+// Cobra parses --verbose; it does NOT call configureLogger again. The
+// output writer and the invocation ID are stable for the process lifetime.
 func configureLogger(invocationID string, verbose bool) {
-	zerolog.TimeFieldFormat = time.RFC3339
-	level := zerolog.WarnLevel
 	if verbose {
-		level = zerolog.DebugLevel
+		clii.LogLevel.Set(slog.LevelDebug)
+	} else {
+		clii.LogLevel.Set(slog.LevelWarn)
 	}
-	zerolog.SetGlobalLevel(level)
+	opts := &slog.HandlerOptions{Level: clii.LogLevel}
 
-	var w io.Writer = os.Stderr
+	var handler slog.Handler
 	if shouldPrettyLog() {
-		w = zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen}
+		handler = slog.NewTextHandler(os.Stderr, opts)
+	} else {
+		handler = slog.NewJSONHandler(os.Stderr, opts)
 	}
-	logger := zerolog.New(w).With().Timestamp().
-		Str("cli_invocation_id", invocationID).
-		Logger()
-	log.Logger = logger
+	logger := slog.New(handler).With("cli_invocation_id", invocationID)
+	slog.SetDefault(logger)
 }
 
 // shouldPrettyLog returns true when stderr is a TTY and no CI marker
@@ -98,10 +95,10 @@ func main() {
 	cwd, _ := os.Getwd()
 	invocationID := newInvocationID()
 
-	// Global zerolog setup — JSON to stderr by default; pretty
-	// ConsoleWriter when stderr is a TTY and we're not in CI. WARN
-	// level out of the box; AEGIS_VERBOSE flips to DEBUG. The root
-	// command's --verbose flag re-applies the level after argv parses.
+	// Global slog setup — JSON to stderr by default; pretty TextHandler
+	// when stderr is a TTY and we're not in CI. WARN level out of the
+	// box; AEGIS_VERBOSE flips to DEBUG. The root command's --verbose
+	// flag re-applies the level after argv parses.
 	configureLogger(invocationID, os.Getenv("AEGIS_VERBOSE") != "")
 
 	httpClient := httpx.NewClient(httpx.Config{
@@ -176,7 +173,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "aegis: WARNING — allowlist file failed to parse:", err)
 		fmt.Fprintln(os.Stderr, "aegis:   falling back to builtin rules only;",
 			"run `aegis allowlist verify` to inspect")
-		log.Warn().Err(err).Msg("allowlist parse failed; using builtin rules only")
+		slog.Warn("allowlist parse failed; using builtin rules only", "error", err)
 		// Fall back to builtin-only so we keep at least the curated
 		// false-positive suppressions. Builtin is verified at
 		// compile time so this NewAllowSet cannot fail in practice;
