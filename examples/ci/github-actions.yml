@@ -49,7 +49,7 @@ jobs:
       # Verifies cosign + SLSA. No Go toolchain needed.
       - name: Install aegis
         env:
-          AEGIS_VERSION: v0.1.0
+          AEGIS_VERSION: v0.7.1
         run: |
           set -euo pipefail
           curl -sSL "https://github.com/qwexvf/aegis-cli/releases/download/${AEGIS_VERSION}/aegis-cli_${AEGIS_VERSION#v}_linux_amd64.tar.gz" \
@@ -63,7 +63,7 @@ jobs:
       # - uses: actions/setup-go@v5
       #   with:
       #     go-version: '1.26'
-      # - run: go install github.com/qwexvf/aegis-cli/cmd/aegis@v0.1.0
+      # - run: go install github.com/qwexvf/aegis-cli/cmd/aegis@v0.7.1
 
       # ---------- 3. Cache the AST fingerprint cache ----------------
       # Warm cache means new PRs only re-scan deps that actually

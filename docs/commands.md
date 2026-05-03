@@ -109,7 +109,16 @@ aegis snapshot show --all             # include transitive
 |---|---|---|
 | `--all` | off | Include transitive dependencies in the rendered table. |
 
-Output columns: ecosystem, name, version, capability summary (if enriched), risk score (if enriched), allowlist matches.
+Output columns:
+
+| Column | Meaning |
+|---|---|
+| `ECO` | Ecosystem (`npm`, `pypi`, `crates`, `go`, `rubygems`) |
+| `NAME` | Package name |
+| `VERSION` | Resolved version |
+| `DIRECT` | `✓` when listed in the project manifest (vs transitive) |
+| `CAPS` | AST + heuristic capability count. Empty if not enriched yet; `—` if enriched with no findings |
+| `ADVISORIES` | OSV.dev vulnerability count + max severity, color-coded. Empty if not looked up; `—` if looked up with no matches |
 
 ---
 
