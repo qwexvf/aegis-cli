@@ -144,9 +144,21 @@ func (c *CI) runFull(ctx context.Context, req CIRequest) (CIResult, error) {
 		return CIResult{}, err
 	}
 	if !ok {
-		err := fmt.Errorf("ci: snapshot vanished after save (this is a bug)")
-		c.presenter.OnCIError(err)
-		return CIResult{}, err
+		// No snapshot on disk after Save => Save found no
+		// lockfile to scan (Save's empty path emits an info
+		// message via OnSnapshotEmpty and returns nil without
+		// writing). That's a clean PASS, not a bug — the
+		// project just has nothing to audit. Common in monorepo
+		// roots where the lockfiles live under sub-directories.
+		empty := CIResult{
+			ProjectName: projectBaseName(req.ProjectDir),
+			Summary:     CISummary{},
+			Passed:      true,
+			Enriched:    req.Enrich,
+			FailOn:      req.FailOn,
+		}
+		c.presenter.OnCIResult(empty)
+		return empty, nil
 	}
 	result := c.scoreSnapshot(snap, req.FailOn)
 	result.Enriched = req.Enrich

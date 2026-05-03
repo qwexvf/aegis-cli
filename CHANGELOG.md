@@ -6,6 +6,11 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-05-04
+
+### Fixed
+- **`aegis ci` on no-lockfile projects** — running on a directory without a recognised lockfile (e.g. monorepo roots where lockfiles live in subdirectories) used to print `ci: snapshot vanished after save (this is a bug)` and exit 1. Now PASSes cleanly with 0 deps and a clear info message ("no lockfile found in /path"). Regression test added so this stays fixed.
+
 ## [0.7.0] — 2026-05-04
 
 Python AST scanner + curated release notes + advisory column in snapshot show.
@@ -129,7 +134,8 @@ First standalone release of `aegis-cli`, extracted from the [qwexvf/aegis](https
 ### Notes
 - The install-gate commands (`aegis npm install …`, `recheck`, `snapshot submit`, `allowlist sync`) require an Aegis API server. The hosted Cloud is not yet available; self-host from the [qwexvf/aegis](https://github.com/qwexvf/aegis) monorepo.
 
-[Unreleased]: https://github.com/qwexvf/aegis-cli/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/qwexvf/aegis-cli/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/qwexvf/aegis-cli/releases/tag/v0.7.1
 [0.7.0]: https://github.com/qwexvf/aegis-cli/releases/tag/v0.7.0
 [0.6.0]: https://github.com/qwexvf/aegis-cli/releases/tag/v0.6.0
 [0.5.0]: https://github.com/qwexvf/aegis-cli/releases/tag/v0.5.0
