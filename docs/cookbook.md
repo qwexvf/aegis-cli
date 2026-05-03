@@ -73,7 +73,7 @@ Goal: developers run plain `npm install` locally; CI fails the build if the AST 
 
 - name: Install aegis
   run: |
-    curl -sSL https://github.com/qwexvf/aegis-cli/releases/download/v0.1.0/aegis-cli_0.1.0_linux_amd64.tar.gz \
+    curl -sSL https://github.com/qwexvf/aegis-cli/releases/download/v0.7.1/aegis-cli_0.7.1_linux_amd64.tar.gz \
       | sudo tar -xz -C /usr/local/bin aegis
 
 - uses: actions/cache@v4
@@ -175,7 +175,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          curl -sSL https://github.com/qwexvf/aegis-cli/releases/download/v0.1.0/aegis-cli_0.1.0_linux_amd64.tar.gz \
+          curl -sSL https://github.com/qwexvf/aegis-cli/releases/download/v0.7.1/aegis-cli_0.7.1_linux_amd64.tar.gz \
             | sudo tar -xz -C /usr/local/bin aegis
       - run: aegis snapshot save
       - run: |
