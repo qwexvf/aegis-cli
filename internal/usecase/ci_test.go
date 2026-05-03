@@ -211,3 +211,39 @@ func TestCI_AllowlistSuppressionDropsBelowThreshold(t *testing.T) {
 		t.Errorf("expected pass after allowlist suppression: %+v findings", r.Findings)
 	}
 }
+
+// TestCI_NoLockfilePassesCleanly is the regression test for the
+// "snapshot vanished after save (this is a bug)" false positive that
+// fired on monorepo roots without a lockfile (e.g. lockfiles live in
+// services/api/, web/, etc.). Save returns nil + emits OnSnapshotEmpty;
+// runFull then loads, gets ok=false, used to misreport the bug.
+//
+// Expected behaviour: PASS with 0 deps, exit 0, clear info message.
+func TestCI_NoLockfilePassesCleanly(t *testing.T) {
+	store := newFakeStore()
+	// store.saved deliberately does NOT contain "/proj" — Save with
+	// no lockfile won't write, so Load returns ok=false.
+	scanner := &fakeScanner{deps: nil} // empty scan = "no lockfile found"
+	pres := &snapshotCapturingPresenter{}
+	uc := NewSnapshot(store, scanner, pres, "test")
+	ciPres := &ciCapturingPresenter{}
+	ci := NewCI(uc, ciPres)
+
+	r, err := ci.Run(context.Background(), CIRequest{
+		ProjectDir: "/proj",
+		FailOn:     domain.VerdictBlock,
+		Enrich:     false,
+	})
+	if err != nil {
+		t.Fatalf("expected nil error on empty project, got: %v", err)
+	}
+	if !r.Passed {
+		t.Errorf("expected Passed=true on empty project, got Passed=false: %+v", r)
+	}
+	if r.Summary.Total != 0 {
+		t.Errorf("expected 0 total deps, got %d", r.Summary.Total)
+	}
+	if len(r.Findings) != 0 {
+		t.Errorf("expected 0 findings, got %d", len(r.Findings))
+	}
+}
