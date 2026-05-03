@@ -1,333 +1,243 @@
-# aegis CLI
+# aegis-cli
 
-Supply-chain install gate for the JavaScript ecosystem — wraps **npm**,
-**bun**, **yarn**, **pnpm** and checks each install against the Aegis
-API before letting it proceed. Also tracks project-level dependency
-snapshots and runs an AST-based risk engine over package source.
+[![CI](https://github.com/qwexvf/aegis-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/qwexvf/aegis-cli/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/qwexvf/aegis-cli)](https://goreportcard.com/report/github.com/qwexvf/aegis-cli)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Status (2026-04):** v0.1.0-demo, end-to-end working.
-> Multi-PM gate, clean-arch refactor, real historical incident DB,
-> snapshot mechanism, tree-sitter risk engine, layered allowlist —
-> all on `main`. ~300+ tests across 14 packages.
->
-> **Next:** pip/poetry/uv support, web-side graph view of `aegis.lock`,
-> deny rules in the allowlist, depsandbox runtime fingerprints.
+Supply-chain install gate for the JavaScript ecosystem. Wraps **npm**,
+**bun**, **yarn**, and **pnpm**: every install request is checked against
+the [Aegis](https://github.com/qwexvf/aegis) decision API before the
+underlying PM is allowed to run. Tracks project dependency snapshots
+and runs an AST-based risk engine over package source.
 
-## Documentation index
-
-| Doc | What it covers |
-|---|---|
-| This README | User-facing: install, command summary, common flows |
-| [docs/cli-architecture.md](../../docs/cli-architecture.md) | Layer map, dependency direction, "adding a PM / ecosystem" walkthrough |
-| [docs/cli-risk-engine.md](../../docs/cli-risk-engine.md) | Capability enum, RiskScore / DriftScore weights, Verdict thresholds, allowlist suppression |
-| [docs/cli-snapshot.md](../../docs/cli-snapshot.md) | `aegis.lock` format, diff semantics, lockfile parsers, tarball cache |
-| [docs/aegis-cli-demo-plan.md](../../docs/aegis-cli-demo-plan.md) | Historical 12-step build plan + post-demo inventory |
-| [docs/aegisd-design.md](../../docs/aegisd-design.md) | Forward-looking host daemon design |
-| [docs/depsandbox-design.md](../../docs/depsandbox-design.md) | Forward-looking sandbox runtime design |
-
-## Build
-
-```bash
-make build           # debug build, all four PMs registered
-./bin/aegis version
+```text
+$ aegis npm install ua-parser-js@0.7.29
+[aegis] ✗ ua-parser-js@0.7.29 — BLOCKED (CRITICAL)
+[aegis]   GHSA-pjwm-rvh2-c87w — Cryptominer + password stealer (preinstall.sh)
+[aegis]   override: AEGIS_OVERRIDE=allow AEGIS_OVERRIDE_REASON=<reason> aegis npm install ua-parser-js@0.7.29
 ```
 
-### Build flavors
+## Install
 
-| Target           | Output            | Tags                       | Use |
-|------------------|-------------------|----------------------------|-----|
-| `make build`     | `bin/aegis` (12 MB) | —                        | local dev |
-| `make build-release` | `bin/aegis` (8.6 MB) | `-ldflags='-s -w'`    | full features, smallest full build |
-| `make build-core`    | `bin/aegis-core` (7.8 MB) | `nojsscan`        | size-constrained CI runners (no AST scanner, no cgo) |
-| `make build-npm`     | `bin/aegis-npm` (8.6 MB)  | `nobun,noyarn,nopnpm` | per-team binary that only registers `aegis npm` |
-| `make build-bun`     | `bin/aegis-bun`           | `nonpm,noyarn,nopnpm` | only registers `aegis bun` |
-| `make build-yarn`    | `bin/aegis-yarn`          | `nonpm,nobun,nopnpm`  | only registers `aegis yarn` |
-| `make build-pnpm`    | `bin/aegis-pnpm`          | `nonpm,nobun,noyarn`  | only registers `aegis pnpm` |
-| `make build-each-pm` | all four per-PM           | —                     | shorthand to build all four |
-| `make size`          | (no binary)               | —                     | size comparison across all flavors |
+### Pre-built binaries
 
-The per-PM tags don't shrink the binary (Go's dead-code elimination
-already strips unused PM wrappers); they exist for **distribution**
-clarity — a binary named `aegis-npm` whose `--help` only mentions
-`aegis npm` is easier to reason about for an org that only uses one
-package manager.
+Download the latest release for your platform from
+[**Releases**](https://github.com/qwexvf/aegis-cli/releases). All
+artifacts are signed with [cosign](https://docs.sigstore.dev/cosign/)
+keyless OIDC and ship with [SLSA build provenance](https://slsa.dev/).
+Verify before running:
+
+```sh
+cosign verify-blob \
+  --certificate-identity-regexp 'https://github.com/qwexvf/aegis-cli/.github/workflows/release.yml.*' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  --certificate checksums.txt.pem \
+  --signature   checksums.txt.sig \
+  checksums.txt
+sha256sum -c checksums.txt
+gh attestation verify aegis_<version>_linux_amd64.tar.gz --owner qwexvf
+```
+
+### From source
+
+Requires Go 1.26 or later.
+
+```sh
+go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
+aegis version
+```
+
+Or build a specific flavour with `make`:
+
+| Target               | Output                  | Build tags             | When to use                                  |
+|----------------------|-------------------------|------------------------|----------------------------------------------|
+| `make build-release` | `bin/aegis`             | (none)                 | full feature set, all PMs, AST scanner       |
+| `make build-core`    | `bin/aegis-core`        | `nojsscan`             | size-constrained / no-cgo CI runners         |
+| `make build-npm`     | `bin/aegis-npm`         | `nobun,noyarn,nopnpm`  | per-team binary registering only `aegis npm` |
+| `make build-bun`     | `bin/aegis-bun`         | `nonpm,noyarn,nopnpm`  | only `aegis bun`                             |
+| `make build-yarn`    | `bin/aegis-yarn`        | `nonpm,nobun,nopnpm`   | only `aegis yarn`                            |
+| `make build-pnpm`    | `bin/aegis-pnpm`        | `nonpm,nobun,noyarn`   | only `aegis pnpm`                            |
+
+The per-PM tags do not shrink the binary (Go DCE already strips unused
+PM wrappers); they exist for **distribution clarity** — a binary named
+`aegis-npm` whose `--help` only mentions `aegis npm` is easier to roll
+out to a team that only uses one package manager.
 
 ## Quickstart
 
-```bash
-make build
-./demo.sh
-```
+```sh
+export AEGIS_API_URL=https://api.aegis.example.com   # or self-hosted Aegis
 
-`./demo.sh` spins up a local mock API and runs scenarios across all three
-package managers (bun/yarn scenarios are skipped if the binaries aren't
-installed):
-
-```
-==> Demo 1: Allow (lodash@4.17.21)
-[aegis] checking lodash@4.17.21 ...
-[aegis] lodash@4.17.21 ✓ allowed
-
-==> Demo 2: Block (@bitwarden/cli@2026.4.0 — April 2026 incident)
-[aegis] ✗ @bitwarden/cli@2026.4.0 — BLOCKED (CRITICAL)
-[aegis]   depsandbox-net-egress — Postinstall connects to attacker-controlled host
-[aegis]   depsandbox-credential-read — Reads /proc/self/environ during install
-[aegis]   override: AEGIS_OVERRIDE=allow aegis npm install @bitwarden/cli@2026.4.0
-
-==> Demo 6: bun block (@bitwarden/cli@2026.4.0)
-[aegis] ✗ @bitwarden/cli@2026.4.0 — BLOCKED (CRITICAL)
-[aegis]   override: AEGIS_OVERRIDE=allow aegis bun add @bitwarden/cli@2026.4.0
-
-==> Demo 8: yarn block (global add ua-parser-js@0.7.29)
-[aegis] ✗ ua-parser-js@0.7.29 — BLOCKED (CRITICAL)
-[aegis]   override: AEGIS_OVERRIDE=allow aegis yarn add ua-parser-js@0.7.29
-```
-
-## Supported package managers
-
-| PM     | Install commands recognized                | Registry          |
-|--------|--------------------------------------------|-------------------|
-| `npm`  | `install`, `i`, `add`, plus typo aliases   | registry.npmjs.org |
-| `bun`  | `install`, `i`, `add`, `a`                 | registry.npmjs.org |
-| `yarn` | `add`, `install`, `global add`             | registry.npmjs.org |
-
-Non-registry forms (local paths, tarballs, git URLs, `link:`,
-`workspace:`, yarn-berry `portal:` / `patch:` / `exec:` / `npm:`) are
-detected and passed through without an API check.
-
-## Manual usage
-
-```bash
-export AEGIS_API_URL=http://localhost:4000
-
-# Transparent passthrough — same as the underlying PM for non-install commands
-aegis npm --version
-aegis bun run dev
-aegis yarn test
-
-# Install detection + version resolution + API check
+# Drop-in PM wrapper — install commands are checked, everything else passes through
 aegis npm install lodash@4.17.21
-aegis bun add lodash@^4.17.0           # range → resolved via npm registry
-aegis yarn add lodash@latest            # tag → resolved via npm registry
-aegis yarn global add create-react-app
+aegis bun add lodash@^4.17.0
+aegis yarn add lodash@latest
+aegis pnpm add lodash
 
-# Non-registry installs pass through unchanged
+# Local-path / git / link installs pass through without an API call
 aegis npm install ./vendor/foo
 aegis bun add link:../sibling
-aegis yarn add portal:./local-pkg
 
-# Override a block (audited)
-AEGIS_OVERRIDE=allow aegis npm install some-blocked@1.2.3
-AEGIS_OVERRIDE=allow aegis bun add some-blocked@1.2.3
+# Snapshot the resolved dependency tree + run the AST risk engine
+aegis snapshot save           # writes ./aegis.lock
+aegis snapshot enrich         # fills risk + capability scores
+aegis snapshot show           # human-readable view
+aegis snapshot diff <ref>     # vs another snapshot or git ref
+
+# Run as a CI gate (non-zero exit on findings ≥ threshold)
+aegis ci --fail-on=block
 ```
 
-## Status
+See `aegis --help` for the full command tree, or
+[`docs/cli-architecture.md`](docs/cli-architecture.md) for the
+architectural tour.
 
-- ✅ Multi-PM support (npm + bun + yarn + pnpm share one gate)
-- ✅ Argv parsing (scoped, ranges, tags, non-registry, yarn `global add`)
-- ✅ Exact-version fast path (skips registry round-trip)
-- ✅ Range/tag resolution via the npm registry
-- ✅ Aegis API client (`POST /api/v1/supply-chain/check`)
-- ✅ Allow / Warn / Block / Prompt UX with ANSI colors + NO_COLOR/TTY-aware
-- ✅ Local decision cache (`~/.aegis/cache/decisions.json`)
-- ✅ Interactive prompt for `prompt` decisions via `/dev/tty`
-- ✅ Auto-block in CI (`CI=true`, `GITHUB_ACTIONS`, etc.) — never blocks waiting for input
-- ✅ Audit log (`~/.aegis/audit.jsonl`)
-- ✅ `AEGIS_OVERRIDE=allow` requires `AEGIS_OVERRIDE_REASON` (untraceable overrides refused)
-- ✅ Real historical incident database (9 documented attacks, 17 version entries)
-- ⬜ Audit log shipping to API (offline → batch sync)
-- ⬜ pip / cargo / go (Tier A)
-- ⬜ `aegis guard <command>` for universal lockfile-diff coverage (Tier B)
-- ⬜ Active depsandbox runs (behavioral diff differentiator — Phase 3)
+## What `aegis` actually checks
+
+For each install request:
+
+1. **Argv parsing** — recognise the install subcommand, extract package
+   specs, separate non-registry installs (paths, git URLs, `link:`,
+   `workspace:`, yarn-berry `portal:`/`patch:`/`exec:`/`npm:`).
+2. **Version resolution** — exact versions take a fast path; ranges and
+   tags resolve via the npm registry.
+3. **Decision check** — POST to the Aegis API
+   `POST /api/v1/supply-chain/check`; cached locally in
+   `~/.aegis/cache/decisions.json`.
+4. **AST risk engine** (snapshot mode) — fetch the tarball, walk the
+   tree-sitter AST for the source files, surface capabilities
+   (`net-egress`, `child-process`, `dynamic-eval`, `credential-read`,
+   `fs-write-outside-project`, `postinstall-script`, …).
+5. **Allowlist** — suppress known-legitimate matches by
+   `(ecosystem, name, version-range, capability)` tuple. Layered
+   builtin → user → project; specific names beat wildcards.
+6. **Verdict** — `allow` / `warn` / `prompt` / `block`. In CI, prompts
+   auto-block (no waiting for stdin). Overrides require an explicit
+   `AEGIS_OVERRIDE_REASON` and are written to the audit log.
 
 ## Verified incidents
 
-The gate ships with a curated database of real, citable npm
+The decision API ships with a curated database of real, citable npm
 supply-chain incidents. None are fabricated:
 
 | Package          | Version(s)                          | Date    | Advisory                | What happened |
 |------------------|-------------------------------------|---------|-------------------------|---------------|
 | `event-stream`   | `3.3.6`                             | 2018-11 | GHSA-jvqj-7wpc-9bqp     | Maintainer handover → malicious dep `flatmap-stream` targeting Bitcoin wallets |
-| `flatmap-stream` | `0.1.1`                             | 2018-11 | GHSA-jvqj-7wpc-9bqp     | The actual encrypted payload of the event-stream incident |
+| `flatmap-stream` | `0.1.1`                             | 2018-11 | GHSA-jvqj-7wpc-9bqp     | Encrypted payload of the event-stream incident |
 | `eslint-scope`   | `3.7.2`                             | 2018-07 | GHSA-vhwc-9wr2-w98p     | Account takeover → npm credential exfiltration |
-| `ua-parser-js`   | `0.7.29`, `0.8.0`, `1.0.0`          | 2021-10 | GHSA-pjwm-rvh2-c87w     | Cryptominer + password stealer (preinstall.sh / preinstall.bat) |
-| `coa`            | `2.0.3`, `2.0.4`, `2.1.1`, `2.1.3`  | 2021-11 | GHSA-73qr-pfmq-6rp8     | Same actor / payload as ua-parser-js |
+| `ua-parser-js`   | `0.7.29`, `0.8.0`, `1.0.0`          | 2021-10 | GHSA-pjwm-rvh2-c87w     | Cryptominer + password stealer |
+| `coa`            | `2.0.3`–`2.1.3`                     | 2021-11 | GHSA-73qr-pfmq-6rp8     | Same actor / payload as ua-parser-js |
 | `rc`             | `1.2.9`, `1.3.9`, `2.3.9`           | 2021-11 | GHSA-g2q5-5433-rhrf     | Same actor; rc had ~14M weekly downloads at compromise |
-| `node-ipc`       | `10.1.1`, `10.1.2`                  | 2022-03 | GHSA-97m3-w2cp-4xx6     | "peacenotwar" — geo-IP-targeted file wipe on RU/BY hosts |
+| `node-ipc`       | `10.1.1`, `10.1.2`                  | 2022-03 | GHSA-97m3-w2cp-4xx6     | "peacenotwar" — geo-IP-targeted file wipe |
 | `colors`         | `1.4.44-liberty-2`                  | 2022-01 | (author self-sabotage)  | Infinite loop printing "LIBERTY LIBERTY LIBERTY" |
-| `faker`          | `6.6.6`                             | 2022-01 | (author self-sabotage)  | Package wiped + "What really happened with Aaron Swartz?" message |
-
-`./scripts/demo-history.sh` walks through every entry against a live API.
-
-## End-to-end verification
-
-The gate is designed to run against the live Gleam API
-(`POST /api/v1/supply-chain/check`). To smoke-test end-to-end:
-
-```bash
-# 1. Boot the API
-docker compose up api -d
-docker compose logs api    # confirm "Listening on 4000"
-
-# 2. Build CLI + run unit tests
-cd services/cli && make build && go test ./...
-
-# 3. Smoke a known-clean install
-./bin/aegis npm install lodash@4.17.21        # → ✓ allowed
-./bin/aegis npm install lodash@4.17.21        # → ✓ allowed (cached) — no API call
-
-# 4. Hit each ecosystem with a real incident
-./bin/aegis npm install ua-parser-js@0.7.29    # block, GHSA-pjwm-rvh2-c87w
-./bin/aegis bun add event-stream@3.3.6         # block, GHSA-jvqj-7wpc-9bqp
-./bin/aegis yarn add colors@1.4.44-liberty-2   # block, author sabotage
-./bin/aegis pnpm add node-ipc@10.1.2           # block, peacenotwar
-
-# 5. Cache + audit + override
-./bin/aegis cache list
-./bin/aegis audit tail -n 10
-AEGIS_OVERRIDE=allow ./bin/aegis npm install ua-parser-js@0.7.29
-                                               # → blocked: AEGIS_OVERRIDE_REASON required
-AEGIS_OVERRIDE=allow AEGIS_OVERRIDE_REASON='hotfix-123' \
-    ./bin/aegis npm install ua-parser-js@0.7.29
-                                               # → proceeds, audit entry with reason
-
-# 6. CI mode (prompt → block)
-CI=true ./bin/aegis npm install <prompt-package>
-
-# 7. Or run the full canned demo
-./scripts/demo-history.sh
-```
+| `faker`          | `6.6.6`                             | 2022-01 | (author self-sabotage)  | Package wiped + protest message |
 
 ## Allowlist
 
-The risk engine flags well-known patterns (e.g. `child_process.exec`,
-`Function()` constructor, `process.env` reads of credential names).
-Some legitimate packages legitimately use these — lodash compiles
-templates via `Function()`, webpack spawns build workers, axios is an
-HTTP client. The allowlist suppresses specific
-`(ecosystem, name, version-range, capability)` tuples while keeping
-them visible in output for transparency.
-
-### Sources (in match order)
-
-1. **Builtin** — ~20 hand-curated rules shipped with the binary.
-   Verified at compile time. Not user-editable.
-2. **User** — `~/.aegis/allowlist.yaml` (override with `AEGIS_CONFIG_DIR`).
-   Personal, **gitignored**.
-3. **Project** — `<project>/.aegis-allowlist.yaml`. Team-shared,
-   **commit this**.
-
-For a single lookup, **specific-name rules win over wildcards**, then
-input order decides ties within each bucket.
-
-### CLI
-
-```bash
-aegis allowlist list                      # all rules from all sources
-aegis allowlist list --source=builtin     # filter by source
-
-aegis allowlist add <name> \
-    --capability=<cap> \
-    [--version=<semver-range>] \
-    --reason="<required>" \
-    [--scope=user|project]                # default: user
-
-aegis allowlist remove <name> \
-    [--capability=<cap>] \
-    [--scope=user|project]
-
-aegis allowlist test npm/lodash@4.17.21   # which rules apply?
-aegis allowlist verify                    # parse user + project files
+```sh
+aegis allowlist list                              # all rules from all sources
+aegis allowlist add lodash \
+    --capability=dynamic-eval \
+    --version='^4' \
+    --reason='_.template uses Function() to compile templates'
+aegis allowlist test npm/lodash@4.17.21           # which rules apply?
+aegis allowlist verify                            # parse user + project files
 ```
 
-`--reason` is required on `add`. The allowlist is an audit trail; an
-empty reason is worse than no rule.
+`--reason` is required on `add` — the allowlist is an audit trail, and
+an empty reason is worse than no rule.
 
-### YAML schema
+YAML schema:
 
 ```yaml
 version: 1
 rules:
   - ecosystem: npm           # required: npm | pypi | crates | go | maven
-    name: lodash             # required, "*" allowed for any
+    name: lodash             # required, "*" for any
     version: "^4"            # optional (default "*")
     capability: dynamic-eval # optional (default "*")
     reason: "lodash._.template uses Function() to compile templates"
 ```
 
-Strict decoding: unknown keys, unknown capabilities, and unsupported
-schema versions all error out. Run `aegis allowlist verify` to check.
+Sources, in match order:
 
-### Recommended .gitignore
+1. **Builtin** — ~20 hand-curated rules shipped with the binary.
+2. **User** — `~/.aegis/allowlist.yaml` (override with `AEGIS_CONFIG_DIR`).
+   Personal, gitignored.
+3. **Project** — `<project>/.aegis-allowlist.yaml`. Team-shared, commit this.
 
-Add to your project's `.gitignore`:
-```
-# user-level (personal) — never commit
-.aegis/
-~/.aegis/
-
-# DO commit project-level
-# .aegis-allowlist.yaml   <-- keep this in git
-```
+See [`docs/cli-risk-engine.md`](docs/cli-risk-engine.md) for capability
+weights and suppression semantics.
 
 ## CI integration
 
 Drop-in templates live under [`examples/ci/`](examples/ci/):
 
-| File | For |
-|---|---|
-| [`github-actions.yml`](examples/ci/github-actions.yml) | GitHub Actions |
-| [`gitlab-ci.yml`](examples/ci/gitlab-ci.yml) | GitLab CI |
-| [`generic.sh`](examples/ci/generic.sh) | Buildkite / Jenkins / cron / any shell |
+| File                                                     | For                                |
+|----------------------------------------------------------|------------------------------------|
+| [`github-actions.yml`](examples/ci/github-actions.yml)   | GitHub Actions                     |
+| [`gitlab-ci.yml`](examples/ci/gitlab-ci.yml)             | GitLab CI                          |
+| [`generic.sh`](examples/ci/generic.sh)                   | Buildkite / Jenkins / cron / shell |
 
-Each template caches `~/.aegis/cache` between runs so warm runs only re-scan deps that actually changed. The default threshold is `block`; tighten with `--fail-on=prompt` or `--fail-on=review`.
+Each template caches `~/.aegis/cache` between runs so warm runs only
+re-scan changed deps. Default threshold is `block`; tighten with
+`--fail-on=prompt` or `--fail-on=review`.
 
 Exit codes from `aegis ci`:
 
-| Code | Meaning |
-|---|---|
-| `0` | passed (no findings ≥ `--fail-on`) |
-| `1` | failed (one or more findings ≥ `--fail-on`) |
-| `2` | couldn't reach a verdict (config / network error) |
+| Code | Meaning                                              |
+|------|------------------------------------------------------|
+| `0`  | passed (no findings ≥ `--fail-on`)                   |
+| `1`  | failed (one or more findings ≥ `--fail-on`)          |
+| `2`  | couldn't reach a verdict (config / network error)    |
 
-JSON output (`aegis ci --json`) is stable for tooling — see [`examples/ci/README.md`](examples/ci/README.md) for the schema.
+JSON output (`aegis ci --json`) is stable for tooling — see
+[`examples/ci/README.md`](examples/ci/README.md).
 
-## Layout
+## Architecture
 
-The CLI is organised in clean-architecture layers:
+Clean architecture with strict dependency direction:
+`cmd → interface → usecase → domain ← infra`.
 
 ```
-services/cli/
-├── cmd/aegis/main.go            # composition root (wires concrete adapters)
-├── internal/
-│   ├── domain/                  # entities + Policy.Evaluate + AllowSet (pure)
-│   ├── usecase/                 # InstallGate + Snapshot + port interfaces
-│   ├── interface/cli/           # Cobra command tree
-│   ├── presenter/cli/           # Outcome → ANSI text
-│   └── infra/
-│       ├── aegisapi/            # DecisionChecker over HTTP
-│       ├── allowlist/           # YAML loader (user + project)
-│       ├── astscan/             # tree-sitter dispatcher + per-language
-│       ├── diskcache/           # DecisionCache + FingerprintCache
-│       ├── envprobe/            # CI markers + AEGIS_OVERRIDE/_REASON
-│       ├── jspkgsource/         # npm tarball fetcher
-│       ├── locksnap/            # lockfile parsers + zstd snapshot store
-│       ├── ndjsonaudit/         # AuditWriter (NDJSON)
-│       ├── npmregistry/         # VersionResolver
-│       ├── pmwrapper/           # PackageManager (npm/bun/yarn/pnpm)
-│       └── ttyprompt/           # Confirmer (/dev/tty)
-├── Makefile
-└── README.md
+cmd/aegis/                   composition root (only place that constructs adapters)
+internal/
+├── domain/                  pure: PackageSpec, Decision, Capability, RiskScore, AllowSet
+├── usecase/                 InstallGate, Snapshot, CI, Recheck — orchestration + ports
+├── interface/cli/           Cobra command tree
+├── presenter/cli/           ANSI rendering (NO_COLOR + TTY aware)
+└── infra/                   adapters: pmwrapper, npmregistry, jspkgsource,
+                             locksnap, astscan, allowlist, diskcache, ndjsonaudit,
+                             aegisapi, ttyprompt, envprobe, hookfs, …
 ```
 
-Domain has no dependencies. Usecase depends on domain + ports.
-Adapters depend on domain only. The composition root is the single
-place that constructs concrete implementations.
+Adding a package manager is one file under `internal/infra/pmwrapper/`
+implementing the `PackageManager` interface plus a registration in
+`cmd/aegis/pm_<name>.go` guarded by `//go:build !no<name>`. Adding an
+ecosystem (pip / cargo / gem) is five files — see
+[`docs/cli-architecture.md`](docs/cli-architecture.md) for the full
+walkthrough.
 
-Adding a new package manager is one file under `infra/pmwrapper/`
-implementing the `PackageManager` interface (`Name`, `Ecosystem`,
-`InstallVerb`, `IsInstallCommand`, `ParseInstallArgs`, `Exec`).
+## Documentation
 
-## Roadmap
+| Doc                                                       | What it covers                                                       |
+|-----------------------------------------------------------|----------------------------------------------------------------------|
+| This README                                               | User-facing: install, command summary, common flows                  |
+| [docs/cli-architecture.md](docs/cli-architecture.md)      | Layer map, dependency direction, "adding a PM / ecosystem" recipe    |
+| [docs/cli-risk-engine.md](docs/cli-risk-engine.md)        | Capability enum, RiskScore / DriftScore weights, allowlist mechanics |
+| [docs/cli-snapshot.md](docs/cli-snapshot.md)              | `aegis.lock` format, diff semantics, lockfile parsers, tarball cache |
+| [docs/aegis-cli-demo-plan.md](docs/aegis-cli-demo-plan.md)| Historical 12-step build plan + post-demo inventory                  |
 
-See `docs/aegis-cli-demo-plan.md` for the 12-step plan.
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, commit style,
+and the architecture rules. Before opening a non-trivial PR please open
+an issue first to align on the approach.
+
+## Security
+
+Vulnerability reports go through [GitHub Private Vulnerability Reporting](https://github.com/qwexvf/aegis-cli/security/advisories/new) — never via public issues. See [SECURITY.md](SECURITY.md) for the full policy, scope, and response SLA.
+
+## License
+
+[Apache-2.0](LICENSE).
