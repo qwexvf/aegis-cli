@@ -33,6 +33,33 @@ const (
 	WeightHookContent    = 30 // hook script content sha256 changed (drift only)
 	WeightCapabilityAdd  = 15 // each new capability since previous version
 	WeightMaintainerSwap = 30 // (later) maintainer change between versions
+
+	// --- v0.4 heuristic weights (high signal — these patterns are
+	// strongly correlated with malware in observed npm incidents) ---
+
+	// WeightInstallHookSuspicious is intentionally large enough that
+	// any package combining a postinstall hook with `curl|sh` or
+	// `node -e` style content crosses the Block threshold on its own.
+	// Every documented ua-parser-js / event-stream / coa attack used
+	// exactly this pattern.
+	WeightInstallHookSuspicious = 70
+	// WeightObfuscatedPayload — eval(atob(...)) and friends. Benign
+	// code essentially never does this; when it does, the user wants
+	// to be told.
+	WeightObfuscatedPayload = 60
+	// WeightSuspiciousURL — Pastebin / Discord webhook / ngrok /
+	// Telegram bot / IDN homoglyph in source. These are the C2
+	// callback patterns. Hard to imagine a legitimate use.
+	WeightSuspiciousURL = 50
+	// WeightBinaryDropper — npm package containing .exe/.dll/.so/etc.
+	// Some legitimate packages do this (esbuild ships native bins),
+	// so the weight is moderate — pair with allowlist for known
+	// good toolchains.
+	WeightBinaryDropper = 35
+	// WeightTyposquatRisk — name within edit distance 2 of a top-1000
+	// package. Confidence is heuristic, not certain; the weight pushes
+	// to Prompt rather than Block by itself.
+	WeightTyposquatRisk = 40
 )
 
 // credentialEnvVarRoots is the list of env var name prefixes that, when
@@ -125,6 +152,26 @@ func RiskScore(fp *Fingerprint) RiskAssessment {
 			}
 		case CapInstallHookExec:
 			// Already accounted for via Hooks above; skip to avoid double-counting.
+		case CapInstallHookSuspicious:
+			add(c.String(),
+				"install hook downloads-and-executes (curl|sh / wget|bash / node -e / base64|sh)",
+				WeightInstallHookSuspicious)
+		case CapObfuscatedPayload:
+			add(c.String(),
+				"decodes-then-executes (eval(atob(...)) / Function(decode(...)))",
+				WeightObfuscatedPayload)
+		case CapSuspiciousURL:
+			add(c.String(),
+				"string literal points at a paste / chat-relay / tunnel host",
+				WeightSuspiciousURL)
+		case CapBinaryDropper:
+			add(c.String(),
+				"package ships an executable file (.exe/.dll/.so/.scpt) — unusual for a JS dep",
+				WeightBinaryDropper)
+		case CapTyposquatRisk:
+			add(c.String(),
+				"name is within edit distance 2 of a top-1000 package",
+				WeightTyposquatRisk)
 		}
 	}
 
