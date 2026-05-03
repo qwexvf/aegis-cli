@@ -1,0 +1,312 @@
+# GoReleaser config for the aegis CLI.
+#
+# Build flavours mirror the Makefile. Two pieces of context to know:
+#
+#   1. The default `aegis` binary embeds the JS AST scanner (tree-sitter
+#      via cgo). Cross-compiling cgo from a single linux/amd64 runner is
+#      painful, so the matrix uses native-arch runners later. For now the
+#      release pipeline uses zig as the cross-compiler so a single host
+#      can produce all binaries — see the `env` block on each build.
+#
+#   2. The `nojsscan` build tag drops the AST scanner; that build does
+#      not need cgo. The per-PM binaries DO still embed the scanner
+#      (per Makefile docstring: "AST scanner stays on; combine with
+#      nojsscan for gate-only"), so they need cgo too.
+#
+# Version, commit, and build-date are stamped into the cli package via
+# ldflags. The `version` cobra command (root.go) reads them.
+
+version: 2
+
+project_name: aegis-cli
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  # ---------------------------------------------------------------- #
+  # Default release: full feature set, all PMs, JS AST scanner on.   #
+  # ---------------------------------------------------------------- #
+  - id: aegis
+    binary: aegis
+    main: ./cmd/aegis
+    env:
+      - CGO_ENABLED=1
+      # zig cc handles cross-cgo for darwin & windows targets without
+      # needing a per-OS toolchain on the runner.
+      - >-
+        {{- if eq .Os "darwin" -}}
+        CC=zig cc -target {{ .Arch }}-macos-none
+        {{- else if eq .Os "windows" -}}
+        CC=zig cc -target {{ .Arch }}-windows-gnu
+        {{- end -}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    # zig-cgo for windows/arm64 currently has gaps in the tree-sitter
+    # toolchain. Skip until a user actually asks for it; aegis-core
+    # covers windows/arm64 with no cgo.
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+
+  # ---------------------------------------------------------------- #
+  # Core: same binary minus the JS AST scanner. No cgo.              #
+  # ---------------------------------------------------------------- #
+  - id: aegis-core
+    binary: aegis-core
+    main: ./cmd/aegis
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -tags=nojsscan
+    ldflags:
+      - -s -w
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+
+  # ---------------------------------------------------------------- #
+  # Per-PM single-tool binaries. Same shape as the Makefile targets. #
+  # AST scanner stays compiled in (per Makefile commentary), so cgo. #
+  # ---------------------------------------------------------------- #
+  - id: aegis-npm
+    binary: aegis-npm
+    main: ./cmd/aegis
+    env:
+      - CGO_ENABLED=1
+      - >-
+        {{- if eq .Os "darwin" -}}
+        CC=zig cc -target {{ .Arch }}-macos-none
+        {{- else if eq .Os "windows" -}}
+        CC=zig cc -target {{ .Arch }}-windows-gnu
+        {{- end -}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -tags=nobun,noyarn,nopnpm
+    ldflags:
+      - -s -w
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+
+  - id: aegis-bun
+    binary: aegis-bun
+    main: ./cmd/aegis
+    env:
+      - CGO_ENABLED=1
+      - >-
+        {{- if eq .Os "darwin" -}}
+        CC=zig cc -target {{ .Arch }}-macos-none
+        {{- else if eq .Os "windows" -}}
+        CC=zig cc -target {{ .Arch }}-windows-gnu
+        {{- end -}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -tags=nonpm,noyarn,nopnpm
+    ldflags:
+      - -s -w
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+
+  - id: aegis-yarn
+    binary: aegis-yarn
+    main: ./cmd/aegis
+    env:
+      - CGO_ENABLED=1
+      - >-
+        {{- if eq .Os "darwin" -}}
+        CC=zig cc -target {{ .Arch }}-macos-none
+        {{- else if eq .Os "windows" -}}
+        CC=zig cc -target {{ .Arch }}-windows-gnu
+        {{- end -}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -tags=nonpm,nobun,nopnpm
+    ldflags:
+      - -s -w
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+
+  - id: aegis-pnpm
+    binary: aegis-pnpm
+    main: ./cmd/aegis
+    env:
+      - CGO_ENABLED=1
+      - >-
+        {{- if eq .Os "darwin" -}}
+        CC=zig cc -target {{ .Arch }}-macos-none
+        {{- else if eq .Os "windows" -}}
+        CC=zig cc -target {{ .Arch }}-windows-gnu
+        {{- end -}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -tags=nonpm,nobun,noyarn
+    ldflags:
+      - -s -w
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
+      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+
+archives:
+  - id: default
+    ids: [aegis]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+
+  - id: core
+    ids: [aegis-core]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      aegis-core_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+
+  - id: per-pm
+    ids: [aegis-npm, aegis-bun, aegis-yarn, aegis-pnpm]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-dev'
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^Merge'
+      - '^chore\(deps\):'
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Documentation
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Other
+      order: 999
+
+# Cosign keyless OIDC signing. Signs the checksums file — verifying
+# checksums.txt then verifying any artifact against it transitively
+# verifies the artifact. Avoids signing every tarball individually.
+signs:
+  - id: cosign-checksums
+    cmd: cosign
+    args:
+      - sign-blob
+      - '--yes'
+      - '--output-signature=${signature}'
+      - '--output-certificate=${certificate}'
+      - '${artifact}'
+    artifacts: checksum
+    output: true
+    certificate: '${artifact}.pem'
+    signature: '${artifact}.sig'
+
+brews:
+  - name: aegis
+    ids: [default]
+    repository:
+      owner: qwexvf
+      name: homebrew-tap
+      token: '{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}'
+    homepage: https://github.com/qwexvf/aegis-cli
+    description: 'Supply-chain security CLI for npm/bun/yarn/pnpm — install gate, lockfile snapshots, AST risk scoring'
+    license: Apache-2.0
+    install: |
+      bin.install "aegis"
+    test: |
+      system "#{bin}/aegis", "version"
+
+scoops:
+  - name: aegis
+    ids: [default]
+    repository:
+      owner: qwexvf
+      name: scoop-bucket
+      token: '{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}'
+    homepage: https://github.com/qwexvf/aegis-cli
+    description: 'Supply-chain security CLI for npm/bun/yarn/pnpm'
+    license: Apache-2.0
+
+release:
+  github:
+    owner: qwexvf
+    name: aegis-cli
+  draft: false
+  prerelease: auto
+  header: |
+    # aegis-cli {{ .Tag }}
+
+    Supply-chain security CLI for npm / bun / yarn / pnpm.
+
+    ## Verifying releases
+
+    All artifacts are checksummed (`checksums.txt`) and the checksums file
+    is signed via cosign keyless OIDC. To verify:
+
+    ```sh
+    cosign verify-blob \
+      --certificate-identity-regexp 'https://github.com/qwexvf/aegis-cli/.github/workflows/release.yml.*' \
+      --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+      --certificate checksums.txt.pem \
+      --signature   checksums.txt.sig \
+      checksums.txt
+    sha256sum -c checksums.txt
+    ```
+
+    SLSA build provenance is attached to every artifact and can be
+    verified with `gh attestation verify <file> --owner qwexvf`.
+  footer: |
+    Apache-2.0 — see [LICENSE](https://github.com/qwexvf/aegis-cli/blob/main/LICENSE).
