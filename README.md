@@ -4,18 +4,35 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/qwexvf/aegis-cli)](https://goreportcard.com/report/github.com/qwexvf/aegis-cli)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Supply-chain install gate for the JavaScript ecosystem. Wraps **npm**,
-**bun**, **yarn**, and **pnpm**: every install request is checked against
-the [Aegis](https://github.com/qwexvf/aegis) decision API before the
-underlying PM is allowed to run. Tracks project dependency snapshots
-and runs an AST-based risk engine over package source.
+Supply-chain analysis CLI for the JavaScript ecosystem. Parses
+**npm / bun / yarn / pnpm** lockfiles, walks the AST of every package
+source via tree-sitter, and surfaces capabilities (`net-egress`,
+`child-process`, `dynamic-eval`, `credential-read`,
+`fs-write-outside-project`, `postinstall-script`, …) — all locally,
+no network call required.
 
 ```text
-$ aegis npm install ua-parser-js@0.7.29
-[aegis] ✗ ua-parser-js@0.7.29 — BLOCKED (CRITICAL)
-[aegis]   GHSA-pjwm-rvh2-c87w — Cryptominer + password stealer (preinstall.sh)
-[aegis]   override: AEGIS_OVERRIDE=allow AEGIS_OVERRIDE_REASON=<reason> aegis npm install ua-parser-js@0.7.29
+$ aegis snapshot save
+[aegis] wrote ./aegis.lock — 312 deps from package-lock.json
+
+$ aegis snapshot enrich
+[aegis] AST-scanning 312 deps... (8 workers)
+[aegis] done — 18 risky capabilities surfaced across 7 packages
+
+$ aegis ci --fail-on=block
+[aegis] ✗ ua-parser-js@0.7.29 — postinstall-script, net-egress, credential-read
+[aegis]   override: AEGIS_OVERRIDE=allow AEGIS_OVERRIDE_REASON=<reason>
+exit 1
 ```
+
+> **Status (v0.1.x):** local features (snapshot, AST analysis, CI
+> gate, allowlist) work today with no backend. The **install gate**
+> (`aegis npm install …`), **`recheck`**, **`snapshot submit`**, and
+> **`allowlist sync`** require an Aegis API server — that platform
+> ([qwexvf/aegis](https://github.com/qwexvf/aegis)) is not yet
+> public, so those commands depend on a self-hosted backend that
+> doesn't exist for most users yet. Skip to [Local-only quickstart](#local-only-quickstart)
+> for what works out of the box.
 
 ## Install
 
@@ -63,62 +80,85 @@ PM wrappers); they exist for **distribution clarity** — a binary named
 `aegis-npm` whose `--help` only mentions `aegis npm` is easier to roll
 out to a team that only uses one package manager.
 
-## Quickstart
+## Local-only quickstart
+
+These work today, with no backend, no API key, no cloud account.
+Drop the binary on your `$PATH` and run them in any Node project.
 
 ```sh
-export AEGIS_API_URL=https://api.aegis.example.com   # or self-hosted Aegis
+# Snapshot the resolved dependency tree from the lockfile
+aegis snapshot save                    # writes ./aegis.lock
 
-# Drop-in PM wrapper — install commands are checked, everything else passes through
-aegis npm install lodash@4.17.21
-aegis bun add lodash@^4.17.0
-aegis yarn add lodash@latest
-aegis pnpm add lodash
+# Walk every package's AST via tree-sitter; populate capability fingerprints
+aegis snapshot enrich                  # fills capability scores
 
-# Local-path / git / link installs pass through without an API call
-aegis npm install ./vendor/foo
-aegis bun add link:../sibling
+# Render
+aegis snapshot show                    # direct deps
+aegis snapshot show --all              # + transitive
+aegis snapshot diff baseline.lock      # detect drift between snapshots
 
-# Snapshot the resolved dependency tree + run the AST risk engine
-aegis snapshot save           # writes ./aegis.lock
-aegis snapshot enrich         # fills risk + capability scores
-aegis snapshot show           # human-readable view
-aegis snapshot diff <ref>     # vs another snapshot or git ref
-
-# Run as a CI gate (non-zero exit on findings ≥ threshold)
+# Run as a CI gate — exits non-zero on findings ≥ threshold
 aegis ci --fail-on=block
+
+# Ad-hoc analyze any registry-resolvable package without committing to a project
+aegis analyze lodash@4.17.21
+aegis analyze --evidence ua-parser-js@0.7.29
+
+# Manage local capability suppressions
+aegis allowlist add lodash --capability=dynamic-eval --version='^4' \
+    --reason='_.template uses Function() to compile templates'
+aegis allowlist list
 ```
 
 See `aegis --help` for the full command tree, or
 [`docs/cli-architecture.md`](docs/cli-architecture.md) for the
 architectural tour.
 
-## What `aegis` actually checks
+## API-dependent commands (require Aegis API)
 
-For each install request:
+The following commands need a reachable Aegis API server (set via
+`AEGIS_API_URL`). The hosted Aegis Cloud is not yet available, and
+the [qwexvf/aegis](https://github.com/qwexvf/aegis) platform repo is
+private at this time, so these commands are documented but
+**effectively unusable for most users in v0.1.x**:
 
-1. **Argv parsing** — recognise the install subcommand, extract package
-   specs, separate non-registry installs (paths, git URLs, `link:`,
-   `workspace:`, yarn-berry `portal:`/`patch:`/`exec:`/`npm:`).
-2. **Version resolution** — exact versions take a fast path; ranges and
-   tags resolve via the npm registry.
-3. **Decision check** — POST to the Aegis API
-   `POST /api/v1/supply-chain/check`; cached locally in
-   `~/.aegis/cache/decisions.json`.
-4. **AST risk engine** (snapshot mode) — fetch the tarball, walk the
-   tree-sitter AST for the source files, surface capabilities
-   (`net-egress`, `child-process`, `dynamic-eval`, `credential-read`,
-   `fs-write-outside-project`, `postinstall-script`, …).
-5. **Allowlist** — suppress known-legitimate matches by
+| Command | Why it needs the API |
+|---|---|
+| `aegis npm install …` (and bun / yarn / pnpm) | POSTs to `/check` to look up the package against the incident database before letting the install proceed |
+| `aegis recheck` | Same `/check` endpoint, applied across the whole lockfile |
+| `aegis snapshot submit` | POSTs analyzed packages to `/reports` for the community signal pool |
+| `aegis allowlist sync` | GETs the org-level allowlist overlay from `/allowlist` |
+
+When the platform becomes available, these commands will work without
+any binary change — they're already wired and shipped, just waiting on
+a deployed server.
+
+## What `aegis` does locally (no API needed)
+
+For `aegis snapshot enrich` / `aegis ci` / `aegis analyze`:
+
+1. **Lockfile parse** — read `package-lock.json` / `bun.lock` /
+   `pnpm-lock.yaml` / `yarn.lock` and resolve every dep to a concrete
+   `(name, version)`.
+2. **Tarball fetch** — pull each package from the npm registry
+   (configurable via `AEGIS_NPM_REGISTRY`); cache extracted source
+   under `~/.aegis/cache/sources/`.
+3. **AST risk engine** — walk the tree-sitter AST, surface
+   capabilities (`net-egress`, `child-process`, `dynamic-eval`,
+   `credential-read`, `fs-write-outside-project`,
+   `postinstall-script`, …).
+4. **Allowlist** — suppress known-legitimate matches by
    `(ecosystem, name, version-range, capability)` tuple. Layered
    builtin → user → project; specific names beat wildcards.
-6. **Verdict** — `allow` / `warn` / `prompt` / `block`. In CI, prompts
-   auto-block (no waiting for stdin). Overrides require an explicit
-   `AEGIS_OVERRIDE_REASON` and are written to the audit log.
+5. **Verdict** — score against thresholds, exit non-zero on findings ≥
+   `--fail-on`. Overrides require an explicit `AEGIS_OVERRIDE_REASON`
+   and are written to the audit log.
 
-## Verified incidents
+## Verified incidents (Aegis API-only, requires backend)
 
-The decision API ships with a curated database of real, citable npm
-supply-chain incidents. None are fabricated:
+When a deployed Aegis API is reachable, `aegis npm install …` and
+`aegis recheck` consult a curated database of real, citable
+supply-chain incidents:
 
 | Package          | Version(s)                          | Date    | Advisory                | What happened |
 |------------------|-------------------------------------|---------|-------------------------|---------------|

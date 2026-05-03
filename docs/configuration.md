@@ -4,22 +4,28 @@ How `aegis` is configured: environment variables, config file paths, and CI auto
 
 `aegis` has **no global config file**. Everything is either an environment variable, a per-project file in the repo, or a flag on the subcommand. This is deliberate — it makes the binary safe to drop into shared CI runners without surprise state.
 
+> 🌐 marks variables that are **only meaningful when an Aegis API
+> server is reachable**. The hosted Aegis Cloud is not yet available
+> in `v0.1.x`, so these can be left unset for local-only use.
+
 ## Environment variables
 
 ### Core
 
 | Variable | Default | Used by | Purpose |
 |---|---|---|---|
-| `AEGIS_API_URL` | `http://localhost:4000` | Every API call | Base URL of the Aegis decision API. Set this to your hosted or self-hosted Aegis instance. |
-| `AEGIS_API_KEY` | (empty) | `snapshot submit`, `allowlist sync` | Submit/sync API key. Generate one server-side via `/admin?tab=api-keys` in the Aegis web UI. The CLI sends it as `X-API-Key`. Empty key → 401 from the API; the CLI surfaces the error verbatim. |
+| 🌐 `AEGIS_API_URL` | `http://localhost:4000` | API-dependent commands (install gate, recheck, submit, sync) | Base URL of the Aegis decision API. Set this to your self-hosted Aegis instance once the platform is deployed. Local-only commands (snapshot, analyze, ci, allowlist, audit, hook, doctor) ignore it. |
+| 🌐 `AEGIS_API_KEY` | (empty) | `snapshot submit`, `allowlist sync` | Submit/sync API key. Generate one server-side via `/admin?tab=api-keys` in the Aegis web UI. The CLI sends it as `X-API-Key`. Empty key → 401 from the API; the CLI surfaces the error verbatim. |
 | `AEGIS_VERBOSE` | (unset) | Every subcommand | When set to anything non-empty, flips slog level to DEBUG. Equivalent to passing `--verbose` / `-v` on every command. |
 
-### Override (audited bypass)
+### Override (audited bypass) 🌐
+
+These two only fire when the install gate is producing a block, which itself requires the Aegis API. Local-only commands don't use them.
 
 | Variable | Default | Used by | Purpose |
 |---|---|---|---|
-| `AEGIS_OVERRIDE` | (unset) | Install gate | Set to `allow` to bypass a block decision. **Requires** `AEGIS_OVERRIDE_REASON` — the gate refuses to honor an override without a reason. |
-| `AEGIS_OVERRIDE_REASON` | (unset) | Install gate | Free-text reason written verbatim to the audit log. Empty / whitespace-only is refused. Examples: `'hotfix-1234'`, `'incident-response: rolling back to known-good'`, `'CVE patch verified upstream'`. |
+| 🌐 `AEGIS_OVERRIDE` | (unset) | Install gate | Set to `allow` to bypass a block decision. **Requires** `AEGIS_OVERRIDE_REASON` — the gate refuses to honor an override without a reason. |
+| 🌐 `AEGIS_OVERRIDE_REASON` | (unset) | Install gate | Free-text reason written verbatim to the audit log. Empty / whitespace-only is refused. Examples: `'hotfix-1234'`, `'incident-response: rolling back to known-good'`, `'CVE patch verified upstream'`. |
 
 The override is the operator's "I know what I'm doing" escape hatch. Both env vars **must be set** in the same invocation; the audit entry records the reason permanently. There is no global "always override" mode by design.
 
