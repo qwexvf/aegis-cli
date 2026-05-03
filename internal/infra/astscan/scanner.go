@@ -227,6 +227,10 @@ func isAnalyzable(eco domain.Ecosystem, path string) bool {
 			strings.HasSuffix(path, ".ts") ||
 			strings.HasSuffix(path, ".tsx") ||
 			strings.HasSuffix(path, ".jsx")
+	case domain.EcoPyPI:
+		// Python source. .pyx (Cython) and .pyi (stubs) skipped —
+		// Cython has its own grammar; stubs are type-only.
+		return strings.HasSuffix(path, ".py")
 	}
 	return false
 }

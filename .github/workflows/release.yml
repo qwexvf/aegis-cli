@@ -33,10 +33,27 @@ jobs:
 
       - uses: anchore/sbom-action/download-syft@v0
 
+      # Extract this tag's section from CHANGELOG.md so the GitHub
+      # release body shows the curated notes instead of the
+      # auto-generated commit list. Falls back to auto-generated
+      # notes when the section is missing.
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if bash scripts/extract-changelog.sh "$tag" > /tmp/release-notes.md && [[ -s /tmp/release-notes.md ]]; then
+            echo "Found CHANGELOG.md section for $tag ($(wc -l < /tmp/release-notes.md) lines)"
+            echo "notes_arg=--release-notes=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
+          else
+            echo "No CHANGELOG.md section for $tag — falling back to auto-generated notes"
+            echo "notes_arg=" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: latest
-          args: release --clean
+          args: release --clean ${{ steps.notes.outputs.notes_arg }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -34,7 +34,7 @@ func (sp *SnapshotPresenter) OnSnapshotShow(s domain.Snapshot, directOnly bool) 
 	fmt.Fprintln(sp.p.w, header)
 
 	tw := tabwriter.NewWriter(sp.p.w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "  ECO\tNAME\tVERSION\tDIRECT")
+	fmt.Fprintln(tw, "  ECO\tNAME\tVERSION\tDIRECT\tCAPS\tADVISORIES")
 	shown := 0
 	for _, d := range s.Deps {
 		if directOnly && !d.Direct {
@@ -44,7 +44,15 @@ func (sp *SnapshotPresenter) OnSnapshotShow(s domain.Snapshot, directOnly bool) 
 		if d.Direct {
 			flag = "✓"
 		}
-		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", d.Ecosystem, d.Name, d.Version, flag)
+		// CAPS: terse summary of the AST/heuristic capability
+		// count. Empty when the dep wasn't enriched yet.
+		caps := snapshotCapsCell(d)
+		// ADVISORIES: count + max severity. Empty when none /
+		// not yet looked up. Color-coded by max severity so
+		// the eye finds the high-severity rows first.
+		advs := snapshotAdvisoryCell(sp.p, d)
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\n",
+			d.Ecosystem, d.Name, d.Version, flag, caps, advs)
 		shown++
 	}
 	tw.Flush()
@@ -52,6 +60,45 @@ func (sp *SnapshotPresenter) OnSnapshotShow(s domain.Snapshot, directOnly bool) 
 		fmt.Fprintf(sp.p.w, "%s[aegis]%s shown %d direct deps (--all to include transitives)\n",
 			sp.p.dim(), sp.p.reset(), shown)
 	}
+}
+
+// snapshotCapsCell renders the CAPS column for one dep. Empty when
+// the dep hasn't been enriched yet (Fingerprint == nil). When
+// enriched but with no findings, returns "—" so the user can
+// distinguish "scanned, clean" from "not yet scanned".
+func snapshotCapsCell(d domain.Dependency) string {
+	if d.Fingerprint == nil || !d.Fingerprint.Analyzed {
+		return ""
+	}
+	n := len(d.Fingerprint.Capabilities)
+	if n == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+// snapshotAdvisoryCell renders the ADVISORIES column for one dep:
+// the count + the max severity, colored by severity. Empty when
+// the dep's Advisories slice is nil (not looked up yet); "—" when
+// looked up with no matches; "Nx (severity)" otherwise.
+func snapshotAdvisoryCell(p *Presenter, d domain.Dependency) string {
+	if d.Advisories == nil {
+		return ""
+	}
+	if len(d.Advisories) == 0 {
+		return "—"
+	}
+	max := domain.MaxSeverity(d.Advisories)
+	var color string
+	switch max {
+	case domain.SevCritical, domain.SevHigh:
+		color = p.red()
+	case domain.SevMedium:
+		color = p.yellow()
+	default:
+		color = p.dim()
+	}
+	return fmt.Sprintf("%s%d (%s)%s", color, len(d.Advisories), max, p.reset())
 }
 
 // OnSnapshotDiff renders Added/Removed/Upgraded entries with their
