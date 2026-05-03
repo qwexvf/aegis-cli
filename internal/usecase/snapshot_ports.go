@@ -73,6 +73,13 @@ type PackageSourceFetcher interface {
 // so implementations either pool parsers or create one per call.
 type ASTAnalyzer interface {
 	Analyze(ctx context.Context, eco domain.Ecosystem, src PackageSource) (domain.Fingerprint, error)
+	// HasScanner reports whether a language scanner has been
+	// registered for the ecosystem. Snapshot.Enrich consults this
+	// before calling Analyze on each dep so non-supported
+	// ecosystems (Python / Go / Rust / Ruby in v0.3.0) skip the
+	// AST scan gracefully without failing the whole batch — OSV
+	// vulnerability lookup still applies to them.
+	HasScanner(eco domain.Ecosystem) bool
 }
 
 // EvidenceAnalyzer runs the same scan as ASTAnalyzer but additionally

@@ -4,28 +4,45 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/qwexvf/aegis-cli)](https://goreportcard.com/report/github.com/qwexvf/aegis-cli)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Supply-chain analysis CLI for the JavaScript ecosystem. Parses
-**npm / bun / yarn / pnpm** lockfiles, walks the AST of every package
-source via tree-sitter, **and cross-references every dep against the
-public [OSV.dev](https://osv.dev) vulnerability database** —
+Multi-language supply-chain analysis CLI. Parses lockfiles for
+**JavaScript** (npm / bun / yarn / pnpm), **Python** (pip / poetry /
+pipenv / uv), **Rust** (Cargo), **Go**, and **Ruby** (Bundler),
+cross-references every dep against the public [OSV.dev](https://osv.dev)
+vulnerability database, and (for JavaScript) walks the AST of every
+package source via tree-sitter to surface suspicious capabilities —
 all without any backend or account.
 
 What you get:
 
-- **Known CVEs / GHSAs per dep** — every package version is checked
-  against OSV (which aggregates GitHub Security Advisories,
-  ecosystem-native feeds, and CVE) on each `aegis snapshot enrich`.
-  No API key, no signup, no rate limit gymnastics.
-- **Suspicious capability detection** — tree-sitter AST scanner
-  surfaces `net-egress`, `child-process`, `dynamic-eval`,
-  `credential-read`, `fs-write-outside-project`,
+- **Known CVEs / GHSAs per dep across every supported ecosystem** —
+  every package version is checked against OSV (which aggregates
+  GitHub Security Advisories, ecosystem-native feeds, and CVE) on
+  each `aegis snapshot enrich`. No API key, no signup, no rate
+  limit gymnastics. Single batch HTTP call covers JS + Python +
+  Rust + Go + Ruby in one shot.
+- **Suspicious capability detection (JavaScript)** — tree-sitter
+  AST scanner surfaces `net-egress`, `child-process`,
+  `dynamic-eval`, `credential-read`, `fs-write-outside-project`,
   `postinstall-script`, … even on packages with no published
   advisory yet (the typosquats and just-published malware nobody
-  has reported).
+  has reported). Other-language AST scanners are planned; until
+  they ship, OSV is the entire signal for those ecosystems.
 - **Verdict folding** — Critical / High CVEs become `block`,
   Medium becomes `prompt`, Low becomes `review` — combined with
   AST findings via `max(astVerdict, advisoryVerdict)` so one risky
   signal isn't masked by the other.
+
+Supported ecosystems and lockfiles:
+
+| Language    | Lockfiles                                                       | OSV | AST scan |
+|-------------|------------------------------------------------------------------|-----|----------|
+| JavaScript  | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` | ✅  | ✅       |
+| Python      | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `requirements.txt`   | ✅  | planned  |
+| Rust        | `Cargo.lock`                                                    | ✅  | planned  |
+| Go          | `go.sum`                                                        | ✅  | planned  |
+| Ruby        | `Gemfile.lock`                                                  | ✅  | planned  |
+
+Polyglot monorepos work out of the box — `aegis snapshot save` finds every recognised lockfile in the project root and merges the deps into a single `aegis.lock` keyed by ecosystem.
 
 ```text
 $ aegis snapshot save
