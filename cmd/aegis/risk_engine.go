@@ -14,6 +14,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan/jsscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/astscan/pyscan"
 	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis-cli/internal/infra/jspkgsource"
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
@@ -31,6 +32,15 @@ func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiC
 	}
 	dispatcher := astscan.NewDispatcher()
 	dispatcher.Register(domain.EcoNpm, jsScanner)
+
+	// Python scanner — best-effort. If queries fail to compile we
+	// just don't get Python AST findings; OSV vulnerability lookup
+	// and source-pattern heuristics still run for PyPI deps.
+	if pyScanner, err := pyscan.New(); err == nil {
+		dispatcher.Register(domain.EcoPyPI, pyScanner)
+	} else {
+		fmt.Fprintln(os.Stderr, "aegis: Python scanner init failed:", err)
+	}
 
 	fetcher := jspkgsource.New(jspkgsource.WithHTTPClient(httpClient))
 	snapshot.WithRiskEngine(
