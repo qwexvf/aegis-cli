@@ -20,13 +20,14 @@ What you get:
   each `aegis snapshot enrich`. No API key, no signup, no rate
   limit gymnastics. Single batch HTTP call covers JS + Python +
   Rust + Go + Ruby in one shot.
-- **Suspicious capability detection (JavaScript)** — tree-sitter
-  AST scanner surfaces `net-egress`, `child-process`,
+- **Suspicious capability detection (JavaScript + Python)** —
+  tree-sitter AST scanner surfaces `net-egress`, `child-process`,
   `dynamic-eval`, `credential-read`, `fs-write-outside-project`,
   `postinstall-script`, … even on packages with no published
   advisory yet (the typosquats and just-published malware nobody
-  has reported). Other-language AST scanners are planned; until
-  they ship, OSV is the entire signal for those ecosystems.
+  has reported). Rust / Go / Ruby AST scanners are planned; until
+  they ship, OSV + the behavior heuristics are the signal for
+  those ecosystems.
 - **Behavior-based malware heuristics (zero-day window)** — seven
   detectors fire on patterns nobody has indexed yet:
     1. **Suspicious install hooks** — postinstall script does
@@ -66,13 +67,13 @@ What you get:
 
 Supported ecosystems and lockfiles:
 
-| Language    | Lockfiles                                                       | OSV | AST scan |
-|-------------|------------------------------------------------------------------|-----|----------|
-| JavaScript  | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` | ✅  | ✅       |
-| Python      | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `requirements.txt`   | ✅  | planned  |
-| Rust        | `Cargo.lock`                                                    | ✅  | planned  |
-| Go          | `go.sum`                                                        | ✅  | planned  |
-| Ruby        | `Gemfile.lock`                                                  | ✅  | planned  |
+| Language    | Lockfiles                                                       | OSV | AST scan | Heuristics |
+|-------------|------------------------------------------------------------------|-----|----------|------------|
+| JavaScript  | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` | ✅  | ✅ jsscan  | ✅ all 7    |
+| Python      | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `requirements.txt`   | ✅  | ✅ pyscan  | ✅ source-pattern + typosquat |
+| Rust        | `Cargo.lock`                                                    | ✅  | planned  | ✅ source-pattern + typosquat |
+| Go          | `go.sum`                                                        | ✅  | planned  | ✅ source-pattern + typosquat |
+| Ruby        | `Gemfile.lock`                                                  | ✅  | planned  | ✅ source-pattern + typosquat |
 
 Polyglot monorepos work out of the box — `aegis snapshot save` finds every recognised lockfile in the project root and merges the deps into a single `aegis.lock` keyed by ecosystem.
 
