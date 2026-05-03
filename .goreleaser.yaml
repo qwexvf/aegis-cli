@@ -33,22 +33,21 @@ builds:
     main: ./cmd/aegis
     env:
       - CGO_ENABLED=1
-      # zig cc handles cross-cgo for darwin & windows targets without
-      # needing a per-OS toolchain on the runner.
+      # Cross-arch cgo from a linux/amd64 GitHub runner: zig is the C
+      # compiler. On native amd64 we let go pick the system gcc.
       - >-
-        {{- if eq .Os "darwin" -}}
-        CC=zig cc -target {{ .Arch }}-macos-none
-        {{- else if eq .Os "windows" -}}
-        CC=zig cc -target {{ .Arch }}-windows-gnu
+        {{- if eq .Arch "arm64" -}}
+        CC=zig cc -target aarch64-linux-gnu
         {{- end -}}
-    goos: [linux, darwin, windows]
+    # v0.1.0 ships cgo binaries for linux/amd64 + linux/arm64 only.
+    # Reliable cross-cgo to darwin and windows from a linux runner
+    # needs the macOS SDK / mingw headers in addition to zig; ship
+    # aegis-core (no cgo) for those platforms today, and add native
+    # macos-latest / windows-latest jobs in a future minor release if
+    # demand justifies the CI cost. Mac users who want the AST scanner
+    # can `go install github.com/qwexvf/aegis-cli/cmd/aegis@latest`.
+    goos: [linux]
     goarch: [amd64, arm64]
-    # zig-cgo for windows/arm64 currently has gaps in the tree-sitter
-    # toolchain. Skip until a user actually asks for it; aegis-core
-    # covers windows/arm64 with no cgo.
-    ignore:
-      - goos: windows
-        goarch: arm64
     ldflags:
       - -s -w
       - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
@@ -83,16 +82,11 @@ builds:
     env:
       - CGO_ENABLED=1
       - >-
-        {{- if eq .Os "darwin" -}}
-        CC=zig cc -target {{ .Arch }}-macos-none
-        {{- else if eq .Os "windows" -}}
-        CC=zig cc -target {{ .Arch }}-windows-gnu
+        {{- if eq .Arch "arm64" -}}
+        CC=zig cc -target aarch64-linux-gnu
         {{- end -}}
-    goos: [linux, darwin, windows]
+    goos: [linux]
     goarch: [amd64, arm64]
-    ignore:
-      - goos: windows
-        goarch: arm64
     flags:
       - -tags=nobun,noyarn,nopnpm
     ldflags:
@@ -107,16 +101,11 @@ builds:
     env:
       - CGO_ENABLED=1
       - >-
-        {{- if eq .Os "darwin" -}}
-        CC=zig cc -target {{ .Arch }}-macos-none
-        {{- else if eq .Os "windows" -}}
-        CC=zig cc -target {{ .Arch }}-windows-gnu
+        {{- if eq .Arch "arm64" -}}
+        CC=zig cc -target aarch64-linux-gnu
         {{- end -}}
-    goos: [linux, darwin, windows]
+    goos: [linux]
     goarch: [amd64, arm64]
-    ignore:
-      - goos: windows
-        goarch: arm64
     flags:
       - -tags=nonpm,noyarn,nopnpm
     ldflags:
@@ -131,16 +120,11 @@ builds:
     env:
       - CGO_ENABLED=1
       - >-
-        {{- if eq .Os "darwin" -}}
-        CC=zig cc -target {{ .Arch }}-macos-none
-        {{- else if eq .Os "windows" -}}
-        CC=zig cc -target {{ .Arch }}-windows-gnu
+        {{- if eq .Arch "arm64" -}}
+        CC=zig cc -target aarch64-linux-gnu
         {{- end -}}
-    goos: [linux, darwin, windows]
+    goos: [linux]
     goarch: [amd64, arm64]
-    ignore:
-      - goos: windows
-        goarch: arm64
     flags:
       - -tags=nonpm,nobun,nopnpm
     ldflags:
@@ -155,16 +139,11 @@ builds:
     env:
       - CGO_ENABLED=1
       - >-
-        {{- if eq .Os "darwin" -}}
-        CC=zig cc -target {{ .Arch }}-macos-none
-        {{- else if eq .Os "windows" -}}
-        CC=zig cc -target {{ .Arch }}-windows-gnu
+        {{- if eq .Arch "arm64" -}}
+        CC=zig cc -target aarch64-linux-gnu
         {{- end -}}
-    goos: [linux, darwin, windows]
+    goos: [linux]
     goarch: [amd64, arm64]
-    ignore:
-      - goos: windows
-        goarch: arm64
     flags:
       - -tags=nonpm,nobun,noyarn
     ldflags:
