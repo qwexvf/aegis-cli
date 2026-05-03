@@ -119,15 +119,20 @@ Reports added, removed, upgraded, downgraded — and **drift** (a version-change
 
 ## `aegis snapshot enrich`
 
-Run AST analysis over every dep in the saved snapshot. Fetches the tarball from the registry (cached under `~/.aegis/cache/sources/`), gunzips and untars in memory, walks the tree-sitter AST, and writes capability fingerprints back into `aegis.lock`.
+Run AST analysis + vulnerability lookup over every dep in the saved snapshot.
+
+Two phases per run:
+
+1. **AST scan** (parallel, 8-worker pool): fetch the tarball from the registry (cached under `~/.aegis/cache/sources/`), gunzip and untar in memory, walk the tree-sitter AST, and write capability fingerprints back into `aegis.lock`. Per-dep cost: 100ms–2s for first scan, ~5ms cache hit on subsequent runs.
+2. **Vulnerability lookup** (single batch POST to OSV.dev): every dep is cross-referenced against the public OSV vulnerability database. Returned advisories are stamped onto each `Dependency` and persisted in `aegis.lock`. Advisory bodies are cached under `~/.aegis/cache/advisories/`. **No Aegis API required, no auth needed.**
 
 ```sh
 aegis snapshot enrich
 ```
 
-Parallelism: 8 worker pool by default (`enrichWorkers` constant). Respects `AEGIS_CACHE_DIR`. Per-dep cost: 100ms–2s for first scan, ~5ms cache hit on subsequent runs.
+Disable the vulnerability lookup with `AEGIS_NO_VULN_LOOKUP=1` (AST scanning still runs). Point at a self-hosted OSV mirror with `AEGIS_OSV_URL=…`. Respects `AEGIS_CACHE_DIR`.
 
-**Live progress UI**: when stderr is a TTY and `AEGIS_NO_LIVE` is unset, shows a 8-slot live status panel. Disabled in CI and when piped.
+**Live progress UI**: when stderr is a TTY and `AEGIS_NO_LIVE` is unset, shows an 8-slot live status panel. Disabled in CI and when piped.
 
 ---
 
@@ -157,7 +162,14 @@ aegis snapshot verify
 
 ## `aegis ci`
 
-One-stop CI command. Runs the full audit pipeline: `snapshot save` → `snapshot enrich` (skippable with `--no-enrich`) → score → exit.
+One-stop CI command. Runs the full audit pipeline: `snapshot save` → `snapshot enrich` (AST scan + OSV vulnerability lookup; skippable with `--no-enrich`) → score → exit.
+
+Scoring folds two signals: AST capability findings (suspicious code patterns) and known vulnerabilities from OSV.dev (CVE / GHSA). Verdict is `max(astVerdict, advisoryVerdict)`:
+
+| Source | Critical / High | Medium | Low | Info |
+|---|---|---|---|---|
+| Advisory severity | `block` | `prompt` | `review` | `safe` |
+| AST score | (capability-weighted; see [docs/cli-risk-engine.md](cli-risk-engine.md)) | | | |
 
 ```sh
 aegis ci --fail-on=block                      # default

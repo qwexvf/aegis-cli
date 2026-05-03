@@ -32,7 +32,7 @@ If you're new to the CLI, start with [README → Local-only quickstart](../READM
 
 ## Snapshot + analyze a Node project
 
-Goal: get capability fingerprints for every dep in the project; spot risky packages locally without sending anything to a server.
+Goal: get capability fingerprints + known CVEs for every dep in the project; spot risky packages locally without sending anything to our servers.
 
 ```sh
 # 1. Install
@@ -43,16 +43,18 @@ go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
 cd my-node-project
 aegis snapshot save                  # writes ./aegis.lock
 
-# 3. AST-scan every dep (fetches tarballs from npm registry; cached)
-aegis snapshot enrich                # fills capability fingerprints
-aegis snapshot show --all            # render the full table
+# 3. AST-scan + vulnerability lookup
+aegis snapshot enrich                # AST capabilities + OSV.dev CVE/GHSA matching
+aegis snapshot show --all            # render the full table with advisories
 
 # 4. Investigate any single package
 aegis analyze ua-parser-js@0.7.29 --evidence
 aegis explain lodash@4.17.21
 ```
 
-The snapshot file (`aegis.lock`, zstd-compressed JSON) is safe to commit. Subsequent `enrich` runs only re-scan changed deps thanks to the persistent fingerprint cache (`~/.aegis/cache/fingerprints/`).
+`enrich` does two things in one shot: it walks each package's tree-sitter AST for suspicious capabilities AND batch-queries OSV.dev for known vulnerabilities. **OSV.dev is a free public service from Google — no auth, no signup, no backend on our side**. Disable the vuln lookup with `AEGIS_NO_VULN_LOOKUP=1` for fully-offline runs.
+
+The snapshot file (`aegis.lock`, zstd-compressed JSON) is safe to commit. Subsequent `enrich` runs reuse the persistent fingerprint cache (`~/.aegis/cache/fingerprints/`) and the per-advisory cache (`~/.aegis/cache/advisories/`).
 
 ---
 

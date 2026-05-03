@@ -168,6 +168,27 @@ type PublishedAtResolver interface {
 	PublishedAt(ctx context.Context, eco domain.Ecosystem, name, version string) (string, error)
 }
 
+// VulnLookup turns a list of (ecosystem, name, version) tuples into
+// a map of advisories per tuple, against a public vulnerability feed
+// (OSV.dev today; npm advisory bulk endpoint planned). Snapshot.Enrich
+// calls this once per run after the AST scan completes, so the result
+// can be persisted into the snapshot alongside the AST findings.
+//
+// Concurrency: implementations must tolerate being called once per
+// Enrich invocation (not per-dep); batching is a property of the
+// adapter, not the use case. Tuples with no known advisories are
+// represented by an empty []domain.Advisory in the result map (NOT a
+// missing key) so the use case can distinguish "looked up, none
+// found" from "not yet looked up".
+//
+// Implementation: infra/osv. Returns (nil, nil) when no queries are
+// supplied — calling code may pre-filter to deps that already have
+// fingerprints to avoid wasting an upstream call on bare lockfile
+// entries.
+type VulnLookup interface {
+	Lookup(ctx context.Context, queries []domain.AdvisoryQuery) (map[string][]domain.Advisory, error)
+}
+
 // FingerprintCache stores AST scan results keyed by
 // (ecosystem, name, version). Implementation: infra/diskcache.
 //
