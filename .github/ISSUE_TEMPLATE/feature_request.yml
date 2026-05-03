@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a new capability, command, or scanner
+title: "feat: "
+labels: [enhancement, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening: search existing issues and check the
+        [docs](docs/). For non-trivial features please discuss the
+        approach here before opening a PR.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation you hit. What were you trying to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        A new command? A new build flag? A change to an existing
+        behaviour? Sketch the user experience first; we'll handle the
+        implementation discussion separately.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, related tools that solve this differently, etc.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which area does this touch?
+      multiple: true
+      options:
+        - install gate (`aegis npm/bun/yarn/pnpm install …`)
+        - snapshot (`aegis snapshot save/show/diff/enrich`)
+        - CI mode (`aegis ci`)
+        - allowlist
+        - AST risk engine
+        - hooks (`aegis hook`)
+        - audit log
+        - new ecosystem (pip / cargo / gem / …)
+        - other (describe in the proposal)
