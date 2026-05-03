@@ -18,96 +18,49 @@ import (
 // poetry.lock — every match is parsed and the results are merged.
 // Each Dependency carries its own Ecosystem so OSV.dev queries map
 // to the right database.
+//
+// Within an ecosystem only the FIRST registered match is parsed (a
+// project typically commits to one tool: pnpm OR yarn OR npm). The
+// per-ecosystem priority is the registration order of the built-in
+// parsers; external Register() calls append to the end and therefore
+// have lower priority unless they replace an existing filename.
 type Scanner struct{}
 
-// NewScanner builds a Scanner.
+// NewScanner builds a Scanner that uses the package-level registry
+// (built-in parsers + anything Register'd at composition root).
 func NewScanner() *Scanner { return &Scanner{} }
 
-// scanRule pairs a lockfile name with the parser function that
-// understands it. Order matters within a single ecosystem (more
-// authoritative formats first) but is irrelevant between ecosystems
-// since they don't conflict.
-type scanRule struct {
-	filename string
-	parse    func(raw []byte, direct map[string]bool) ([]domain.Dependency, error)
-}
-
-// scanRules is the registry. Adding a new lockfile parser is one
-// entry here plus one new lockfile_<name>.go file. The ordering
-// within an ecosystem (e.g. pnpm > yarn > bun > npm) reflects which
-// is most authoritative when multiple JS lockfiles coexist.
-var scanRules = []scanRule{
-	// JavaScript — pnpm/yarn/bun are stricter than npm; if both
-	// are present, the stricter one wins.
-	{"pnpm-lock.yaml", parsePnpmLock},
-	{"yarn.lock", parseYarnLock},
-	{"bun.lock", parseBunLock},
-	{"package-lock.json", parseNpmLock},
-
-	// Python — Poetry/pipenv/uv lockfiles are authoritative; the
-	// plain requirements.txt is treated as a fallback because many
-	// projects ship one without committing to a single tool.
-	{"poetry.lock", parsePoetryLock},
-	{"uv.lock", parseUvLock},
-	{"Pipfile.lock", parsePipfileLock},
-	{"requirements.txt", parseRequirementsTxt},
-
-	// Rust
-	{"Cargo.lock", parseCargoLock},
-
-	// Go — go.sum is comprehensive (every module in the build graph)
-	{"go.sum", parseGoSum},
-
-	// Ruby
-	{"Gemfile.lock", parseGemfileLock},
-}
-
 // ScanProject implements usecase.LockfileScanner. Walks every
-// registered scanRule, parses every matching file, merges the
+// registered LockfileParser, parses every matching file, merges the
 // results. Returns nil (NOT an error) when no lockfile of any
 // recognised kind is found — the caller treats that as an empty
 // snapshot.
-//
-// Within a single ecosystem only the first hit is parsed (e.g. if
-// both pnpm-lock.yaml and package-lock.json exist, only the pnpm
-// one parses). Across ecosystems every hit is parsed.
 func (s *Scanner) ScanProject(projectDir string) ([]domain.Dependency, error) {
 	direct, _ := readDirectDeps(projectDir) // package.json — JS only; nil for non-JS
 
 	var all []domain.Dependency
-	seenJS := false
-	seenPython := false
-	for _, rule := range scanRules {
-		// Within JS: only first match (the priority order above
-		// already encodes which one wins). Same for Python — a
-		// project typically commits to one tool.
-		if seenJS && isJSLockfile(rule.filename) {
+	seenEco := make(map[domain.Ecosystem]bool, 4)
+	for _, p := range registry {
+		// Within an ecosystem only the first match is parsed.
+		// Across ecosystems every match is parsed.
+		if seenEco[p.Ecosystem()] {
 			continue
 		}
-		if seenPython && isPythonLockfile(rule.filename) {
-			continue
-		}
-
-		path := filepath.Join(projectDir, rule.filename)
+		path := filepath.Join(projectDir, p.Filename())
 		info, err := os.Stat(path)
 		if err != nil || info.IsDir() {
 			continue
 		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", rule.filename, err)
+			return nil, fmt.Errorf("read %s: %w", p.Filename(), err)
 		}
-		deps, err := rule.parse(raw, direct)
+		deps, err := p.Parse(raw, direct)
 		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", rule.filename, err)
+			return nil, fmt.Errorf("parse %s: %w", p.Filename(), err)
 		}
 		all = append(all, deps...)
-		if isJSLockfile(rule.filename) {
-			seenJS = true
-		}
-		if isPythonLockfile(rule.filename) {
-			seenPython = true
-		}
+		seenEco[p.Ecosystem()] = true
 	}
 
 	if len(all) == 0 {
@@ -115,26 +68,6 @@ func (s *Scanner) ScanProject(projectDir string) ([]domain.Dependency, error) {
 	}
 	sortDeps(all)
 	return all, nil
-}
-
-// isJSLockfile is the membership test for the JS-ecosystem mutex —
-// kept as a function (not a map) because the set is tiny and never
-// changes at runtime.
-func isJSLockfile(name string) bool {
-	switch name {
-	case "pnpm-lock.yaml", "yarn.lock", "bun.lock", "package-lock.json":
-		return true
-	}
-	return false
-}
-
-// isPythonLockfile is the same idea for Python tooling.
-func isPythonLockfile(name string) bool {
-	switch name {
-	case "poetry.lock", "uv.lock", "Pipfile.lock", "requirements.txt":
-		return true
-	}
-	return false
 }
 
 func sortDeps(deps []domain.Dependency) {
