@@ -3,9 +3,9 @@ module github.com/qwexvf/aegis-cli
 go 1.26
 
 require (
-	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/klauspost/compress v1.18.5
-	github.com/spf13/cobra v1.10.1
+	github.com/Masterminds/semver/v3 v3.5.0
+	github.com/klauspost/compress v1.18.6
+	github.com/spf13/cobra v1.10.2
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-javascript v0.25.0
 	gopkg.in/yaml.v3 v3.0.1
