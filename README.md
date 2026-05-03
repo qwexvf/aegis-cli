@@ -223,6 +223,9 @@ walkthrough.
 | Doc                                                       | What it covers                                                       |
 |-----------------------------------------------------------|----------------------------------------------------------------------|
 | This README                                               | User-facing: install, command summary, common flows                  |
+| [docs/commands.md](docs/commands.md)                      | Every subcommand: flags, examples, exit codes, output schemas        |
+| [docs/configuration.md](docs/configuration.md)            | Environment variables, file paths, allowlist YAML schema, CI markers |
+| [docs/cookbook.md](docs/cookbook.md)                      | End-to-end recipes: local gate, CI gate, drift mode, overrides, self-host |
 | [docs/cli-architecture.md](docs/cli-architecture.md)      | Layer map, dependency direction, "adding a PM / ecosystem" recipe    |
 | [docs/cli-risk-engine.md](docs/cli-risk-engine.md)        | Capability enum, RiskScore / DriftScore weights, allowlist mechanics |
 | [docs/cli-snapshot.md](docs/cli-snapshot.md)              | `aegis.lock` format, diff semantics, lockfile parsers, tarball cache |
