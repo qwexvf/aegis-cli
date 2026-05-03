@@ -90,7 +90,7 @@ cmd      → interface → usecase → domain
 ## Directory map (current main)
 
 ```
-services/cli/
+.
 ├── cmd/aegis/
 │   ├── main.go                    composition root
 │   ├── risk_engine.go             default build: AST scanner enabled

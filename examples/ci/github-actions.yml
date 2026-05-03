@@ -45,16 +45,25 @@ jobs:
       #         -o /usr/local/bin/aegis
       #       chmod +x /usr/local/bin/aegis
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.26'
-
-      - name: Build aegis
+      # Option A — pre-built binary from the latest release (recommended).
+      # Verifies cosign + SLSA. No Go toolchain needed.
+      - name: Install aegis
+        env:
+          AEGIS_VERSION: v0.1.0
         run: |
-          git clone --depth=1 https://github.com/qwexvf/aegis /tmp/aegis
-          cd /tmp/aegis/services/cli && make build
-          sudo mv bin/aegis /usr/local/bin/aegis
+          set -euo pipefail
+          curl -sSL "https://github.com/qwexvf/aegis-cli/releases/download/${AEGIS_VERSION}/aegis-cli_${AEGIS_VERSION#v}_linux_amd64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin aegis
+          aegis version
+
+      # Option B — `go install` from source (pin a tag). Use this if your
+      # runner already has Go and you don't want a network round-trip to
+      # the Releases page:
+      #
+      # - uses: actions/setup-go@v5
+      #   with:
+      #     go-version: '1.26'
+      # - run: go install github.com/qwexvf/aegis-cli/cmd/aegis@v0.1.0
 
       # ---------- 3. Cache the AST fingerprint cache ----------------
       # Warm cache means new PRs only re-scan deps that actually
