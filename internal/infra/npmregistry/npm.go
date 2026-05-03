@@ -13,6 +13,8 @@ import (
 	"sync"
 
 	"github.com/Masterminds/semver/v3"
+	"golang.org/x/sync/singleflight"
+
 	"github.com/qwexvf/aegis-cli/internal/infra/httpx"
 )
 
@@ -22,6 +24,13 @@ const DefaultRegistry = "https://registry.npmjs.org"
 // Client is an npm registry client with an in-memory metadata cache. The
 // cache lives for the lifetime of the process — appropriate for a single
 // `aegis npm install` invocation.
+//
+// Concurrent fetches for the same package are coalesced through
+// singleflight: the snapshot enrich worker pool can request the same
+// packument from N workers at once when sibling versions are processed
+// in parallel. Without coalescing each goroutine misses the cache and
+// fires its own HTTP call; with it the N–1 followers wait for the
+// in-flight request and reuse the result.
 type Client struct {
 	baseURL string
 	http    *http.Client
@@ -29,6 +38,8 @@ type Client struct {
 
 	mu    sync.Mutex
 	cache map[string]*packument
+
+	flight singleflight.Group
 }
 
 // Option configures a Client.
@@ -186,6 +197,31 @@ func (c *Client) Resolve(ctx context.Context, pkg, rangeOrTag string) (string, e
 }
 
 func (c *Client) fetchPackument(ctx context.Context, pkg string) (*packument, error) {
+	c.mu.Lock()
+	if p, ok := c.cache[pkg]; ok {
+		c.mu.Unlock()
+		return p, nil
+	}
+	c.mu.Unlock()
+
+	// Coalesce concurrent same-key misses. The first goroutine does
+	// the fetch; the rest wait inside Do() and receive the same
+	// pointer (or error) without re-issuing the HTTP request.
+	v, err, _ := c.flight.Do(pkg, func() (any, error) {
+		return c.fetchPackumentLocked(ctx, pkg)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*packument), nil
+}
+
+// fetchPackumentLocked is the unsynchronized fetch + cache-store body.
+// Only ever called from inside flight.Do for a given pkg key, so the
+// cache write is race-free without holding c.mu around the HTTP call.
+func (c *Client) fetchPackumentLocked(ctx context.Context, pkg string) (*packument, error) {
+	// Re-check the cache: a previous in-flight call may have completed
+	// between our first miss and the singleflight callback firing.
 	c.mu.Lock()
 	if p, ok := c.cache[pkg]; ok {
 		c.mu.Unlock()

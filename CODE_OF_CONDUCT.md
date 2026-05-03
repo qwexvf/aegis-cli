@@ -54,10 +54,14 @@ in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may
-be reported to the project maintainers at conduct@aegis.dev. All
-complaints will be reviewed and investigated promptly and fairly. All
-project maintainers are obligated to respect the privacy and security
-of the reporter of any incident.
+be reported to the project maintainers via GitHub's private
+vulnerability reporting form
+(https://github.com/qwexvf/aegis-cli/security/advisories/new) — it is
+the only private channel guaranteed to reach a maintainer. Use the
+"Other" template and prefix the title with `[CoC]`. All complaints
+will be reviewed and investigated promptly and fairly. All project
+maintainers are obligated to respect the privacy and security of the
+reporter of any incident.
 
 ## Enforcement Guidelines
 
