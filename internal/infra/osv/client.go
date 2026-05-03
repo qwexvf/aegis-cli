@@ -393,12 +393,23 @@ func firstLine(s string) string {
 }
 
 // osvEcosystem maps the domain Ecosystem enum onto OSV's string
-// vocabulary. OSV uses "npm" / "PyPI" / "crates.io" / etc. — case
-// matters per their docs.
+// vocabulary. OSV uses "npm" / "PyPI" / "crates.io" / "Go" /
+// "RubyGems" / "Maven" — exact spelling and case matters per the
+// OSV ecosystems documentation (osv.dev/docs/data-sources).
 func osvEcosystem(eco domain.Ecosystem) string {
 	switch eco {
 	case domain.EcoNpm:
 		return "npm"
+	case domain.EcoPyPI:
+		return "PyPI"
+	case domain.EcoCrates:
+		return "crates.io"
+	case domain.EcoGo:
+		return "Go"
+	case domain.EcoRubyGems:
+		return "RubyGems"
+	case domain.EcoMaven:
+		return "Maven"
 	}
 	return string(eco)
 }

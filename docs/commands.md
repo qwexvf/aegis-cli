@@ -72,13 +72,23 @@ Interactive prompts use `/dev/tty` (so they work even when stdin is piped). In C
 
 ## `aegis snapshot save`
 
-Scan the project's lockfile and write `aegis.lock` at the project root. No network calls — pure lockfile parse + serialise. Fast, deterministic, safe to commit.
+Scan the project's lockfile(s) and write `aegis.lock` at the project root. No network calls — pure lockfile parse + serialise. Fast, deterministic, safe to commit.
 
 ```sh
-aegis snapshot save                   # auto-detect lockfile
+aegis snapshot save                   # auto-detect lockfile(s)
 ```
 
-Detection priority (first match wins): `bun.lock` → `package-lock.json` → `pnpm-lock.yaml` → `yarn.lock`.
+Recognised lockfiles (every match in the project root is parsed; deps are merged in one snapshot keyed by ecosystem):
+
+| Ecosystem | Lockfiles (priority order within the ecosystem)                      |
+|-----------|----------------------------------------------------------------------|
+| npm       | `pnpm-lock.yaml` → `yarn.lock` → `bun.lock` → `package-lock.json`    |
+| PyPI      | `poetry.lock` → `uv.lock` → `Pipfile.lock` → `requirements.txt`      |
+| crates.io | `Cargo.lock`                                                         |
+| Go        | `go.sum`                                                             |
+| RubyGems  | `Gemfile.lock`                                                       |
+
+Within an ecosystem, only the first match is parsed (a project typically commits to one tool). Across ecosystems, every match is parsed — polyglot monorepos with both `package-lock.json` and `Cargo.lock` produce a single `aegis.lock` containing both.
 
 **Output**: writes `./aegis.lock` (zstd-compressed JSON). Idempotent — repeated saves with no lockfile change produce a byte-identical file.
 
