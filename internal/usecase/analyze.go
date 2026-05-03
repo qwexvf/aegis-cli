@@ -65,16 +65,16 @@ type AnalyzeRequest struct {
 // AnalyzeResult is the structured output of Analyze.Run. The CLI
 // presenter renders this; the JSON presenter marshals it directly.
 type AnalyzeResult struct {
-	Ecosystem      domain.Ecosystem
-	Name           string
-	Version        string
-	Fingerprint    domain.Fingerprint
-	Evidence       []domain.Evidence
-	Risk           domain.RiskAssessment
-	Verdict        domain.VerdictKind
-	TarballSha256  string
-	FilesAnalyzed  int
-	SourceBytes    int
+	Ecosystem     domain.Ecosystem
+	Name          string
+	Version       string
+	Fingerprint   domain.Fingerprint
+	Evidence      []domain.Evidence
+	Risk          domain.RiskAssessment
+	Verdict       domain.VerdictKind
+	TarballSha256 string
+	FilesAnalyzed int
+	SourceBytes   int
 }
 
 // AnalyzePresenter renders progress + the final verdict for `aegis

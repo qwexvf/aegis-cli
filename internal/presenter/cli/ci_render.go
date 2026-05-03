@@ -159,11 +159,11 @@ func (cp *CIPresenter) renderSummary(r usecase.CIResult) {
 // --- JSON shapes --------------------------------------------------------
 
 type ciJSONResult struct {
-	Project  string         `json:"project"`
-	FailOn   string         `json:"fail_on"`
-	Enriched bool           `json:"enriched"`
-	Passed   bool           `json:"passed"`
-	Summary  ciSummaryJSON  `json:"summary"`
+	Project  string          `json:"project"`
+	FailOn   string          `json:"fail_on"`
+	Enriched bool            `json:"enriched"`
+	Passed   bool            `json:"passed"`
+	Summary  ciSummaryJSON   `json:"summary"`
 	Findings []ciFindingJSON `json:"findings"`
 }
 

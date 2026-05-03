@@ -42,7 +42,7 @@ func NewStore() (*Store, error) {
 	}
 	dec, err := zstd.NewReader(nil)
 	if err != nil {
-		enc.Close()
+		_ = enc.Close()
 		return nil, err
 	}
 	return &Store{encoder: enc, decoder: dec}, nil

@@ -3,8 +3,8 @@ package cli
 import (
 	"fmt"
 	"strings"
-	"time"
 	"text/tabwriter"
+	"time"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 )

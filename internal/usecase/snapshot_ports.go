@@ -147,9 +147,9 @@ type ReportRiskFlag struct {
 // PackageReportAck is the API's response to a submit. URL points at
 // the web view of the aggregated report.
 type PackageReportAck struct {
-	ReportID       string `json:"report_id"`
-	URL            string `json:"url"`
-	ReporterCount  int    `json:"reporter_count"`
+	ReportID      string `json:"report_id"`
+	URL           string `json:"url"`
+	ReporterCount int    `json:"reporter_count"`
 }
 
 // ReporterIdentity provides a stable per-machine reporter ID. Today

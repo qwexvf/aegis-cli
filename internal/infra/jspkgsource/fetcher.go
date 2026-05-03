@@ -161,7 +161,7 @@ func (f *Fetcher) tarballURL(ctx context.Context, name, version string) (string,
 	if err != nil {
 		return "", fmt.Errorf("metadata GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("metadata %s: HTTP %d", url, resp.StatusCode)
 	}
@@ -199,7 +199,7 @@ func (f *Fetcher) downloadTarball(ctx context.Context, url string) ([]byte, erro
 	if err != nil {
 		return nil, fmt.Errorf("tarball GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tarball %s: HTTP %d", url, resp.StatusCode)
 	}
@@ -229,7 +229,7 @@ func extractTarball(raw []byte, maxFileBytes int64) (usecase.PackageSource, erro
 	if err != nil {
 		return usecase.PackageSource{}, fmt.Errorf("gunzip: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	out := usecase.PackageSource{Files: map[string][]byte{}}
 	tr := tar.NewReader(gz)

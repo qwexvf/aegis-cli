@@ -15,8 +15,8 @@ type ciCapturingPresenter struct {
 }
 
 func (p *ciCapturingPresenter) OnCIBegin(string, domain.VerdictKind, bool) { p.begins++ }
-func (p *ciCapturingPresenter) OnCIResult(r CIResult)                       { p.results = append(p.results, r) }
-func (p *ciCapturingPresenter) OnCIError(e error)                           { p.errors = append(p.errors, e) }
+func (p *ciCapturingPresenter) OnCIResult(r CIResult)                      { p.results = append(p.results, r) }
+func (p *ciCapturingPresenter) OnCIError(e error)                          { p.errors = append(p.errors, e) }
 
 func newSnapshotForCI(t *testing.T, deps []domain.Dependency) (*Snapshot, *snapshotCapturingPresenter, *fakeStore) {
 	t.Helper()
