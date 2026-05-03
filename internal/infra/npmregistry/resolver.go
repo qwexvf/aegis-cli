@@ -35,3 +35,26 @@ func (r *Resolver) PublishedAt(ctx context.Context, eco domain.Ecosystem, name, 
 	}
 	return r.c.PublishedAt(ctx, name, version)
 }
+
+// FetchMaintainerSignal implements usecase.MaintainerSignalFetcher.
+// Returns a zero-value signal (no error) for non-npm ecosystems so
+// the maintainer-hijack heuristic degrades gracefully on Python /
+// Rust / Go / Ruby deps until those ecosystems get their own
+// adapters. Lives on Resolver so the composition root has one
+// object satisfying VersionResolver, PublishedAtResolver, and
+// MaintainerSignalFetcher in one go.
+func (r *Resolver) FetchMaintainerSignal(ctx context.Context, eco domain.Ecosystem, name, version string) (domain.MaintainerSignal, error) {
+	if eco != domain.EcoNpm {
+		return domain.MaintainerSignal{}, nil
+	}
+	sig, err := r.c.FetchMaintainerSignal(ctx, name, version)
+	if err != nil {
+		return domain.MaintainerSignal{}, err
+	}
+	return domain.MaintainerSignal{
+		PublishedAt:         sig.PublishedAt,
+		WeeklyDownloads:     sig.WeeklyDownloads,
+		PreviousVersion:     sig.PreviousVersion,
+		PreviousPublishedAt: sig.PreviousPublishedAt,
+	}, nil
+}
