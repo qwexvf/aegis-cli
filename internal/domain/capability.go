@@ -66,6 +66,37 @@ const (
 	// AST-derived; included as a Capability so risk scoring treats it
 	// uniformly with the others.
 	CapInstallHookExec
+
+	// CapInstallHookSuspicious — install hook script body matches a
+	// known malware-distribution pattern: `curl|sh`, `wget -O- | bash`,
+	// `node -e`, base64 piped into shell, fetching from Pastebin etc.
+	// A standalone install hook (CapInstallHookExec) is unfortunate but
+	// often legitimate; this signal escalates that to "actively trying
+	// to download and execute remote payload at install time".
+	CapInstallHookSuspicious
+
+	// CapObfuscatedPayload — source contains code that decodes-then-
+	// executes (eval(atob(...)), Function(decodeURIComponent(...)),
+	// new Function with hex string, ...). Distinct from CapBase64Decode
+	// alone: this fires only when a decode result is fed into eval /
+	// Function / require.
+	CapObfuscatedPayload
+
+	// CapSuspiciousURL — string literal contains a URL that points at
+	// a known C2 / paste / chat-relay host (Pastebin, Discord webhook,
+	// Telegram bot, ngrok tunnel, transfer.sh, ...) OR an IDN
+	// homoglyph of a famous domain. Distinct from CapRawIPLiteral.
+	CapSuspiciousURL
+
+	// CapBinaryDropper — package ships an executable file
+	// (.exe / .dll / .so / .dylib / .scpt / .ps1 / .bat) of a kind
+	// that's not appropriate for an npm package's declared role.
+	CapBinaryDropper
+
+	// CapTyposquatRisk — package name is within Levenshtein distance
+	// 2 of a top-1000 npm package. Catches `electron-stable` /
+	// `lodahs` / `expresss` style attacks before any advisory is filed.
+	CapTyposquatRisk
 )
 
 // String returns the canonical name. Used for serialization, logs,
@@ -88,6 +119,16 @@ func (c Capability) String() string {
 		return "raw-ip-literal"
 	case CapInstallHookExec:
 		return "install-hook-exec"
+	case CapInstallHookSuspicious:
+		return "install-hook-suspicious"
+	case CapObfuscatedPayload:
+		return "obfuscated-payload"
+	case CapSuspiciousURL:
+		return "suspicious-url"
+	case CapBinaryDropper:
+		return "binary-dropper"
+	case CapTyposquatRisk:
+		return "typosquat-risk"
 	}
 	return "unknown"
 }

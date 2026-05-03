@@ -47,6 +47,20 @@ The override is the operator's "I know what I'm doing" escape hatch. Both env va
 | `AEGIS_OSV_URL` | `https://api.osv.dev` | Override the OSV endpoint. Use this to point at a self-hosted OSV mirror or a corporate proxy. The wire shape (`/v1/querybatch`, `/v1/vulns/{id}`) must match upstream. |
 | `AEGIS_NO_VULN_LOOKUP` | (unset) | When set to anything non-empty, disables the OSV lookup entirely. The snapshot enrich step still runs the AST scanner; only the advisory column is empty. Useful for fully-offline runs or air-gapped CI. |
 
+### Malware heuristics
+
+`aegis snapshot enrich` runs a chain of behavior-based malware detectors over every JS package source after the AST scanner finishes. The heuristics catch zero-day patterns OSV doesn't know about yet:
+
+- Suspicious install hooks (`curl|sh`, `node -e`, base64-piped-to-shell, Pastebin/Discord/ngrok hosts)
+- Obfuscated payload (`eval(atob(...))`, `Function(decodeURIComponent(...))`)
+- Suspicious URL targets (Pastebin, Discord webhooks, Telegram bots, IP grabbers, IDN homoglyphs)
+- Binary droppers (`.exe`/`.dll`/`.so`/`.scpt`/`.ps1` in an npm tarball)
+- Typosquat names (Levenshtein ≤ 2 from a top-1000 npm package)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AEGIS_NO_HEURISTICS` | (unset) | When set to anything non-empty, disables the malware heuristic pass. Useful when A/B testing heuristic vs AST-only scoring or to silence false positives during initial rollout. |
+
 ### Registry
 
 | Variable | Default | Purpose |

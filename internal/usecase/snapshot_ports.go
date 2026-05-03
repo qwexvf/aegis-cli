@@ -175,6 +175,23 @@ type PublishedAtResolver interface {
 	PublishedAt(ctx context.Context, eco domain.Ecosystem, name, version string) (string, error)
 }
 
+// MalwareHeuristics is the port for behaviour-based malware detectors
+// that augment the AST scanner's Capabilities with extra signals
+// derived from package metadata + file-set + name analysis (suspicious
+// install hooks, obfuscated payloads, sketchy URLs, binary droppers,
+// typosquat names). Implementation lives at infra/heuristics.
+//
+// nil is the safe default: Snapshot.Enrich skips the heuristic pass
+// and relies on AST + OSV alone.
+//
+// Concurrency: the implementation is called from within the AST
+// worker pool (one Run per dep) so it must be safe for concurrent
+// calls. The infra/heuristics adapter is pure-function and stateless,
+// so this is automatic.
+type MalwareHeuristics interface {
+	Run(eco domain.Ecosystem, name string, manifestRaw []byte, src PackageSource) []domain.Capability
+}
+
 // VulnLookup turns a list of (ecosystem, name, version) tuples into
 // a map of advisories per tuple, against a public vulnerability feed
 // (OSV.dev today; npm advisory bulk endpoint planned). Snapshot.Enrich
