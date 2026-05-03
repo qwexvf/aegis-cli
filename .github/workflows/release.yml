@@ -42,7 +42,7 @@ jobs:
 
       # SLSA build provenance over every release artifact + checksum file.
       # Verifiable later via `gh attestation verify <file> --owner qwexvf`.
-      - uses: actions/attest-build-provenance@v1
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             dist/*.tar.gz
