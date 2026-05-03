@@ -102,7 +102,7 @@ func (c *Client) PublishedAt(ctx context.Context, pkg, version string) (string, 
 	if err != nil {
 		return "", fmt.Errorf("registry fetch %s: %w", pkg, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return "", fmt.Errorf("package %q not found on registry", pkg)
@@ -212,7 +212,7 @@ func (c *Client) fetchPackument(ctx context.Context, pkg string) (*packument, er
 	if err != nil {
 		return nil, fmt.Errorf("registry fetch %s: %w", pkg, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("package %q not found on registry", pkg)

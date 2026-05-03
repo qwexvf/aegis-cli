@@ -332,10 +332,11 @@ func TestDiff_CarriesForwardFingerprintsForUnchangedVersions(t *testing.T) {
 	uc := NewSnapshot(store, scanner, pres, "test")
 
 	uc.Diff("/proj", "", "")
-	d := pres.diffs[0]
-	if len(d.Entries) != 0 {
-		// no version change → no diff entries; still ok
-	}
+	// First Diff: identical inputs → no version drift, no entries expected.
+	// The call is here to seed the saved snapshot so the second Diff below
+	// has something to compare against.
+	_ = pres.diffs[0]
+	var d DiffReport
 
 	// Now: change the version to 4.17.22 in live, verify drift uses the carried-forward saved fp.
 	scanner.deps = []domain.Dependency{

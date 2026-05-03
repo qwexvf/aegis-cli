@@ -3,18 +3,36 @@ version: "2"
 run:
   timeout: 5m
 
-# Linter scope is intentionally minimal at first run. The pre-extraction
-# codebase has ~50 errcheck issues, ~10 gofmt issues, and a handful of
-# staticcheck issues. These are valuable rules — they are disabled here
-# only so this CI-setup PR can land green. Re-enable in cleanup PRs:
-#
-#   1. gofmt + goimports — auto-fixable via `gofmt -w . && goimports -w .`
-#   2. staticcheck         — small handful, easy review
-#   3. errcheck            — biggest swath; mostly defer Close() and
-#                            test helper Write/MkdirAll calls
 linters:
   default: none
   enable:
+    - errcheck
     - govet
     - ineffassign
+    - staticcheck
     - unused
+  exclusions:
+    rules:
+      # Test setup code (os.Setenv, os.MkdirAll, json.Encode in mock
+      # servers, helper Write calls) treats these errors as test fatal
+      # via require.NoError or t.Fatal upstream. Excluding tests keeps
+      # production callsites strict without forcing every t.Helper to
+      # repeat boilerplate.
+      - path: _test\.go
+        linters: [errcheck]
+      # Presenter and command-tree code writes to the user terminal
+      # (os.Stdout/Stderr or a tabwriter buffer that flushes to the
+      # same). A write error there means the TTY closed mid-render —
+      # propagating it just renders a second error to the same broken
+      # FD. Strict errcheck on these files would force `_, _ =` on
+      # every Fprintln across hundreds of rendering callsites.
+      # Production logic in usecase/ and infra/ keeps errcheck strict.
+      - path: internal/presenter/cli/.*\.go
+        linters: [errcheck]
+      - path: internal/interface/cli/.*\.go
+        linters: [errcheck]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

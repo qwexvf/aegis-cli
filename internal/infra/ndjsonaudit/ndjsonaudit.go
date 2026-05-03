@@ -85,7 +85,7 @@ func (w *Writer) Write(o domain.Outcome) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	unlock, err := flock.LockExclusive(f)
 	if err != nil {
@@ -120,7 +120,7 @@ func (w *Writer) Tail(n int) ([]Entry, error) {
 		}
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var all []Entry
 	s := bufio.NewScanner(f)

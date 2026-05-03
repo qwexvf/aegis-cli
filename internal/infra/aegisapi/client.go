@@ -94,7 +94,7 @@ func (c *Client) Ping(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("ping %s: %w", c.baseURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode, nil
 }
 
@@ -122,7 +122,7 @@ func (c *Client) Check(ctx context.Context, eco domain.Ecosystem, pkg, version s
 	if err != nil {
 		return domain.Decision{}, fmt.Errorf("aegis api: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return domain.Decision{}, fmt.Errorf("aegis api: returned %d", resp.StatusCode)
@@ -180,7 +180,7 @@ func (c *Client) FetchAllowlist(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("aegis api: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("aegis api: 401 — check AEGIS_API_KEY")
@@ -220,7 +220,7 @@ func (c *Client) SubmitReport(ctx context.Context, r usecase.PackageReportReques
 	if err != nil {
 		return usecase.PackageReportAck{}, fmt.Errorf("aegis api: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return usecase.PackageReportAck{}, fmt.Errorf("aegis api: report submit returned %d", resp.StatusCode)
 	}

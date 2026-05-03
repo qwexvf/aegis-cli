@@ -204,19 +204,19 @@ type analyzeErrorJSON struct {
 }
 
 type analyzeJSON struct {
-	Ecosystem     string             `json:"ecosystem"`
-	Name          string             `json:"name"`
-	Version       string             `json:"version"`
-	Verdict       string             `json:"verdict"`
-	RiskScore     int                `json:"risk_score"`
-	Capabilities  []string           `json:"capabilities"`
-	Hooks         []analyzeHookJSON  `json:"hooks,omitempty"`
-	EnvReads      []string           `json:"env_reads,omitempty"`
-	RiskFlags     []analyzeFlagJSON  `json:"risk_flags,omitempty"`
-	Evidence      []analyzeEvidJSON  `json:"evidence,omitempty"`
-	TarballSha256 string             `json:"tarball_sha256,omitempty"`
-	FilesAnalyzed int                `json:"files_analyzed"`
-	SourceBytes   int                `json:"source_bytes"`
+	Ecosystem     string            `json:"ecosystem"`
+	Name          string            `json:"name"`
+	Version       string            `json:"version"`
+	Verdict       string            `json:"verdict"`
+	RiskScore     int               `json:"risk_score"`
+	Capabilities  []string          `json:"capabilities"`
+	Hooks         []analyzeHookJSON `json:"hooks,omitempty"`
+	EnvReads      []string          `json:"env_reads,omitempty"`
+	RiskFlags     []analyzeFlagJSON `json:"risk_flags,omitempty"`
+	Evidence      []analyzeEvidJSON `json:"evidence,omitempty"`
+	TarballSha256 string            `json:"tarball_sha256,omitempty"`
+	FilesAnalyzed int               `json:"files_analyzed"`
+	SourceBytes   int               `json:"source_bytes"`
 }
 
 type analyzeHookJSON struct {

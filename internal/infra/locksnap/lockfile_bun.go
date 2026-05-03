@@ -115,7 +115,7 @@ func stripJSONComments(raw []byte) []byte {
 		// Block comment "/* ... */"
 		if c == '/' && i+1 < len(raw) && raw[i+1] == '*' {
 			i += 2
-			for i+1 < len(raw) && !(raw[i] == '*' && raw[i+1] == '/') {
+			for i+1 < len(raw) && (raw[i] != '*' || raw[i+1] != '/') {
 				i++
 			}
 			i += 2

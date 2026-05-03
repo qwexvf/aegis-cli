@@ -54,10 +54,10 @@ func NewHook(fs HookFilesystem, presenter HookPresenter) *Hook {
 type HookFramework int
 
 const (
-	HookFrameworkUnknown HookFramework = iota
-	HookFrameworkNative                // .git/hooks/pre-commit
-	HookFrameworkHusky                 // .husky/pre-commit
-	HookFrameworkLefthook              // lefthook.yml
+	HookFrameworkUnknown  HookFramework = iota
+	HookFrameworkNative                 // .git/hooks/pre-commit
+	HookFrameworkHusky                  // .husky/pre-commit
+	HookFrameworkLefthook               // lefthook.yml
 )
 
 // String returns the canonical name.

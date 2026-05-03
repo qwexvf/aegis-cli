@@ -71,9 +71,9 @@ func TestExplain_SnapshotMissingFingerprintFallsBackToFreshScan(t *testing.T) {
 	ex := NewExplain(store, analyze, pres)
 
 	result, err := ex.Run(context.Background(), ExplainRequest{
-		ProjectDir:     "/proj",
-		Ecosystem:      domain.EcoNpm,
-		Name:           "p", Version: "1.0.0",
+		ProjectDir: "/proj",
+		Ecosystem:  domain.EcoNpm,
+		Name:       "p", Version: "1.0.0",
 		AllowFreshScan: true,
 	})
 	if err != nil {
@@ -93,9 +93,9 @@ func TestExplain_SnapshotOnlyErrorsIfMissing(t *testing.T) {
 	ex := NewExplain(store, nil, pres)
 
 	_, err := ex.Run(context.Background(), ExplainRequest{
-		ProjectDir:     "/proj",
-		Ecosystem:      domain.EcoNpm,
-		Name:           "p", Version: "1.0.0",
+		ProjectDir: "/proj",
+		Ecosystem:  domain.EcoNpm,
+		Name:       "p", Version: "1.0.0",
 		AllowFreshScan: false,
 	})
 	if err == nil {
@@ -160,9 +160,9 @@ func TestExplain_FreshScanWithoutAnalyzeUseCaseErrors(t *testing.T) {
 	ex := NewExplain(store, nil, pres) // no Analyze wired
 
 	_, err := ex.Run(context.Background(), ExplainRequest{
-		ProjectDir:     "/proj",
-		Ecosystem:      domain.EcoNpm,
-		Name:           "p", Version: "1.0.0",
+		ProjectDir: "/proj",
+		Ecosystem:  domain.EcoNpm,
+		Name:       "p", Version: "1.0.0",
 		AllowFreshScan: true,
 	})
 	if err == nil {

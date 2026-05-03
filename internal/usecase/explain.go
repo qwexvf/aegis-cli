@@ -55,7 +55,7 @@ type ExplainResult struct {
 	Ecosystem     domain.Ecosystem
 	Name          string
 	Version       string
-	Direct        bool   // from the snapshot (false when fresh)
+	Direct        bool // from the snapshot (false when fresh)
 	Fingerprint   domain.Fingerprint
 	Evidence      []domain.Evidence
 	Risk          domain.RiskAssessment
