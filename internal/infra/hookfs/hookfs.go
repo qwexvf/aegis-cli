@@ -10,8 +10,8 @@ type FS struct{}
 
 func New() *FS { return &FS{} }
 
-func (FS) Stat(path string) (os.FileInfo, error)              { return os.Stat(path) }
-func (FS) ReadFile(path string) ([]byte, error)               { return os.ReadFile(path) }
+func (FS) Stat(path string) (os.FileInfo, error) { return os.Stat(path) }
+func (FS) ReadFile(path string) ([]byte, error)  { return os.ReadFile(path) }
 func (FS) WriteFile(path string, data []byte, perm os.FileMode) error {
 	return os.WriteFile(path, data, perm)
 }

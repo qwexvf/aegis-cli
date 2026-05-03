@@ -27,11 +27,11 @@ func TestParsePkgSpec(t *testing.T) {
 		{"npm/@solana/web3.js@1.95.4", domain.EcoNpm, "@solana/web3.js", "1.95.4", false},
 
 		// Errors.
-		{"", "", "", "", true},                    // empty
-		{"lodash", "", "", "", true},              // no version
-		{"@scope/name", "", "", "", true},         // scoped, no version
-		{"@scope/name@", "", "", "", true},        // empty version
-		{"@1.0.0", "", "", "", true},              // leading @ but no name (LastIndex finds the only @, name="")
+		{"", "", "", "", true},             // empty
+		{"lodash", "", "", "", true},       // no version
+		{"@scope/name", "", "", "", true},  // scoped, no version
+		{"@scope/name@", "", "", "", true}, // empty version
+		{"@1.0.0", "", "", "", true},       // leading @ but no name (LastIndex finds the only @, name="")
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {

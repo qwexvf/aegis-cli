@@ -23,8 +23,8 @@ import (
 //	2   couldn't reach a verdict (fetch error, malformed spec, etc.)
 func explainCommand(uc *usecase.Explain, presenter *presentercli.ExplainPresenter) *cobra.Command {
 	var (
-		jsonOut       bool
-		snapshotOnly  bool
+		jsonOut      bool
+		snapshotOnly bool
 	)
 	cmd := &cobra.Command{
 		Use:   "explain <pkg-spec>",

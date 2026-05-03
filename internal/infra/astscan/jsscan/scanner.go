@@ -81,7 +81,10 @@ func New() (*Scanner, error) {
 func (s *Scanner) AnalyzeFile(path string, body []byte, f *astscan.Findings) {
 	parser := ts.NewParser()
 	defer parser.Close()
-	parser.SetLanguage(s.lang)
+	// SetLanguage can fail only if the language ABI version mismatches
+	// the parser binary; both are vendored at compile time, so this is
+	// effectively impossible — but explicit discard documents the intent.
+	_ = parser.SetLanguage(s.lang)
 
 	tree := parser.Parse(body, nil)
 	if tree == nil {

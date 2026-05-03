@@ -32,7 +32,7 @@ type recheckCapturingPresenter struct {
 	errors   []error
 }
 
-func (p *recheckCapturingPresenter) OnRecheckBegin(int)             { p.begins++ }
+func (p *recheckCapturingPresenter) OnRecheckBegin(int)                 { p.begins++ }
 func (p *recheckCapturingPresenter) OnRecheckProgress(int, int, string) { p.progress++ }
 func (p *recheckCapturingPresenter) OnRecheckResult(r RecheckResult) {
 	p.results = append(p.results, r)

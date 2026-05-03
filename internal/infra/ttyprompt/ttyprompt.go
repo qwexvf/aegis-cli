@@ -24,9 +24,9 @@ func (Confirmer) Confirm(question string) usecase.ConfirmResult {
 	if err != nil {
 		return usecase.ConfirmUnavailable
 	}
-	defer tty.Close()
+	defer func() { _ = tty.Close() }()
 
-	fmt.Fprintf(tty, "%s [y/N]: ", question)
+	_, _ = fmt.Fprintf(tty, "%s [y/N]: ", question)
 
 	r := bufio.NewReader(tty)
 	line, err := r.ReadString('\n')

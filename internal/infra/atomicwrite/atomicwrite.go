@@ -52,15 +52,15 @@ func WriteFileFunc(path string, perm os.FileMode, write func(io.Writer) error) (
 	}()
 
 	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close()
+		_ = tmp.Close() // already failing; cleanup handles the unlink
 		return fmt.Errorf("atomicwrite: chmod: %w", err)
 	}
 	if err := write(tmp); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("atomicwrite: write: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("atomicwrite: fsync file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {

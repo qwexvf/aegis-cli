@@ -288,8 +288,8 @@ func TestHook_StatErrorPropagates(t *testing.T) {
 
 type erroringFS struct{ err error }
 
-func (e *erroringFS) Stat(string) (os.FileInfo, error)               { return nil, e.err }
-func (e *erroringFS) ReadFile(string) ([]byte, error)                { return nil, e.err }
-func (e *erroringFS) WriteFile(string, []byte, os.FileMode) error    { return e.err }
-func (e *erroringFS) MkdirAll(string, os.FileMode) error             { return e.err }
-func (e *erroringFS) Remove(string) error                            { return e.err }
+func (e *erroringFS) Stat(string) (os.FileInfo, error)            { return nil, e.err }
+func (e *erroringFS) ReadFile(string) ([]byte, error)             { return nil, e.err }
+func (e *erroringFS) WriteFile(string, []byte, os.FileMode) error { return e.err }
+func (e *erroringFS) MkdirAll(string, os.FileMode) error          { return e.err }
+func (e *erroringFS) Remove(string) error                         { return e.err }

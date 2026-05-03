@@ -315,4 +315,3 @@ func (c *CI) scoreSnapshot(snap domain.Snapshot, failOn domain.VerdictKind) CIRe
 	}
 	return out
 }
-

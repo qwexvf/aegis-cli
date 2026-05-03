@@ -120,12 +120,12 @@ func (c *Cache) lock() (func(), error) {
 	}
 	unlock, err := flock.LockExclusive(f)
 	if err != nil {
-		f.Close()
+		_ = f.Close() // already failing on flock; nothing to recover
 		return nil, fmt.Errorf("cache flock: %w", err)
 	}
 	return func() {
 		unlock()
-		f.Close()
+		_ = f.Close() // unlock(): kernel-level fcntl release is the only thing that matters
 	}, nil
 }
 

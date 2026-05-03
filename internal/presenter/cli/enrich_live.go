@@ -58,7 +58,7 @@ type EnrichLivePresenter struct {
 	// 50 clear-and-redraw cycles and the screen flickers heavily.
 	pendingInfos []bufferedInfo
 	stop         chan struct{}
-	done      chan struct{}
+	done         chan struct{}
 }
 
 // liveSlot is the per-worker state the renderer reads each frame.

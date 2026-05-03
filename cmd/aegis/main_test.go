@@ -52,7 +52,7 @@ func TestNewInvocationID_ProducesHex32(t *testing.T) {
 		t.Errorf("invocation id length = %d, want 32", len(id))
 	}
 	for _, c := range id {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("invocation id %q contains non-hex char %q", id, c)
 			break
 		}

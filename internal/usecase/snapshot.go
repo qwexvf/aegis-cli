@@ -779,7 +779,6 @@ func extractEmailFromPersonString(s string) string {
 	return strings.TrimSpace(s[open+1 : open+1+close])
 }
 
-
 // Verify checks the saved snapshot is loadable and structurally valid.
 func (s *Snapshot) Verify(projectDir string) error {
 	snap, ok, err := s.store.Load(projectDir)

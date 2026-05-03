@@ -120,9 +120,9 @@ func (rp *RecheckPresenter) renderSummary(r usecase.RecheckResult) {
 // --- JSON shape --------------------------------------------------------
 
 type recheckJSON struct {
-	Passed   bool                  `json:"passed"`
-	Summary  recheckSummaryJSON    `json:"summary"`
-	Findings []recheckFindingJSON  `json:"findings"`
+	Passed   bool                 `json:"passed"`
+	Summary  recheckSummaryJSON   `json:"summary"`
+	Findings []recheckFindingJSON `json:"findings"`
 }
 
 type recheckSummaryJSON struct {

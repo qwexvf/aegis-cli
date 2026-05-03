@@ -19,8 +19,8 @@ import (
 
 // Identity satisfies usecase.ReporterIdentity.
 type Identity struct {
-	mu   sync.Mutex
-	path string
+	mu     sync.Mutex
+	path   string
 	cached string
 }
 
