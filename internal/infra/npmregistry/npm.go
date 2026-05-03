@@ -32,9 +32,10 @@ const DefaultRegistry = "https://registry.npmjs.org"
 // fires its own HTTP call; with it the N–1 followers wait for the
 // in-flight request and reuse the result.
 type Client struct {
-	baseURL string
-	http    *http.Client
-	retry   httpx.RetryPolicy
+	baseURL      string
+	downloadsURL string // empty → DefaultDownloadsURL
+	http         *http.Client
+	retry        httpx.RetryPolicy
 
 	mu    sync.Mutex
 	cache map[string]*packument
@@ -48,6 +49,14 @@ type Option func(*Client)
 // WithRegistry sets a non-default registry URL.
 func WithRegistry(u string) Option {
 	return func(c *Client) { c.baseURL = strings.TrimRight(u, "/") }
+}
+
+// WithDownloadsURL overrides the api.npmjs.org URL used by
+// FetchMaintainerSignal for download-count lookups. Use this for
+// private mirrors that expose a downloads-shaped endpoint, or for
+// httptest servers in tests.
+func WithDownloadsURL(u string) Option {
+	return func(c *Client) { c.downloadsURL = strings.TrimRight(u, "/") }
 }
 
 // WithHTTPClient overrides the default HTTP client (useful for tests).
@@ -83,6 +92,165 @@ type packument struct {
 	Versions map[string]struct {
 		Version string `json:"version"`
 	} `json:"versions"`
+}
+
+// DefaultDownloadsURL is the public npm downloads API. Overrideable
+// via WithDownloadsURL — separate from the registry URL because npm
+// hosts these on a different domain (api.npmjs.org vs
+// registry.npmjs.org).
+const DefaultDownloadsURL = "https://api.npmjs.org"
+
+// MaintainerSignal bundles the metadata the maintainer-hijack
+// heuristic needs into one round-trip-friendly shape. All fields are
+// best-effort — a missing endpoint or stripped field zeroes out and
+// the heuristic degrades gracefully.
+type MaintainerSignal struct {
+	// PublishedAt is the registry-reported publish time of the
+	// requested version (RFC3339). Empty when the registry doesn't
+	// expose it.
+	PublishedAt string
+
+	// WeeklyDownloads is the package's last-week download count from
+	// api.npmjs.org. Zero on lookup failure (treat as "unknown",
+	// not "no users").
+	WeeklyDownloads int64
+
+	// PreviousVersion is the most-recent version BEFORE the queried
+	// one (lex sort over time map). Used to compute the publish-gap.
+	// Empty when there's no prior version (first publish).
+	PreviousVersion string
+
+	// PreviousPublishedAt is RFC3339 of the previous version's
+	// publish time. Pair with PublishedAt to compute the gap.
+	PreviousPublishedAt string
+}
+
+// FetchMaintainerSignal returns the metadata bundle used by the
+// maintainer-hijack heuristic. Implements usecase.MaintainerSignalFetcher
+// via the wrapper below. One full-packument GET (which we already do
+// for PublishedAt) plus one downloads GET. Errors from either are
+// non-fatal — the returned struct just has zero/empty fields where
+// the data was unavailable.
+//
+// Cheap on warm cache: the underlying fetchPackument is singleflighted
+// and process-cached, so repeated calls for sibling versions of the
+// same package share the round-trip.
+func (c *Client) FetchMaintainerSignal(ctx context.Context, pkg, version string) (MaintainerSignal, error) {
+	if pkg == "" || version == "" {
+		return MaintainerSignal{}, fmt.Errorf("empty package name or version")
+	}
+	encoded := url.PathEscape(pkg)
+	if strings.HasPrefix(pkg, "@") {
+		encoded = strings.Replace(encoded, "/", "%2F", 1)
+	}
+	reqURL := c.baseURL + "/" + encoded
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return MaintainerSignal{}, err
+	}
+	resp, err := httpx.Do(ctx, c.http, req, c.retry)
+	if err != nil {
+		return MaintainerSignal{}, fmt.Errorf("registry fetch %s: %w", pkg, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return MaintainerSignal{}, fmt.Errorf("registry returned %d for %s", resp.StatusCode, pkg)
+	}
+	var p struct {
+		Time map[string]string `json:"time"`
+	}
+	body, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return MaintainerSignal{}, fmt.Errorf("read packument %s: %w", pkg, err)
+	}
+	if err := json.Unmarshal(body, &p); err != nil {
+		return MaintainerSignal{}, fmt.Errorf("decode packument %s: %w", pkg, err)
+	}
+
+	out := MaintainerSignal{
+		PublishedAt: p.Time[version],
+	}
+	out.PreviousVersion, out.PreviousPublishedAt = previousVersion(p.Time, version, out.PublishedAt)
+
+	// Best-effort weekly downloads. Failure is silently zeroed —
+	// the heuristic interprets zero as "unknown", not "no users".
+	if dl, err := c.fetchWeeklyDownloads(ctx, pkg); err == nil {
+		out.WeeklyDownloads = dl
+	}
+	return out, nil
+}
+
+// fetchWeeklyDownloads hits the npm downloads endpoint
+// (api.npmjs.org/downloads/point/last-week/<pkg>). Returns an error
+// only when the call itself fails; a 404 (unpublished package, or
+// scoped packages which don't have public download stats) returns 0
+// with a nil error.
+func (c *Client) fetchWeeklyDownloads(ctx context.Context, pkg string) (int64, error) {
+	downloadsURL := c.downloadsURL
+	if downloadsURL == "" {
+		downloadsURL = DefaultDownloadsURL
+	}
+	// The downloads endpoint uses URL path encoding for scoped
+	// packages — same %2F convention as the registry.
+	encoded := url.PathEscape(pkg)
+	if strings.HasPrefix(pkg, "@") {
+		encoded = strings.Replace(encoded, "/", "%2F", 1)
+	}
+	reqURL := downloadsURL + "/downloads/point/last-week/" + encoded
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := httpx.Do(ctx, c.http, req, c.retry)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return 0, nil // no public stats; not an error
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("downloads %s: HTTP %d", pkg, resp.StatusCode)
+	}
+	var dl struct {
+		Downloads int64 `json:"downloads"`
+	}
+	body, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return 0, err
+	}
+	if err := json.Unmarshal(body, &dl); err != nil {
+		return 0, err
+	}
+	return dl.Downloads, nil
+}
+
+// previousVersion finds the version published most recently BEFORE
+// `current` (using publish times from the packument's time map).
+// Skips entries that don't parse as RFC3339 timestamps and meta keys
+// like "created" / "modified". Returns ("", "") when there's no
+// earlier version.
+func previousVersion(timeMap map[string]string, current, currentTime string) (string, string) {
+	if currentTime == "" {
+		return "", ""
+	}
+	var (
+		bestVer  string
+		bestTime string
+	)
+	for ver, t := range timeMap {
+		if ver == current || ver == "created" || ver == "modified" {
+			continue
+		}
+		if t >= currentTime {
+			continue // not earlier
+		}
+		if t > bestTime {
+			bestVer = ver
+			bestTime = t
+		}
+	}
+	return bestVer, bestTime
 }
 
 // PublishedAt fetches the npm `time[version]` value for a specific

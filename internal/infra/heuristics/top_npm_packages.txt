@@ -201,3 +201,167 @@ sharp
 jimp
 pdfkit
 canvas
+
+# --- v0.5 expansion: more typosquat targets ---
+# Frequently-typoed names from observed npm squat campaigns
+# (cross / cross-spawn / cross-fetch all popular squat bases)
+
+# Cross-platform helpers (high squat volume)
+cross-spawn
+cross-fetch
+cross-env-shell
+isexe
+which
+shebang-command
+shebang-regex
+escape-string-regexp
+
+# Node built-in shims / polyfills (heavy squat targets)
+util
+events
+buffer
+stream
+path-browserify
+crypto-browserify
+url
+querystring
+http-browserify
+https-browserify
+process
+
+# Date/time
+chrono-node
+date-formatter
+timezone-js
+
+# Network / HTTP wrappers
+request
+request-promise
+needle
+phin
+follow-redirects
+form-data
+multer-s3
+http-proxy
+http-proxy-agent
+https-proxy-agent
+socks-proxy-agent
+proxy-agent
+agent-base
+tunnel
+tunnel-agent
+
+# Image / file processing
+image-size
+file-type
+mime
+mime-types
+mime-db
+mkdirp-promise
+graceful-fs
+write-file-atomic
+proper-lockfile
+
+# Async / promise utilities
+async
+asyncro
+p-limit
+p-queue
+p-map
+p-throttle
+p-retry
+p-timeout
+p-all
+p-event
+delay
+sleep-promise
+
+# String / object utilities
+deepmerge
+merge-deep
+clone-deep
+deep-equal
+fast-deep-equal
+fast-equals
+object-assign
+object-keys
+extend
+assign-deep
+defaults
+defaults-deep
+
+# Text manipulation
+strip-ansi
+ansi-styles
+ansi-regex
+ansi-escapes
+strip-bom
+strip-eof
+strip-final-newline
+camelcase
+decamelize
+kebab-case
+snake-case
+pascalcase
+title-case
+sentence-case
+
+# Numeric / math
+big.js
+big-integer
+bignumber.js
+decimal.js
+lodash.set
+lodash.get
+lodash.merge
+lodash.isequal
+lodash.clonedeep
+
+# Misc super-popular
+yallist
+inherits
+util-deprecate
+once
+wrappy
+end-of-stream
+pump
+pumpify
+duplexify
+through
+through2
+readable-stream
+isarray
+inflight
+ms
+mute-stream
+string-width
+strip-bom-buf
+binary-extensions
+is-binary-path
+is-glob
+is-extglob
+micromatch
+minimatch
+braces
+fill-range
+to-regex-range
+picomatch
+anymatch
+
+# Color / TTY
+color
+color-name
+color-string
+color-convert
+supports-color
+has-flag
+ansicolors
+
+# CLI argument
+minimist
+mri
+arg
+optimist
+nopt
+cliui
+wrap-ansi

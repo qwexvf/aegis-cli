@@ -19,3 +19,10 @@ type heuristicsAdapter struct{}
 func (heuristicsAdapter) Run(eco domain.Ecosystem, name string, manifestRaw []byte, src usecase.PackageSource) []domain.Capability {
 	return heuristics.Run(eco, name, manifestRaw, src)
 }
+
+// RunMaintainerSignal is the second entry point — separated from
+// Run because the input shape is different (registry metadata vs
+// package source).
+func (heuristicsAdapter) RunMaintainerSignal(sig domain.MaintainerSignal) domain.Capability {
+	return heuristics.RunMaintainerSignal(sig)
+}

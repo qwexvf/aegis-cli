@@ -97,6 +97,23 @@ const (
 	// 2 of a top-1000 npm package. Catches `electron-stable` /
 	// `lodahs` / `expresss` style attacks before any advisory is filed.
 	CapTyposquatRisk
+
+	// CapMaintainerHijackRisk — registry-side metadata combination
+	// matches the canonical maintainer-handover-then-malware shape:
+	// the version is freshly published (< 7 days), with a long gap
+	// (≥ 180 days) since the previous publish, on a low-traffic
+	// package (< 1000 weekly downloads). event-stream, ua-parser-js,
+	// coa, rc all matched at least two of the three at compromise time.
+	CapMaintainerHijackRisk
+
+	// CapPatchVersionDrift — within a single patch-version bump
+	// (x.y.z → x.y.z+1), this version GAINED capabilities the
+	// previous one didn't have. SemVer says patch bumps are
+	// behaviourally identical to the prior version; gaining
+	// `child-process` or `net-egress` in a patch is a strong
+	// "something changed that wasn't supposed to" signal.
+	// Computed during snapshot diff against a baseline.
+	CapPatchVersionDrift
 )
 
 // String returns the canonical name. Used for serialization, logs,
@@ -129,6 +146,10 @@ func (c Capability) String() string {
 		return "binary-dropper"
 	case CapTyposquatRisk:
 		return "typosquat-risk"
+	case CapMaintainerHijackRisk:
+		return "maintainer-hijack-risk"
+	case CapPatchVersionDrift:
+		return "patch-version-drift"
 	}
 	return "unknown"
 }
@@ -155,6 +176,20 @@ func (c Capability) Description() string {
 		return "contains a hard-coded IP literal (legitimate code uses hostnames)"
 	case CapInstallHookExec:
 		return "declares an install-time script the package manager runs automatically"
+	case CapInstallHookSuspicious:
+		return "install hook downloads-and-executes (curl|sh / wget|bash / node -e / base64|sh)"
+	case CapObfuscatedPayload:
+		return "decodes-then-executes (eval(atob(...)) / Function(decode(...))) — packed-malware idiom"
+	case CapSuspiciousURL:
+		return "string literal points at a paste / chat-relay / tunnel host or IDN homoglyph"
+	case CapBinaryDropper:
+		return "package ships an executable file (.exe/.dll/.so/.scpt) — unusual for a JS dep"
+	case CapTyposquatRisk:
+		return "name is within edit distance 2 of a top-1000 package — possible typosquat"
+	case CapMaintainerHijackRisk:
+		return "fresh publish + long gap from previous version + low downloads — classic maintainer-handover pattern"
+	case CapPatchVersionDrift:
+		return "this patch version gained capabilities the previous one didn't — semver violation"
 	}
 	return "no description available"
 }
@@ -171,6 +206,13 @@ func AllCapabilities() []Capability {
 		CapFSWriteOutsideRoot,
 		CapRawIPLiteral,
 		CapInstallHookExec,
+		CapInstallHookSuspicious,
+		CapObfuscatedPayload,
+		CapSuspiciousURL,
+		CapBinaryDropper,
+		CapTyposquatRisk,
+		CapMaintainerHijackRisk,
+		CapPatchVersionDrift,
 	}
 }
 

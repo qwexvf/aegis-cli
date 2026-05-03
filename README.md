@@ -27,7 +27,7 @@ What you get:
   advisory yet (the typosquats and just-published malware nobody
   has reported). Other-language AST scanners are planned; until
   they ship, OSV is the entire signal for those ecosystems.
-- **Behavior-based malware heuristics (zero-day window)** — five
+- **Behavior-based malware heuristics (zero-day window)** — seven
   detectors fire on patterns nobody has indexed yet:
     1. **Suspicious install hooks** — postinstall script does
        `curl|sh`, `node -e`, `wget|bash`, base64 piped to shell,
@@ -46,9 +46,17 @@ What you get:
        inside an npm tarball. Some legit packages ship native
        bins (esbuild, sharp); pair with allowlist for those.
     5. **Typosquat names** — package name within Levenshtein
-       distance 2 of a top-1000 npm package (`lodahs`, `expresss`,
+       distance 2 of a top-280 npm package (`lodahs`, `expresss`,
        `electron-stable`, ...). Catches squat-attacks before any
        advisory exists.
+    6. **Maintainer hijack score** — fresh publish (< 7d) + long
+       gap from previous version (≥ 180d) + low weekly downloads
+       (< 1000). The exact shape of event-stream's compromise.
+       2-of-3 signals fires; npm registry metadata fetched per dep.
+    7. **Patch-version drift** — `x.y.z → x.y.z+1` that gained
+       capabilities the previous patch didn't have. SemVer says
+       patches don't change behaviour; gaining `child-process` or
+       `net-egress` in a patch is silent-injection-shaped.
 - **Verdict folding** — Critical / High CVEs become `block`,
   Medium becomes `prompt`, Low becomes `review` — combined with
   AST + heuristic findings via `max(astVerdict, advisoryVerdict)`
