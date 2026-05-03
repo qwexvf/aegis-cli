@@ -2,6 +2,12 @@
 
 Every subcommand `aegis --help` lists, with flags, examples, exit codes, and output format. Authoritative as of `v0.1.0`.
 
+> **Legend**: 🌐 marks commands that **require a reachable Aegis API
+> server** (set via `AEGIS_API_URL`). The hosted Aegis Cloud is not
+> yet available and the platform repo is currently private — these
+> commands are documented and shipped, but won't function for most
+> users in `v0.1.x`. Everything else works locally with no backend.
+
 Global flags (apply to every subcommand):
 
 | Flag | Description |
@@ -26,9 +32,11 @@ Exit codes (uniform across the binary):
 
 ---
 
-## `aegis npm` / `aegis bun` / `aegis yarn` / `aegis pnpm`
+## 🌐 `aegis npm` / `aegis bun` / `aegis yarn` / `aegis pnpm`
 
-Drop-in wrappers around the underlying package manager. Install commands are intercepted, parsed, checked against the Aegis API, and either allowed (passed through to the real PM), prompted (interactive y/N), or blocked (non-zero exit, no PM call). All non-install commands pass straight through.
+**Requires Aegis API.** Drop-in wrappers around the underlying package manager. Install commands are intercepted, parsed, checked against the Aegis API, and either allowed (passed through to the real PM), prompted (interactive y/N), or blocked (non-zero exit, no PM call). All non-install commands pass straight through.
+
+Without `AEGIS_API_URL` pointing at a reachable backend, install commands will return a connection error. Non-install passthrough (`aegis npm test`, `aegis bun run dev`) works regardless.
 
 ```sh
 aegis npm install lodash@4.17.21      # checked
@@ -123,9 +131,9 @@ Parallelism: 8 worker pool by default (`enrichWorkers` constant). Respects `AEGI
 
 ---
 
-## `aegis snapshot submit`
+## 🌐 `aegis snapshot submit`
 
-Post analyzed deps as community reports to the Aegis API. Requires `AEGIS_API_KEY` — keys are issued via the Aegis web UI under `/admin?tab=api-keys`.
+**Requires Aegis API.** Post analyzed deps as community reports to the Aegis API. Requires `AEGIS_API_KEY` — keys are issued via the Aegis web UI under `/admin?tab=api-keys`.
 
 ```sh
 AEGIS_API_KEY=… aegis snapshot submit
@@ -174,9 +182,9 @@ The fingerprint cache (`~/.aegis/cache/fingerprints/`) persists across runs — 
 
 ---
 
-## `aegis recheck`
+## 🌐 `aegis recheck`
 
-Re-run the install gate against the current lockfile. Useful after an incident DB update — packages allowed at install time may now be flagged.
+**Requires Aegis API.** Re-run the install gate against the current lockfile. Useful after an incident DB update — packages allowed at install time may now be flagged.
 
 ```sh
 aegis recheck                       # direct deps only
@@ -292,9 +300,9 @@ Validate user and project allowlist YAML files. Strict decoding: unknown keys, u
 aegis allowlist verify
 ```
 
-### `aegis allowlist sync`
+### 🌐 `aegis allowlist sync`
 
-Fetch the org-level allowlist overlay from the Aegis API and cache it locally at `~/.aegis/cache/org-allowlist.yaml`. Requires `AEGIS_API_KEY`.
+**Requires Aegis API.** Fetch the org-level allowlist overlay from the Aegis API and cache it locally at `~/.aegis/cache/org-allowlist.yaml`. Requires `AEGIS_API_KEY`.
 
 ```sh
 AEGIS_API_KEY=… aegis allowlist sync
