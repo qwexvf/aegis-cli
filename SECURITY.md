@@ -21,10 +21,11 @@ reporting form for this repo:
 
   https://github.com/qwexvf/aegis-cli/security/advisories/new
 
-If you cannot use GitHub for any reason, email security@aegis.dev with
-"aegis-cli" in the subject line. Encrypt with the maintainer key listed
-on https://github.com/qwexvf.gpg if the report contains exploit
-details.
+If you cannot use GitHub for any reason, open a discussion in the
+[Q&A category](https://github.com/qwexvf/aegis-cli/discussions/categories/q-a)
+asking for a private contact channel — do not include exploit details
+in the public discussion. Encrypt sensitive details with the
+maintainer key listed on https://github.com/qwexvf.gpg before sharing.
 
 Please include:
 
