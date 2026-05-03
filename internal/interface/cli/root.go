@@ -19,8 +19,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version is stamped at build time by the composition root.
-var Version = "0.1.0-demo"
+// Version, Commit, and Date are stamped at build time via -ldflags=-X.
+// GoReleaser sets all three on tagged releases; local `go build` falls
+// back to these defaults so the binary still runs and reports something.
+var (
+	Version = "0.1.0-demo"
+	Commit  = "none"
+	Date    = "unknown"
+)
 
 // Deps bundles the wired ports the command tree needs. Constructed by
 // cmd/aegis/main; tests can substitute fakes.
@@ -154,7 +160,7 @@ func versionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Print aegis version",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("aegis %s\n", Version)
+			fmt.Printf("aegis %s (commit %s, built %s)\n", Version, Commit, Date)
 		},
 	}
 }

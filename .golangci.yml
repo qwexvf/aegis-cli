@@ -1,0 +1,20 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+# Linter scope is intentionally minimal at first run. The pre-extraction
+# codebase has ~50 errcheck issues, ~10 gofmt issues, and a handful of
+# staticcheck issues. These are valuable rules — they are disabled here
+# only so this CI-setup PR can land green. Re-enable in cleanup PRs:
+#
+#   1. gofmt + goimports — auto-fixable via `gofmt -w . && goimports -w .`
+#   2. staticcheck         — small handful, easy review
+#   3. errcheck            — biggest swath; mostly defer Close() and
+#                            test helper Write/MkdirAll calls
+linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - unused
