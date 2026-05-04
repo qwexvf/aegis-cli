@@ -1,0 +1,37 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-hook-install - Install the aegis pre-commit hook in the current project
+
+
+.SH SYNOPSIS
+\fBaegis hook install [flags]\fP
+
+
+.SH DESCRIPTION
+install detects the project's hook framework (lefthook → husky → native
+git hooks) and writes a managed pre-commit step that runs:
+
+.PP
+aegis ci --fail-on=block --no-enrich --quiet
+
+.PP
+The step is bracketed by aegis-managed comment markers so re-running
+install replaces our entry rather than stacking duplicates, and
+uninstall removes only our entry — the rest of your hook config is
+left untouched.
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for install
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis-hook(1)\fP

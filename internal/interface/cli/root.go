@@ -155,6 +155,29 @@ func Execute(d Deps) {
 	os.Exit(1)
 }
 
+// NewDocsRoot returns a *cobra.Command tree populated with every
+// subcommand for offline doc generation (man pages, markdown). The
+// command bodies close over zero-value usecase / presenter pointers
+// — never invoke .Execute() on the returned tree, only walk it via
+// cobra/doc generators which only inspect Use / Short / Long / Flags.
+func NewDocsRoot() *cobra.Command {
+	d := Deps{
+		Snapshot:           &usecase.Snapshot{},
+		Analyze:            &usecase.Analyze{},
+		CI:                 &usecase.CI{},
+		Recheck:            &usecase.Recheck{},
+		Explain:            &usecase.Explain{},
+		Hook:               &usecase.Hook{},
+		AnalyzePresenter:   &presentercli.AnalyzePresenter{},
+		CIPresenter:        &presentercli.CIPresenter{},
+		RecheckPresenter:   &presentercli.RecheckPresenter{},
+		ExplainPresenter:   &presentercli.ExplainPresenter{},
+		AllowlistPresenter: &presentercli.AllowlistPresenter{},
+		AllowlistLoader:    func() *allowlist.Loader { return nil },
+	}
+	return NewRoot(d)
+}
+
 func versionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",

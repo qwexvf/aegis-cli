@@ -1,0 +1,33 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-admin-gen-key - Generate a fresh submit API key + sha256 hex for psql install
+
+
+.SH SYNOPSIS
+\fBaegis admin gen-key [flags]\fP
+
+
+.SH DESCRIPTION
+Generates a random 32-byte submit API key, prints both the key itself and its sha256 hex.
+
+.PP
+Paste the printed INSERT into psql to register the key on the server. Then export AEGIS_API_KEY in your shell so \fBaegis snapshot submit\fR can authenticate.
+
+.PP
+This command does NOT connect to the database — key install is the operator's responsibility, on purpose, so the CLI never holds DB credentials.
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for gen-key
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis-admin(1)\fP

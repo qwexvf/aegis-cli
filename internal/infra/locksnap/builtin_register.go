@@ -14,7 +14,7 @@ import "github.com/qwexvf/aegis-cli/internal/domain"
 //  2. Add one Register call below in the right per-ecosystem slot.
 //
 // External (out-of-tree) parsers don't need to touch this file —
-// see docs/extending.md.
+// see the "Extending" guide in the project docs.
 func init() {
 	// JavaScript — pnpm/yarn/bun are stricter than npm; if both
 	// are present, the stricter one wins.

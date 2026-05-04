@@ -15,7 +15,7 @@
 //	            ▼
 //	   []domain.Dependency  ──► OSV lookup, AST scan, heuristics
 //
-// See docs/extending.md for the end-to-end recipe.
+// See the "Extending" guide in the project docs for the end-to-end recipe.
 
 package locksnap
 
@@ -113,7 +113,7 @@ func (p parserFunc) Parse(raw []byte, d map[string]bool) ([]domain.Dependency, e
 // newFuncParser builds a LockfileParser from a function literal.
 // Used inside built-in parser init() blocks. External implementations
 // usually define their own struct so they can carry per-parser
-// configuration; see docs/extending.md.
+// configuration; see the "Extending" guide in the project docs.
 func newFuncParser(filename string, eco domain.Ecosystem, fn func(raw []byte, direct map[string]bool) ([]domain.Dependency, error)) LockfileParser {
 	return parserFunc{filename: filename, eco: eco, parse: fn}
 }

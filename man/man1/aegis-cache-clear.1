@@ -1,0 +1,43 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-cache-clear - Delete the local decision cache (and optionally the AST fingerprint cache)
+
+
+.SH SYNOPSIS
+\fBaegis cache clear [flags]\fP
+
+
+.SH DESCRIPTION
+clear deletes the per-package /check decision cache by default.
+
+.PP
+Flags:
+  --fingerprints   also delete the AST fingerprint cache used by
+                   'snapshot enrich' / 'analyze'. Forces the next
+                   enrich / analyze to re-fetch + re-scan everything.
+  --all            equivalent to passing both default-clear and
+                   --fingerprints together.
+
+
+.SH OPTIONS
+\fB--all\fP[=false]
+	clear both the decision cache and the fingerprint cache
+
+.PP
+\fB--fingerprints\fP[=false]
+	clear the AST fingerprint cache instead of the decision cache
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for clear
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis-cache(1)\fP

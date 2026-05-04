@@ -184,9 +184,9 @@ aegis allowlist add lodash --capability=dynamic-eval --version='^4' \
 aegis allowlist list
 ```
 
-See `aegis --help` for the full command tree, or
-[`docs/cli-architecture.md`](docs/cli-architecture.md) for the
-architectural tour.
+See `aegis --help` for the full command tree, or the
+[architecture page](https://qwexvf.github.io/aegis-cli/contributing/architecture/)
+for the architectural tour.
 
 ## API-dependent commands (require Aegis API)
 
@@ -288,8 +288,8 @@ Sources, in match order:
    Personal, gitignored.
 3. **Project** — `<project>/.aegis-allowlist.yaml`. Team-shared, commit this.
 
-See [`docs/cli-risk-engine.md`](docs/cli-risk-engine.md) for capability
-weights and suppression semantics.
+See the [risk engine page](https://qwexvf.github.io/aegis-cli/contributing/risk-engine/)
+for capability weights and suppression semantics.
 
 ## CI integration
 
@@ -337,23 +337,18 @@ Adding a package manager is one file under `internal/infra/pmwrapper/`
 implementing the `PackageManager` interface plus a registration in
 `cmd/aegis/pm_<name>.go` guarded by `//go:build !no<name>`. Adding an
 ecosystem (pip / cargo / gem) is five files — see
-[`docs/cli-architecture.md`](docs/cli-architecture.md) for the full
-walkthrough.
+the [architecture page](https://qwexvf.github.io/aegis-cli/contributing/architecture/)
+for the full walkthrough.
 
 ## Documentation
 
-| Doc                                                       | What it covers                                                       |
-|-----------------------------------------------------------|----------------------------------------------------------------------|
-| This README                                               | User-facing: install, command summary, common flows                  |
-| [CHANGELOG.md](CHANGELOG.md)                              | Per-release feature additions and changes                            |
-| [docs/commands.md](docs/commands.md)                      | Every subcommand: flags, examples, exit codes, output schemas        |
-| [docs/configuration.md](docs/configuration.md)            | Environment variables, file paths, allowlist YAML schema, CI markers |
-| [docs/cookbook.md](docs/cookbook.md)                      | End-to-end recipes: local gate, CI gate, drift mode, overrides, self-host |
-| [docs/extending.md](docs/extending.md)                    | Plugin interfaces — add a new ecosystem / language / detector        |
-| [docs/cli-architecture.md](docs/cli-architecture.md)      | Layer map, dependency direction, "adding a PM / ecosystem" recipe    |
-| [docs/cli-risk-engine.md](docs/cli-risk-engine.md)        | Capability enum, RiskScore / DriftScore weights, allowlist mechanics |
-| [docs/cli-snapshot.md](docs/cli-snapshot.md)              | `aegis.lock` format, diff semantics, lockfile parsers, tarball cache |
-| [docs/aegis-cli-demo-plan.md](docs/aegis-cli-demo-plan.md)| Historical 12-step build plan + post-demo inventory                  |
+Full docs live at **[qwexvf.github.io/aegis-cli](https://qwexvf.github.io/aegis-cli/)**.
+
+- [Getting started](https://qwexvf.github.io/aegis-cli/getting-started/)
+- [Cookbook](https://qwexvf.github.io/aegis-cli/guides/cookbook/) — recipes for everyday workflows
+- [Command reference](https://qwexvf.github.io/aegis-cli/reference/commands/) — every flag, every exit code
+- [Architecture](https://qwexvf.github.io/aegis-cli/contributing/architecture/) and [Risk engine](https://qwexvf.github.io/aegis-cli/contributing/risk-engine/) for contributors
+- [CHANGELOG.md](CHANGELOG.md) — per-release notes
 
 ## Contributing
 
