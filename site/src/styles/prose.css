@@ -1,0 +1,382 @@
+/* =========================================================================
+   Aegis prose — typography for rendered markdown content.
+   ========================================================================= */
+
+.prose-aegis {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.65;
+  color: var(--color-fg);
+}
+
+.prose-aegis > :first-child { margin-top: 0; }
+.prose-aegis > :last-child  { margin-bottom: 0; }
+
+/* Headings */
+.prose-aegis h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.4rem;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+  color: var(--color-fg-strong);
+  margin: 3rem 0 1rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-rule);
+  position: relative;
+  scroll-margin-top: 5rem;
+}
+.prose-aegis h2::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 1.5rem;
+  height: 1px;
+  background: var(--color-signal);
+}
+
+.prose-aegis h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.1rem;
+  letter-spacing: -0.005em;
+  color: var(--color-fg-strong);
+  margin: 2rem 0 0.75rem;
+  scroll-margin-top: 5rem;
+}
+
+.prose-aegis h4 {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-fg-mute);
+  margin: 1.5rem 0 0.5rem;
+}
+
+/* Paragraphs */
+.prose-aegis p {
+  margin: 0.85rem 0;
+}
+
+/* Links */
+.prose-aegis a {
+  color: var(--color-signal);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--color-signal) 35%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 110ms ease;
+}
+.prose-aegis a:hover {
+  text-decoration-color: var(--color-signal);
+}
+
+/* Inline code */
+.prose-aegis :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  font-weight: 600;
+  background: var(--color-bg-inline);
+  border: 1px solid var(--color-rule);
+  color: var(--color-signal);
+  padding: 0.1em 0.4em;
+  border-radius: 2px;
+}
+
+/* Code blocks (Shiki) */
+.prose-aegis pre {
+  background: var(--color-bg-code) !important;
+  border: 1px solid var(--color-rule);
+  border-radius: 3px;
+  padding: 1rem 1.1rem;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+.prose-aegis pre code {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
+}
+
+/* Shiki theme switching: github-light by default, github-dark-dimmed in dark mode */
+[data-theme='dark'] .prose-aegis pre,
+[data-theme='dark'] .prose-aegis pre span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+}
+.prose-aegis pre,
+.prose-aegis pre span {
+  color: var(--shiki-light);
+  background-color: var(--shiki-light-bg);
+}
+
+/* Lists */
+.prose-aegis ul,
+.prose-aegis ol {
+  margin: 0.85rem 0;
+  padding-left: 1.4rem;
+}
+.prose-aegis ul li::marker {
+  color: var(--color-signal);
+  font-size: 0.85em;
+}
+.prose-aegis ol li::marker {
+  color: var(--color-fg-mute);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+.prose-aegis li {
+  margin: 0.3rem 0;
+}
+.prose-aegis li > p {
+  margin: 0.3rem 0;
+}
+
+/* Tables */
+.prose-aegis table {
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  font-weight: 500;
+  margin: 1.5rem 0;
+  width: 100%;
+}
+.prose-aegis th,
+.prose-aegis td {
+  border-bottom: 1px solid var(--color-rule);
+  padding: 0.55rem 0.85rem;
+  text-align: start;
+  vertical-align: top;
+}
+.prose-aegis th {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-fg);
+  border-bottom: 1px solid var(--color-rule-strong);
+}
+.prose-aegis tr:hover td {
+  background: var(--color-bg-elev);
+}
+.prose-aegis td code {
+  font-size: 0.82em;
+  padding: 0.05em 0.35em;
+  white-space: nowrap;
+}
+
+/* Keep first-column entries (flags, keys, fields) on a single line —
+   that's where the cramped wrapping looked worst. Wide content still
+   wraps in description columns. */
+.prose-aegis td:first-child {
+  white-space: nowrap;
+}
+
+/* Tables with lots of code-cell content can scroll horizontally
+   instead of squashing the description column. */
+.prose-aegis table {
+  display: block;
+  overflow-x: auto;
+}
+
+/* Blockquotes */
+.prose-aegis blockquote {
+  border-left: 2px solid var(--color-signal);
+  background: var(--color-signal-bg);
+  padding: 0.75rem 1rem;
+  margin: 1.25rem 0;
+  border-radius: 0 2px 2px 0;
+  color: var(--color-fg);
+}
+.prose-aegis blockquote p {
+  margin: 0.4rem 0;
+}
+.prose-aegis blockquote p:first-child::before {
+  content: 'NOTE — ';
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--color-signal);
+}
+
+/* HR */
+.prose-aegis hr {
+  border: none;
+  height: 1px;
+  background: var(--color-rule);
+  margin: 2.5rem 0;
+  position: relative;
+}
+.prose-aegis hr::after {
+  content: '──┼──';
+  position: absolute;
+  top: -0.55em;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-bg);
+  color: var(--color-fg-faint);
+  padding: 0 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+}
+
+/* Heading anchor (rehype-autolink-headings, behavior: 'append') */
+.prose-aegis h2,
+.prose-aegis h3,
+.prose-aegis h4 {
+  position: relative;
+}
+.prose-aegis .heading-anchor {
+  display: inline-block;
+  margin-left: 0.4em;
+  color: var(--color-fg-faint);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 0.85em;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+  cursor: pointer;
+}
+.prose-aegis h2:hover .heading-anchor,
+.prose-aegis h3:hover .heading-anchor,
+.prose-aegis h4:hover .heading-anchor,
+.prose-aegis .heading-anchor:focus-visible {
+  opacity: 1;
+}
+.prose-aegis .heading-anchor:hover {
+  color: var(--color-signal);
+}
+.prose-aegis .heading-anchor.copied {
+  color: var(--color-signal);
+}
+.prose-aegis .heading-anchor.copied::after {
+  content: ' copied';
+  font-size: 0.78em;
+  color: var(--color-signal);
+}
+
+/* =========================================================================
+   Code-block copy button
+   ========================================================================= */
+
+.prose-aegis pre {
+  position: relative;
+}
+
+.code-copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-mute);
+  background: var(--color-bg-elev);
+  border: 1px solid var(--color-rule);
+  border-radius: 2px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 110ms ease, color 110ms ease, border-color 110ms ease, background 110ms ease;
+}
+.prose-aegis pre:hover .code-copy-btn,
+.code-copy-btn:focus-visible {
+  opacity: 1;
+}
+.code-copy-btn:hover {
+  color: var(--color-signal);
+  border-color: var(--color-signal);
+}
+.code-copy-btn[data-copied="true"] {
+  color: var(--color-signal);
+  border-color: var(--color-signal);
+}
+
+/* =========================================================================
+   GitHub-style callouts (remark-github-blockquote-alert)
+   ========================================================================= */
+
+.prose-aegis .markdown-alert {
+  border-left: 2px solid var(--alert-color, var(--color-signal));
+  background: var(--alert-bg, var(--color-signal-bg));
+  padding: 0.85rem 1rem 0.85rem 1.1rem;
+  margin: 1.5rem 0;
+  border-radius: 0 2px 2px 0;
+  color: var(--color-fg);
+}
+.prose-aegis .markdown-alert .markdown-alert-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--alert-color, var(--color-signal));
+  margin-bottom: 0.35rem;
+}
+.prose-aegis .markdown-alert .markdown-alert-title svg {
+  width: 0.95em;
+  height: 0.95em;
+  fill: currentColor;
+}
+.prose-aegis .markdown-alert > p {
+  margin: 0.25rem 0;
+}
+.prose-aegis .markdown-alert > p:last-child {
+  margin-bottom: 0;
+}
+
+/* The plain-blockquote NOTE prefix shouldn't fire on alert blocks. */
+.prose-aegis .markdown-alert > p:first-of-type::before {
+  content: none !important;
+}
+
+/* Variant colors */
+.prose-aegis .markdown-alert-note {
+  --alert-color: #6aa3d4;
+  --alert-bg: rgba(106, 163, 212, 0.08);
+}
+.prose-aegis .markdown-alert-tip {
+  --alert-color: var(--color-signal);
+  --alert-bg: var(--color-signal-bg);
+}
+.prose-aegis .markdown-alert-important {
+  --alert-color: #b59be0;
+  --alert-bg: rgba(181, 155, 224, 0.08);
+}
+.prose-aegis .markdown-alert-warning {
+  --alert-color: #d4a04a;
+  --alert-bg: rgba(212, 160, 74, 0.08);
+}
+.prose-aegis .markdown-alert-caution {
+  --alert-color: var(--color-danger);
+  --alert-bg: rgba(200, 119, 101, 0.08);
+}
+
+/* =========================================================================
+   On-this-page TOC scroll-spy active state
+   ========================================================================= */
+
+.toc-link[data-active="true"] {
+  color: var(--color-signal) !important;
+  border-inline-start-color: var(--color-signal) !important;
+  font-weight: 600;
+}

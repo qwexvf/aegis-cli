@@ -1,8 +1,12 @@
-# Cookbook
+---
+title: Cookbook
+description: End-to-end recipes — snapshot, CI gate, drift mode, allowlist sharing, proxies, package manager migration.
+---
+
 
 End-to-end recipes for the most common ways teams use `aegis`. Pick the one closest to what you're doing and adapt.
 
-If you're new to the CLI, start with [README → Local-only quickstart](../README.md#local-only-quickstart) — it covers the 30-second tour. This file picks up where that leaves off.
+If you're new to the CLI, start with [Getting started](../getting-started/) — it covers the 30-second tour. This page picks up where that leaves off.
 
 > **Status note (v0.1.x):** the Aegis API platform is not yet
 > publicly deployed. Recipes below that mark themselves with 🌐
@@ -86,7 +90,7 @@ Goal: developers run plain `npm install` locally; CI fails the build if the AST 
 
 `aegis ci` runs `snapshot save → enrich → score → exit`. The cache step is what makes warm runs fast — only newly-changed deps incur AST scan cost. **No backend required**: the score step uses the local AST findings + local allowlist only.
 
-For a copy-paste template see [examples/ci/github-actions.yml](../examples/ci/github-actions.yml). Same pattern with platform-specific install for [GitLab](../examples/ci/gitlab-ci.yml) and [generic shell](../examples/ci/generic.sh).
+For a copy-paste template see [examples/ci/github-actions.yml](https://github.com/qwexvf/aegis-cli/blob/main/examples/ci/github-actions.yml). Same pattern with platform-specific install for [GitLab](https://github.com/qwexvf/aegis-cli/blob/main/examples/ci/gitlab-ci.yml) and [generic shell](https://github.com/qwexvf/aegis-cli/blob/main/examples/ci/generic.sh).
 
 ---
 
@@ -304,9 +308,9 @@ aegis cache clear && aegis recheck --all
 
 ## See also
 
-- [README](../README.md) — install, quickstart, full feature overview
-- [docs/commands.md](commands.md) — every subcommand and flag (with 🌐 markers)
-- [docs/configuration.md](configuration.md) — env vars, file paths, allowlist schema
-- [docs/cli-architecture.md](cli-architecture.md) — code layout and how to add a package manager / ecosystem
-- [docs/cli-risk-engine.md](cli-risk-engine.md) — capability scoring, allowlist mechanics
-- [docs/cli-snapshot.md](cli-snapshot.md) — `aegis.lock` format
+- [Getting started](../getting-started/) — install, quickstart, full feature overview
+- [Command reference](../reference/commands/) — every subcommand and flag (with 🌐 markers)
+- [Configuration](../reference/configuration/) — env vars, file paths, allowlist schema
+- [Architecture](../contributing/architecture/) — code layout and how to add a package manager / ecosystem
+- [Risk engine](../contributing/risk-engine/) — capability scoring, allowlist mechanics
+- [Snapshot format](../reference/snapshot-format/) — `aegis.lock` format

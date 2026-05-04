@@ -1,4 +1,10 @@
-# `aegis` CLI snapshots
+---
+title: Snapshot format
+description: The aegis.lock file format, snapshot subcommand semantics, lockfile parsers, and CI patterns.
+sidebar:
+  order: 3
+---
+
 
 > Audience: anyone using or extending the snapshot mechanism.
 

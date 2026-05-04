@@ -1,4 +1,10 @@
-# Extending aegis-cli
+---
+title: Extending aegis
+description: Pluggable interfaces for lockfile parsers, AST scanners, and heuristics — how to add a new ecosystem.
+sidebar:
+  order: 3
+---
+
 
 How to add support for a new package ecosystem (Maven, Composer, Swift, …) or a new behavior detector. The CLI is built around a small set of pluggable interfaces — most extensions are 1-5 files and don't touch domain or use-case code.
 

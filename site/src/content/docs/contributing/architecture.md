@@ -1,4 +1,10 @@
-# `aegis` CLI architecture
+---
+title: Architecture
+description: Layered architecture (domain → usecase → interface → presenter → infra), dependency rules, recipe for adding ecosystems.
+sidebar:
+  order: 1
+---
+
 
 > Audience: anyone modifying the CLI. The shape below is the contract.
 
