@@ -1,0 +1,67 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-ci - Audit the project for risky deps and exit non-zero on findings (one-stop CI command)
+
+
+.SH SYNOPSIS
+\fBaegis ci [flags]\fP
+
+
+.SH DESCRIPTION
+ci runs the full audit pipeline in one shot:
+.IP "  1." 5
+snapshot save     write aegis.lock from the live lockfile
+.IP "  2." 5
+snapshot enrich   AST-scan every dep (skip with --no-enrich)
+.IP "  3." 5
+score             apply allowlist + verdict thresholds
+.IP "  4." 5
+exit              0 = passed, 1 = findings, 2 = error
+
+.PP
+Designed to drop into a CI step:
+.IP \(bu 2
+run: aegis ci --fail-on=block
+.IP \(bu 2
+run: aegis ci --json | jq '.findings'
+
+.PP
+The fingerprint cache (~/.aegis/cache/fingerprints) persists across
+runs, so a warm CI is fast — only newly-added or version-changed
+deps incur AST scan cost.
+
+
+.SH OPTIONS
+\fB--baseline\fP=""
+	path to a saved aegis.lock to diff against (drift mode — catches version-changed deps that grew new capabilities; doesn't touch your aegis.lock)
+
+.PP
+\fB--fail-on\fP="block"
+	verdict threshold to fail on: safe|review|prompt|block
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for ci
+
+.PP
+\fB--json\fP[=false]
+	emit a machine-readable JSON object to stdout (suppresses human output)
+
+.PP
+\fB--no-enrich\fP[=false]
+	skip the AST scan; score only on existing fingerprints (faster but thinner)
+
+.PP
+\fB--quiet\fP[=false]
+	print only the summary line (no per-finding detail)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis(1)\fP

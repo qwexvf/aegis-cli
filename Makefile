@@ -104,3 +104,15 @@ clean:
 .PHONY: run
 run: build
 	./$(BIN_DIR)/$(BINARY)
+
+.PHONY: docs
+docs:                           ## run the docs site dev server (site/)
+	cd site && bun run dev
+
+.PHONY: docs-build
+docs-build:                     ## build the docs site to site/dist/
+	cd site && bun install --frozen-lockfile && bun run build
+
+.PHONY: docs-gen
+docs-gen:                       ## regenerate man pages + command markdown from cobra tree
+	go run ./cmd/gendocs

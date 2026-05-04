@@ -1,0 +1,47 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-allowlist-add - Add an allowlist rule
+
+
+.SH SYNOPSIS
+\fBaegis allowlist add  [flags]\fP
+
+
+.SH DESCRIPTION
+Add an allowlist rule
+
+
+.SH OPTIONS
+\fB--capability\fP=""
+	capability code to suppress (omit for any)
+
+.PP
+\fB--ecosystem\fP="npm"
+	ecosystem (npm|pypi|crates|...)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for add
+
+.PP
+\fB--reason\fP=""
+	explanation (recommended)
+
+.PP
+\fB--scope\fP="user"
+	user|project
+
+.PP
+\fB--version\fP=""
+	semver range (omit for any)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis-allowlist(1)\fP

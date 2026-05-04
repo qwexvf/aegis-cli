@@ -1,0 +1,43 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-analyze - Fetch and AST-scan a single package — fallback when the incident DB has no record
+
+
+.SH SYNOPSIS
+\fBaegis analyze  [flags]\fP
+
+
+.SH DESCRIPTION
+analyze fetches the package's distribution from the registry, runs the
+AST risk scanner over its source, applies the allowlist, and prints
+a verdict. Spec is [ecosystem/]name@version. Default ecosystem is npm.
+
+.PP
+Examples:
+  aegis analyze lodash@4.17.21
+  aegis analyze @solana/web3.js@1.95.4
+  aegis analyze npm/event-stream@3.3.6
+
+
+.SH OPTIONS
+\fB--evidence\fP[=false]
+	include file:line snippets for each detected capability
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for analyze
+
+.PP
+\fB--json\fP[=false]
+	emit a machine-readable JSON object to stdout (suppresses human output)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis(1)\fP

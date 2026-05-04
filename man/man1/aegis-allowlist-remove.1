@@ -1,0 +1,39 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-allowlist-remove - Remove allowlist rule(s) matching name (and optionally capability)
+
+
+.SH SYNOPSIS
+\fBaegis allowlist remove  [flags]\fP
+
+
+.SH DESCRIPTION
+Remove allowlist rule(s) matching name (and optionally capability)
+
+
+.SH OPTIONS
+\fB--capability\fP=""
+	narrow removal to a specific capability
+
+.PP
+\fB--ecosystem\fP="npm"
+	ecosystem (npm|pypi|crates|...)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for remove
+
+.PP
+\fB--scope\fP="user"
+	user|project
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis-allowlist(1)\fP

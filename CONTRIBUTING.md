@@ -10,7 +10,7 @@ release pipeline, not through documentation.
   approach. PRs that arrive without prior discussion may be closed if
   the direction doesn't fit the project's scope. Bug fixes and small
   improvements don't need an issue.
-- Read [docs/cli-architecture.md](docs/cli-architecture.md) — the
+- Read the [architecture page](https://qwexvf.github.io/aegis-cli/contributing/architecture/) — the
   clean-arch dependency direction (`cmd → interface → usecase →
   domain ← infra`) is enforced by review, not by tooling. PRs that
   cross those boundaries will be rejected.
@@ -105,7 +105,7 @@ Five files under `internal/infra/`:
 
 Plus detection priority in `internal/usecase/snapshot.go` and a
 composition-root wire-up in `cmd/aegis/main.go`. See
-[docs/cli-architecture.md § Adding a new ecosystem](docs/cli-architecture.md).
+[Architecture § Adding a new ecosystem](https://qwexvf.github.io/aegis-cli/contributing/architecture/).
 
 ## Reviewing
 

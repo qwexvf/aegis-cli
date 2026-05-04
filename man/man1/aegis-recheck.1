@@ -1,0 +1,51 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-recheck - Re-run the install gate against the current lockfile
+
+
+.SH SYNOPSIS
+\fBaegis recheck [flags]\fP
+
+
+.SH DESCRIPTION
+recheck calls /check on every dep in the live lockfile and reports
+any that the API now says are blocked (or prompted, with
+--fail-on-prompt). Useful after an incident DB update — packages
+allowed when installed may now be flagged.
+
+.PP
+By default only DIRECT deps are rechecked (matches what the user
+explicitly asked for at install time). Pass --all to also scan
+transitive deps.
+
+
+.SH OPTIONS
+\fB--all\fP[=false]
+	include transitive deps (default: direct only)
+
+.PP
+\fB--fail-on-prompt\fP[=false]
+	exit non-zero on prompt verdicts (default: only block fails)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for recheck
+
+.PP
+\fB--json\fP[=false]
+	emit machine-readable JSON to stdout
+
+.PP
+\fB--quiet\fP[=false]
+	summary line only (no per-finding detail)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis(1)\fP

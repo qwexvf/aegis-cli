@@ -1,0 +1,47 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-explain - Show why a dep was flagged — capability descriptions + risk breakdown + evidence
+
+
+.SH SYNOPSIS
+\fBaegis explain  [flags]\fP
+
+
+.SH DESCRIPTION
+explain looks up the dep in the saved aegis.lock first (no network).
+If not found, falls back to a fresh fetch + AST scan.
+
+.PP
+Each capability is shown with a one-line human description; flags
+include the suppression reason when allowlisted; evidence (file:line
+snippets) is shown when the scan was fresh.
+
+.PP
+Examples:
+  aegis explain lodash@4.17.21
+  aegis explain @solana/web3.js@1.95.4
+  aegis explain --snapshot-only ua-parser-js@0.7.29   # error if not in lock
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for explain
+
+.PP
+\fB--json\fP[=false]
+	emit machine-readable JSON to stdout
+
+.PP
+\fB--snapshot-only\fP[=false]
+	only consult the saved aegis.lock; never fetch + rescan
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis(1)\fP
