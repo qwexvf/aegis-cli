@@ -1,4 +1,10 @@
-# Configuration reference
+---
+title: Configuration
+description: Environment variables, config file paths, allowlist YAML schema, CI auto-detection, and build tags.
+sidebar:
+  order: 2
+---
+
 
 How `aegis` is configured: environment variables, config file paths, and CI auto-detection. Authoritative as of `v0.1.0`.
 
@@ -157,7 +163,7 @@ If any layer suppresses a capability, the finding is annotated with the suppress
 
 ## Build-time configuration
 
-These are compile-time choices, not env vars. See [Install § Build flavours](../README.md#install) for the full table.
+These are compile-time choices, not env vars. See [Getting started § Install](../getting-started/#install) for the full table.
 
 | Build tag | Effect |
 |---|---|

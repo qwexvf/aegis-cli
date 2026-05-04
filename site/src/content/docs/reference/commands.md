@@ -1,4 +1,11 @@
-# Command reference
+---
+title: Command reference
+description: Every aegis subcommand, flag, exit code, and example. 🌐 marks commands that require the Aegis backend.
+sidebar:
+  label: Commands
+  order: 1
+---
+
 
 Every subcommand `aegis --help` lists, with flags, examples, exit codes, and output format. Authoritative as of `v0.1.0`.
 
@@ -188,7 +195,7 @@ Scoring folds two signals: AST capability findings (suspicious code patterns) an
 | Source | Critical / High | Medium | Low | Info |
 |---|---|---|---|---|
 | Advisory severity | `block` | `prompt` | `review` | `safe` |
-| AST score | (capability-weighted; see [docs/cli-risk-engine.md](cli-risk-engine.md)) | | | |
+| AST score | (capability-weighted; see [Risk engine](../contributing/risk-engine/)) | | | |
 
 ```sh
 aegis ci --fail-on=block                      # default

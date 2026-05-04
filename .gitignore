@@ -1,3 +1,14 @@
 bin/
 
 dist/
+
+# stray gendocs binary if built at root (cmd/gendocs/ is the source)
+/gendocs
+
+# Backup of authored markdown (canonical lives in site/src/content/docs)
+docs/content/
+
+# Site build artifacts
+site/node_modules/
+site/dist/
+site/.astro/

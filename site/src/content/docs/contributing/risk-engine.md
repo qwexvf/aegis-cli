@@ -1,4 +1,10 @@
-# `aegis` CLI risk engine
+---
+title: Risk engine
+description: Capability enum, RiskScore / DriftScore weights, allowlist mechanics, tuning workflow, and test coverage.
+sidebar:
+  order: 2
+---
+
 
 > Audience: anyone tuning thresholds, adding capabilities, or curating
 > the bundled allowlist.
@@ -191,7 +197,7 @@ to *no* version constraint (`VersionRange="*"`) but consider
 anchoring to a major (`^4`) for packages with a known-sabotage
 incident at a higher version.
 
-See [README.md § Allowlist](../README.md#allowlist) for the user-facing CLI.
+See [Command reference § allowlist](../reference/commands/) for the user-facing CLI.
 
 ## Tuning workflow
 
