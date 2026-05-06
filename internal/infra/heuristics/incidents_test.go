@@ -141,7 +141,7 @@ func TestIncidents_NPM(t *testing.T) {
 			PublishedAt:         "2018-09-09T00:00:00Z", // freshly published
 			PreviousVersion:     "3.3.5",
 			PreviousPublishedAt: "2018-02-01T00:00:00Z", // long quiet period before
-			WeeklyDownloads:     800,                     // modest tier
+			WeeklyDownloads:     800,                    // modest tier
 		}
 		got := DetectMaintainerHijackRisk(sig)
 		if got != domain.CapMaintainerHijackRisk {
