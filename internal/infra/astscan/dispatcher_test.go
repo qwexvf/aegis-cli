@@ -144,6 +144,37 @@ func TestDispatcher_NoFilesProducesAnalyzedFingerprint(t *testing.T) {
 	}
 }
 
+func TestDispatcher_FiltersFilesByExtension_Ruby(t *testing.T) {
+	rb := &fakeLanguageScanner{}
+	d := NewDispatcher()
+	d.Register(domain.EcoRubyGems, rb)
+
+	src := usecase.PackageSource{Files: map[string][]byte{
+		"lib/foo.rb":       []byte("a"), // analyzed
+		"foo.gemspec":      []byte("a"), // analyzed (install-time Ruby)
+		"README.md":        []byte("a"), // skipped
+		"Gemfile":          []byte("a"), // skipped (manifest, no .rb suffix)
+		"test/foo_test.rb": []byte("a"), // analyzed
+	}}
+	if _, err := d.Analyze(context.Background(), domain.EcoRubyGems, src); err != nil {
+		t.Fatal(err)
+	}
+	visited := map[string]bool{}
+	for _, p := range rb.visitedPaths {
+		visited[p] = true
+	}
+	for _, want := range []string{"lib/foo.rb", "foo.gemspec", "test/foo_test.rb"} {
+		if !visited[want] {
+			t.Errorf("expected scanner to see %q, didn't", want)
+		}
+	}
+	for _, skip := range []string{"README.md", "Gemfile"} {
+		if visited[skip] {
+			t.Errorf("scanner visited %q but should have skipped", skip)
+		}
+	}
+}
+
 func TestFindings_AddCapabilityDedups(t *testing.T) {
 	f := NewFindings()
 	f.AddCapability(domain.CapShellSpawn)
