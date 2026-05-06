@@ -68,6 +68,9 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: e2e — analyze every fixture in examples/incidents/
+        run: AEGIS=./bin/aegis bash tests/e2e/incidents.sh
+
   goreleaser-check:
     name: goreleaser check
     runs-on: ubuntu-latest
