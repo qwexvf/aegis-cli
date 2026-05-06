@@ -20,6 +20,7 @@ import (
 type Analyze struct {
 	fetcher          PackageSourceFetcher
 	evidenceAnalyzer EvidenceAnalyzer
+	heuristics       MalwareHeuristics
 	presenter        AnalyzePresenter
 	allowlist        domain.AllowSet
 }
@@ -44,6 +45,16 @@ func (a *Analyze) WithRiskEngine(fetcher PackageSourceFetcher, analyzer Evidence
 // suppression.
 func (a *Analyze) WithAllowlist(set domain.AllowSet) *Analyze {
 	a.allowlist = set
+	return a
+}
+
+// WithHeuristics attaches the behaviour-based detector set (URL scan,
+// install-hook regex, typosquat, binary dropper, obfuscation
+// patterns). Without it, Run reports only AST-level capabilities — the
+// same gap Snapshot.Enrich addresses by also calling heuristics after
+// the AST pass.
+func (a *Analyze) WithHeuristics(h MalwareHeuristics) *Analyze {
+	a.heuristics = h
 	return a
 }
 
@@ -144,6 +155,24 @@ func (a *Analyze) Run(ctx context.Context, req AnalyzeRequest) (AnalyzeResult, e
 		wrapped := fmt.Errorf("analyze: %w", err)
 		emit(func() { a.presenter.OnAnalyzeError(req.Ecosystem, req.Name, req.Version, wrapped) })
 		return AnalyzeResult{}, wrapped
+	}
+
+	// Heuristics extend the AST capability set with behaviour-based
+	// detectors (URL scan, install-hook regex, typosquat, obfuscated
+	// payload, binary dropper). Mirrors Snapshot.Enrich's logic so
+	// `aegis analyze` and `aegis snapshot enrich` produce the same
+	// capability set on identical input.
+	if a.heuristics != nil {
+		extra := a.heuristics.Run(req.Ecosystem, req.Name, src.Manifest, src)
+		if len(extra) > 0 {
+			merged := append([]domain.Capability(nil), fp.Capabilities...)
+			for _, c := range extra {
+				if !fp.Capabilities.Has(c) {
+					merged = append(merged, c)
+				}
+			}
+			fp.Capabilities = domain.NewCapabilitySet(merged...)
+		}
 	}
 
 	risk := domain.RiskScore(&fp).

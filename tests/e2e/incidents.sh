@@ -18,18 +18,33 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 AEGIS="${AEGIS:-$ROOT/bin/aegis}"
 
-if [ ! -x "$AEGIS" ]; then
+if [ "${AEGIS_SKIP_BUILD:-}" != "1" ]; then
     echo "building aegis -> $AEGIS"
     (cd "$ROOT" && go build -o "$AEGIS" ./cmd/aegis)
+fi
+if [ ! -x "$AEGIS" ]; then
+    echo "no aegis binary at $AEGIS; set AEGIS=path or unset AEGIS_SKIP_BUILD"
+    exit 1
 fi
 
 # Each row: ecosystem|name|version|cap1,cap2,...
 # fixture path is derived as examples/incidents/<eco>/<name>-<ver>/.
 CASES=(
-    "rubygems|rest-client|1.6.13|dynamic-eval,net-egress"
-    "rubygems|strong_password|0.0.7|dynamic-eval,net-egress"
+    # RubyGems — eval(Net::HTTP.get(...)) family
+    "rubygems|rest-client|1.6.13|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
+    "rubygems|strong_password|0.0.7|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
     "rubygems|bootstrap-sass|3.2.0.3|dynamic-eval,base64-decode"
-    "rubygems|paranoid2|1.1.6|dynamic-eval,net-egress"
+    "rubygems|paranoid2|1.1.6|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
+
+    # PyPI
+    "pypi|torchtriton|1.0.1|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
+    "pypi|colourama|0.1.6|typosquat-risk,shell-spawn,net-egress"
+    "pypi|ultralytics|8.3.41|binary-dropper"
+
+    # npm
+    "npm|event-stream|3.3.6|install-hook-suspicious,obfuscated-payload,suspicious-url,dynamic-eval"
+    "npm|ua-parser-js|0.7.29|install-hook-suspicious,binary-dropper"
+    "npm|coa|2.0.3|install-hook-suspicious"
 )
 
 pass=0

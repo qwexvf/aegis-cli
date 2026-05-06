@@ -180,6 +180,9 @@ func main() {
 	}
 	analyzePresenter := cli.NewAnalyzePresenter(presenter)
 	analyze := usecase.NewAnalyze(analyzePresenter)
+	if os.Getenv("AEGIS_NO_HEURISTICS") == "" {
+		analyze.WithHeuristics(heuristicsAdapter{})
+	}
 	ciPresenter := cli.NewCIPresenter(presenter)
 	ci := usecase.NewCI(snapshot, ciPresenter)
 	recheckPresenter := cli.NewRecheckPresenter(presenter)
