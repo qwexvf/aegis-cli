@@ -215,11 +215,23 @@ type MalwareHeuristics interface {
 	RunMaintainerSignal(sig domain.MaintainerSignal) domain.Capability
 }
 
-// VulnLookup turns a list of (ecosystem, name, version) tuples into
-// a map of advisories per tuple, against a public vulnerability feed
-// (OSV.dev today; npm advisory bulk endpoint planned). Snapshot.Enrich
-// calls this once per run after the AST scan completes, so the result
-// can be persisted into the snapshot alongside the AST findings.
+// VulnLookup turns a list of (ecosystem, name, version) tuples into a
+// map of advisories per tuple, against a vulnerability feed.
+// Snapshot.Enrich calls this once per run after the AST scan completes,
+// so the result can be persisted into the snapshot alongside the AST
+// findings.
+//
+// Implementations:
+//   - infra/osv          — public OSV.dev API, no auth, no rate-limit
+//     headers needed today. Default for CLI users
+//     without an Aegis API key.
+//   - infra/aegisapi     — Aegis-managed feed, authenticated. Adds
+//     curation, freshness, and ecosystem coverage
+//     beyond OSV (planned: npm advisory bulk,
+//     GitHub Security Advisories direct).
+//   - infra/vulnlookup   — composition helpers (Fallback, MultiSource)
+//     for users who want both: try Aegis first,
+//     OSV on error.
 //
 // Concurrency: implementations must tolerate being called once per
 // Enrich invocation (not per-dep); batching is a property of the
@@ -228,10 +240,9 @@ type MalwareHeuristics interface {
 // missing key) so the use case can distinguish "looked up, none
 // found" from "not yet looked up".
 //
-// Implementation: infra/osv. Returns (nil, nil) when no queries are
-// supplied — calling code may pre-filter to deps that already have
-// fingerprints to avoid wasting an upstream call on bare lockfile
-// entries.
+// Returns (nil, nil) when no queries are supplied — calling code may
+// pre-filter to deps that already have fingerprints to avoid wasting
+// an upstream call on bare lockfile entries.
 type VulnLookup interface {
 	Lookup(ctx context.Context, queries []domain.AdvisoryQuery) (map[string][]domain.Advisory, error)
 }

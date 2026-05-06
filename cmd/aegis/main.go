@@ -29,6 +29,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/osv"
 	"github.com/qwexvf/aegis-cli/internal/infra/ttyprompt"
+	"github.com/qwexvf/aegis-cli/internal/infra/vulnlookup"
 	"github.com/qwexvf/aegis-cli/internal/presenter/cli"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
@@ -145,21 +146,46 @@ func main() {
 		cli.NewEnrichLivePresenter(cli.NewSnapshotPresenter(presenter)),
 		clii.Version)
 
-	// Local-only vulnerability lookup. OSV.dev (Google) is the
-	// default backend — public, free, no auth required. Set
-	// AEGIS_OSV_URL to point at a self-hosted OSV deployment;
-	// AEGIS_NO_VULN_LOOKUP=1 disables the lookup entirely (offline
-	// mode). Cache lives under <cache>/advisories/ so re-enrich runs
-	// don't re-fetch advisory bodies the user has already seen.
-	if os.Getenv("AEGIS_NO_VULN_LOOKUP") == "" {
-		osvOpts := []osv.Option{osv.WithHTTPClient(httpClient)}
-		if u := os.Getenv("AEGIS_OSV_URL"); u != "" {
-			osvOpts = append(osvOpts, osv.WithBaseURL(u))
+	// Vulnerability lookup. The default backend is OSV.dev (Google) —
+	// public, free, no auth. When AEGIS_API_KEY is set we prefer the
+	// Aegis API's curated feed and fall back to OSV on error, so a
+	// transient outage on either side never blocks Enrich. The
+	// AEGIS_VULN_SOURCE env var pins the choice explicitly:
+	//
+	//   AEGIS_VULN_SOURCE=osv     OSV only (no Aegis call even with key)
+	//   AEGIS_VULN_SOURCE=aegis   Aegis only (no OSV fallback)
+	//   AEGIS_VULN_SOURCE=none    Disable lookup (== AEGIS_NO_VULN_LOOKUP=1)
+	//
+	// Cache lives under <cache>/advisories/ so re-enrich runs don't
+	// re-fetch advisory bodies the user has already seen.
+	source := os.Getenv("AEGIS_VULN_SOURCE")
+	if os.Getenv("AEGIS_NO_VULN_LOOKUP") == "" && source != "none" {
+		var osvLookup, aegisLookup usecase.VulnLookup
+		if source != "aegis" {
+			osvOpts := []osv.Option{osv.WithHTTPClient(httpClient)}
+			if u := os.Getenv("AEGIS_OSV_URL"); u != "" {
+				osvOpts = append(osvOpts, osv.WithBaseURL(u))
+			}
+			if dir := diskcache.AdvisoryDir(); dir != "" {
+				osvOpts = append(osvOpts, osv.WithCacheDir(dir))
+			}
+			osvLookup = osv.New(osvOpts...)
 		}
-		if dir := diskcache.AdvisoryDir(); dir != "" {
-			osvOpts = append(osvOpts, osv.WithCacheDir(dir))
+		if source != "osv" && os.Getenv("AEGIS_API_KEY") != "" {
+			aegisLookup = apiClient
 		}
-		snapshot.WithVulnLookup(osv.New(osvOpts...))
+		switch {
+		case aegisLookup != nil && osvLookup != nil:
+			snapshot.WithVulnLookup(vulnlookup.Fallback{
+				Primary:   aegisLookup,
+				Secondary: osvLookup,
+				Logger:    func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) },
+			})
+		case aegisLookup != nil:
+			snapshot.WithVulnLookup(aegisLookup)
+		case osvLookup != nil:
+			snapshot.WithVulnLookup(osvLookup)
+		}
 	}
 
 	// Behaviour-based malware heuristics: suspicious install hooks,
