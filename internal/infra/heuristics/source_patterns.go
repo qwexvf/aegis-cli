@@ -59,6 +59,9 @@ func DetectSourcePatterns(src usecase.PackageSource) []domain.Capability {
 		if !found.obfuscation && isRubySource(filename) && rubyObfuscatedPayloadPattern.Match(body) {
 			found.obfuscation = true
 		}
+		if !found.obfuscation && isPythonSource(filename) && pythonObfuscatedPayloadPattern.Match(body) {
+			found.obfuscation = true
+		}
 		if found.obfuscation && found.suspURL {
 			break // both fired; no need to scan further
 		}
@@ -210,6 +213,43 @@ var rubyObfuscatedPayloadPattern = regexp.MustCompile(
 		`Net::HTTP\.(?:get|post)\s*\(|` +
 		`open\s*\(\s*['"]https?:|` +
 		`URI\.(?:open|read)\s*\(` +
+		`)`)
+
+// isPythonSource returns true for files the Python obfuscation regex
+// should run over. `.py` is the canonical extension; `.pyi` (stubs)
+// and `.pyx` (Cython) round it out — install-time payloads have been
+// observed in all three.
+func isPythonSource(filename string) bool {
+	switch strings.ToLower(path.Ext(filename)) {
+	case ".py", ".pyi", ".pyx":
+		return true
+	}
+	return false
+}
+
+// pythonObfuscatedPayloadPattern matches Python's canonical
+// "fetch-then-execute" idioms. Shape mirrors the JS / Ruby variants
+// using Python stdlib + popular third-party HTTP callees:
+//
+//	exec(urllib.request.urlopen("...").read())
+//	eval(urllib.request.urlopen("...").read())
+//	exec(requests.get("...").text)
+//	exec(httpx.get("...").content)
+//	exec(base64.b64decode(payload))
+//	exec(compile(base64.b64decode(...), ...))
+//
+// `exec` is used FAR more often than `eval` for malware in Python
+// (eval is expression-only, exec runs full statements), but both
+// are accepted to be safe.
+var pythonObfuscatedPayloadPattern = regexp.MustCompile(
+	`\b(?:exec|eval)\s*\(\s*` +
+		`(?:` +
+		`urllib\.request\.urlopen\s*\(|` +
+		`urllib2\.urlopen\s*\(|` +
+		`(?:requests|httpx|aiohttp)\.(?:get|post)\s*\(|` +
+		`base64\.b64decode\s*\(|` +
+		`codecs\.decode\s*\(|` +
+		`compile\s*\(\s*base64\.` +
 		`)`)
 
 // isAnalyzableSource is the broader gate for language-agnostic scans

