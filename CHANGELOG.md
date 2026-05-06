@@ -6,6 +6,25 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-05-06
+
+Detection-gap roadmap fully closed. Every historical incident in the rogues' gallery (`internal/infra/heuristics/incidents_test.go`) now PASSes — 8 t.Skip blocks lifted across PyPI, RubyGems, and crates.io.
+
+### Added
+- **Language-agnostic URL scan** (Plan A) — host-blocklist (pastebin / discord webhooks / telegram bots / ipinfo / cloudflare-dns / ngrok / ...) + IDN-homoglyph detection now runs over `.py`, `.pyi`, `.pyx`, `.rb`, `.gemspec`, `.rs`, and `.go` source, not just JS. New `isAnalyzableSource` gate.
+- **Ruby `eval(Net::HTTP.get(...))` detector** (Plan B) — new `rubyObfuscatedPayloadPattern` + `isRubySource` gate covers the canonical Ruby fetch-then-execute idiom (`eval(Net::HTTP.{get,post}(...))`, `eval(open("https://..."))`, `eval(URI.{open,read}(...))`). Catches the 2019 `rest-client` and `strong_password` compromises.
+- **Python `exec(urlopen(...))` / `exec(b64decode(...))` detector** (Plan C) — new `pythonObfuscatedPayloadPattern` + `isPythonSource` gate covers `exec`/`eval` of `urllib.request.urlopen`, `urllib2.urlopen`, `requests`/`httpx`/`aiohttp` `.{get,post}`, `base64.b64decode`, `codecs.decode`, and `compile(base64.…)` wrappers.
+- **Per-ecosystem typosquat lists** (Plans D + E + F) — `topPackages` is now keyed by `domain.Ecosystem`. Adding an ecosystem = one line + a `top_<eco>_packages.txt` file. New curated lists for PyPI (~120 entries) and crates.io (~80 entries) with cherry-picks for known typosquat targets (`colorama`, `dateutil`, `jellyfish`, `rust_decimal`, `bigdecimal`). Catches 2017 `colourama` and 2022 `rustdecimal`.
+- **Cargo `build.rs` install-hook detector** (Plans G + H) — `DetectCargoBuildHook` reuses the existing `scriptMatchesMalwarePattern` set against the contents of `build.rs` when the ecosystem is `EcoCrates`. Catches the 2023 `xrvrv` build-time shell-payload shape.
+- **Per-ecosystem binary-dropper carve-outs** (Plans I + J) — `isExpectedNativePath(eco, filename)` recognises canonical "this is supposed to be a binary" packaging shapes. PyPI: CPython ABI-tagged `.so` (`.cpython-*-*.so`, `.abi3.so`), `.pyd`, and bundled-library paths (`<pkg>/.libs/`, `<pkg>/_vendor/`). Crates: no carve-out (legitimate `-sys` crates ship `.a`/`.lib`, the suspicious-extension list never matched those anyway). Catches 2024 `ultralytics` (stray `.so` outside C-extension paths) and 2024 `big_decimal` (precompiled `.so` in a crate).
+
+### Changed
+- `DetectTyposquat` no longer hard-gates on `EcoNpm`. Ecosystems without a top-list are silently skipped (no false positives), so adding one is purely additive.
+- `DetectBinaryDropper` no longer hard-gates on `EcoNpm`. Same shape — gated on the carve-out function, ecosystems without carve-outs default to "no exception" (everything on the suspicious-extension list flags).
+
+### Tests
+- 728 pass with race detector across 26 packages (+53 from 0.8.0). All 20 incident replays in `TestIncidents_*` are now active (was 12 active + 8 skipped).
+
 ## [0.8.0] — 2026-05-06
 
 CLI ergonomics + scriptability pass. Signal handling, shell completion, grouped help, and `--json` on every read-only inspection command.
