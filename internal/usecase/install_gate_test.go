@@ -121,7 +121,15 @@ func newHarness() *harness {
 		env:      &fakeEnv{},
 		pres:     &capturingPresenter{},
 	}
-	h.gate = NewInstallGate(h.resolver, h.checker, h.cache, h.audit, h.confirm, h.env, h.pres)
+	h.gate = NewInstallGate(InstallGateDeps{
+		Resolver:  h.resolver,
+		Checker:   h.checker,
+		Cache:     h.cache,
+		Audit:     h.audit,
+		Confirm:   h.confirm,
+		Env:       h.env,
+		Presenter: h.pres,
+	})
 	return h
 }
 

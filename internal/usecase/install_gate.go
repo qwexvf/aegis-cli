@@ -24,26 +24,29 @@ type InstallGate struct {
 	timeout time.Duration
 }
 
-// NewInstallGate constructs the gate from its ports. Pass nil for
-// optional dependencies — only resolver, checker, presenter are
-// strictly required (cache, audit, confirm, env have safe nil-handlers).
-func NewInstallGate(
-	resolver VersionResolver,
-	checker DecisionChecker,
-	cache DecisionCache,
-	audit AuditWriter,
-	confirm Confirmer,
-	env EnvProbe,
-	presenter Presenter,
-) *InstallGate {
+// InstallGateDeps bundles every port InstallGate needs. Resolver,
+// Checker, and Presenter are required; Cache/Audit/Confirm/Env have
+// safe nil-handlers and may be omitted.
+type InstallGateDeps struct {
+	Resolver  VersionResolver
+	Checker   DecisionChecker
+	Cache     DecisionCache
+	Audit     AuditWriter
+	Confirm   Confirmer
+	Env       EnvProbe
+	Presenter Presenter
+}
+
+// NewInstallGate constructs the gate from its ports.
+func NewInstallGate(d InstallGateDeps) *InstallGate {
 	return &InstallGate{
-		resolver:  resolver,
-		checker:   checker,
-		cache:     cache,
-		audit:     audit,
-		confirm:   confirm,
-		env:       env,
-		presenter: presenter,
+		resolver:  d.Resolver,
+		checker:   d.Checker,
+		cache:     d.Cache,
+		audit:     d.Audit,
+		confirm:   d.Confirm,
+		env:       d.Env,
+		presenter: d.Presenter,
 		timeout:   20 * time.Second,
 	}
 }
