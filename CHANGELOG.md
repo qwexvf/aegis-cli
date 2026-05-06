@@ -4,6 +4,13 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.12.1](https://github.com/qwexvf/aegis-cli/compare/v0.12.0...v0.12.1) (2026-05-06)
+
+
+### Fixed
+
+* **domain:** clamp parseInt at 1e9 to prevent silent int overflow ([f7f9393](https://github.com/qwexvf/aegis-cli/commit/f7f93936115bc15c309874d79aa11fd4ba4f1931))
+
 ## [0.12.0](https://github.com/qwexvf/aegis-cli/compare/v0.11.0...v0.12.0) (2026-05-06)
 
 
