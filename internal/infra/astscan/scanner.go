@@ -236,6 +236,10 @@ func isAnalyzable(eco domain.Ecosystem, path string) bool {
 		// execute at install time, so we walk it too.
 		return strings.HasSuffix(path, ".rb") ||
 			strings.HasSuffix(path, ".gemspec")
+	case domain.EcoCrates:
+		// Rust source. build.rs runs at install time and is THE
+		// crates.io install-hook surface — explicitly included.
+		return strings.HasSuffix(path, ".rs")
 	}
 	return false
 }

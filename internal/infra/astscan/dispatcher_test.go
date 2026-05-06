@@ -175,6 +175,38 @@ func TestDispatcher_FiltersFilesByExtension_Ruby(t *testing.T) {
 	}
 }
 
+func TestDispatcher_FiltersFilesByExtension_Rust(t *testing.T) {
+	rs := &fakeLanguageScanner{}
+	d := NewDispatcher()
+	d.Register(domain.EcoCrates, rs)
+
+	src := usecase.PackageSource{Files: map[string][]byte{
+		"src/lib.rs":  []byte("a"), // analyzed
+		"build.rs":    []byte("a"), // analyzed (install-time Rust)
+		"README.md":   []byte("a"), // skipped
+		"Cargo.toml":  []byte("a"), // skipped (manifest)
+		"tests/it.rs": []byte("a"), // analyzed
+		"vendor/x.rs": []byte("a"), // analyzed (vendored sources still source)
+	}}
+	if _, err := d.Analyze(context.Background(), domain.EcoCrates, src); err != nil {
+		t.Fatal(err)
+	}
+	visited := map[string]bool{}
+	for _, p := range rs.visitedPaths {
+		visited[p] = true
+	}
+	for _, want := range []string{"src/lib.rs", "build.rs", "tests/it.rs", "vendor/x.rs"} {
+		if !visited[want] {
+			t.Errorf("expected scanner to see %q, didn't", want)
+		}
+	}
+	for _, skip := range []string{"README.md", "Cargo.toml"} {
+		if visited[skip] {
+			t.Errorf("scanner visited %q but should have skipped", skip)
+		}
+	}
+}
+
 func TestFindings_AddCapabilityDedups(t *testing.T) {
 	f := NewFindings()
 	f.AddCapability(domain.CapShellSpawn)

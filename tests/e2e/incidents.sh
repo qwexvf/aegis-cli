@@ -45,6 +45,11 @@ CASES=(
     "npm|event-stream|3.3.6|install-hook-suspicious,obfuscated-payload,suspicious-url,dynamic-eval"
     "npm|ua-parser-js|0.7.29|install-hook-suspicious,binary-dropper"
     "npm|coa|2.0.3|install-hook-suspicious"
+
+    # crates.io
+    "crates|xrvrv|1.0.0|shell-spawn,install-hook-suspicious,suspicious-url"
+    "crates|rustdecimal|1.23.1|net-egress,suspicious-url,typosquat-risk"
+    "crates|big_decimal|0.1.5|binary-dropper,typosquat-risk"
 )
 
 pass=0
