@@ -4,6 +4,24 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.12.0](https://github.com/qwexvf/aegis-cli/compare/v0.11.0...v0.12.0) (2026-05-06)
+
+
+### Added
+
+* **astscan:** java AST scanner via tree-sitter-java + log4j incident fixture ([d392440](https://github.com/qwexvf/aegis-cli/commit/d392440703c915826bc6f2ad6dce6cf492f01c64))
+* php AST scanner + maven/composer lockfile parsers ([538a732](https://github.com/qwexvf/aegis-cli/commit/538a732a56a4a084054ae4f04932c4cc9bd8b0f7))
+
+
+### Docs
+
+* bring site up to date for 5-language scanner / --local / vulnlookup ([6485091](https://github.com/qwexvf/aegis-cli/commit/64850913ddc20f8513e48fea5f885660688b033b))
+
+
+### CI
+
+* **release:** also fire on 'release: published' for release-please-driven cuts ([79fbf88](https://github.com/qwexvf/aegis-cli/commit/79fbf88c33bb4dab2b2b517b2e6f7e3e92498794))
+
 ## [0.11.0](https://github.com/qwexvf/aegis-cli/compare/v0.10.0...v0.11.0) (2026-05-06)
 
 
