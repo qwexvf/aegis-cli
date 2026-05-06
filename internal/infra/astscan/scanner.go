@@ -258,6 +258,16 @@ func isAnalyzable(eco domain.Ecosystem, path string) bool {
 			return false
 		}
 		return true
+	case domain.EcoMaven:
+		// Java source. Test sources under src/test/ are skipped —
+		// never run at consumer use time.
+		if !strings.HasSuffix(path, ".java") {
+			return false
+		}
+		if strings.Contains(path, "/test/") || strings.Contains(path, "/tests/") {
+			return false
+		}
+		return true
 	}
 	return false
 }
