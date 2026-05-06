@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# pre-commit hook: gofmt-check on staged .go files only.
+#
+# Why staged-only: fmt-check across the whole tree on every commit is
+# slow on big trees. We mirror what CI lint catches (gofmt) for the
+# files this commit actually touches.
+#
+# Install with:  make install-hooks
+#
+# Bypass (only when you know what you're doing):  git commit --no-verify
+
+set -e
+
+staged_go_files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.go')
+
+if [ -z "$staged_go_files" ]; then
+    exit 0
+fi
+
+unformatted=$(gofmt -l $staged_go_files 2>/dev/null || true)
+
+if [ -n "$unformatted" ]; then
+    echo "gofmt issues in staged files:"
+    echo "$unformatted" | sed 's/^/  /'
+    echo
+    echo "fix with: make fmt && git add -u"
+    exit 1
+fi
+
+exit 0

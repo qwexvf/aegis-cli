@@ -93,6 +93,31 @@ test-race:                      ## run tests with the race detector
 vet:
 	go vet ./...
 
+.PHONY: fmt
+fmt:                            ## gofmt every tracked .go file in place
+	gofmt -w .
+
+.PHONY: fmt-check
+fmt-check:                      ## fail if any .go file is unformatted (mirrors CI lint)
+	@out="$$(gofmt -l .)"; \
+	if [ -n "$$out" ]; then \
+	  echo "gofmt issues in:"; \
+	  echo "$$out"; \
+	  echo; \
+	  echo "fix with: make fmt"; \
+	  exit 1; \
+	fi
+
+.PHONY: precommit
+precommit: fmt-check vet test-race  ## run before every commit/push (CI parity)
+	@echo "precommit OK"
+
+.PHONY: install-hooks
+install-hooks:                  ## install scripts/git-hooks into .git/hooks
+	@cp scripts/git-hooks/pre-commit .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "installed: .git/hooks/pre-commit"
+
 .PHONY: tidy
 tidy:
 	go mod tidy
