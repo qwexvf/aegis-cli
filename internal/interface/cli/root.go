@@ -25,10 +25,10 @@ import (
 // Command groups for `aegis --help`. Order here is the order they
 // render in.
 const (
-	groupGate       = "gate"
-	groupInspect    = "inspect"
-	groupConfigure  = "configure"
-	groupMaintain   = "maintain"
+	groupGate      = "gate"
+	groupInspect   = "inspect"
+	groupConfigure = "configure"
+	groupMaintain  = "maintain"
 )
 
 // Version, Commit, and Date are stamped at build time via -ldflags=-X.
