@@ -56,11 +56,11 @@ func newInvocationID() string {
 // Cobra parses --verbose; it does NOT call configureLogger again. The
 // output writer and the invocation ID are stable for the process lifetime.
 func configureLogger(invocationID string, verbose bool) {
+	level := slog.LevelWarn
 	if verbose {
-		clii.LogLevel.Set(slog.LevelDebug)
-	} else {
-		clii.LogLevel.Set(slog.LevelWarn)
+		level = slog.LevelDebug
 	}
+	clii.LogLevel.Set(level)
 	opts := &slog.HandlerOptions{Level: clii.LogLevel}
 
 	var handler slog.Handler

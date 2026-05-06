@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"context"
 	"fmt"
-	"os"
 
 	"github.com/qwexvf/aegis-cli/internal/infra/pmwrapper"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
@@ -25,7 +23,7 @@ func pmCommand(pm pmwrapper.PackageManager, gate *usecase.InstallGate) *cobra.Co
 				toks := pm.ParseInstallArgs(args)
 				specs := pmwrapper.SpecsToDomain(pm.Ecosystem(), toks)
 
-				res, err := gate.Run(context.Background(), usecase.Request{
+				res, err := gate.Run(cmd.Context(), usecase.Request{
 					PMName:      pm.Name(),
 					InstallVerb: pm.InstallVerb(),
 					Specs:       specs,
@@ -34,7 +32,11 @@ func pmCommand(pm pmwrapper.PackageManager, gate *usecase.InstallGate) *cobra.Co
 					return err
 				}
 				if res.AnyBlocked {
-					os.Exit(1)
+					return &exitCodeError{
+						code:   1,
+						err:    fmt.Errorf("%s: install blocked by aegis gate", pm.Name()),
+						silent: true,
+					}
 				}
 			}
 			return pm.Exec(args)

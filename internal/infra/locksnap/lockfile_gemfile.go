@@ -88,7 +88,8 @@ func parseGemfileLock(raw []byte, _ map[string]bool) ([]domain.Dependency, error
 			continue
 		}
 		// New top-level section ends GEM.
-		if inGem && len(line) > 0 && line[0] != ' ' && trimmed != "GEM" {
+		isNewSection := len(line) > 0 && line[0] != ' ' && trimmed != "GEM"
+		if inGem && isNewSection {
 			inGem = false
 			inSpecs = false
 			continue

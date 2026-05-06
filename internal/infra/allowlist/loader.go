@@ -156,11 +156,11 @@ func (l *Loader) Load() (domain.AllowSet, error) {
 	all := []domain.AllowRule{}
 	all = append(all, domain.BuiltinAllowRules()...)
 
-	if rules, err := l.readFile(l.UserPath(), "user"); err != nil {
+	userRules, err := l.readFile(l.UserPath(), "user")
+	if err != nil {
 		return domain.AllowSet{}, fmt.Errorf("user allowlist: %w", err)
-	} else {
-		all = append(all, rules...)
 	}
+	all = append(all, userRules...)
 
 	// Server layer sits between user and project so org-wide rules
 	// override personal ones (governance > individual choice) but
@@ -168,7 +168,8 @@ func (l *Loader) Load() (domain.AllowSet, error) {
 	// A corrupt cache logs a warning and contributes zero rules
 	// rather than failing the install.
 	if l.server != nil {
-		if rules, err := l.server.Load(); err != nil {
+		rules, err := l.server.Load()
+		if err != nil {
 			slog.Warn("server allowlist cache load failed; skipping server layer", "error", err)
 		} else {
 			all = append(all, rules...)
@@ -176,11 +177,11 @@ func (l *Loader) Load() (domain.AllowSet, error) {
 	}
 
 	if l.projectDir != "" {
-		if rules, err := l.readFile(l.ProjectPath(), "project"); err != nil {
+		projectRules, err := l.readFile(l.ProjectPath(), "project")
+		if err != nil {
 			return domain.AllowSet{}, fmt.Errorf("project allowlist: %w", err)
-		} else {
-			all = append(all, rules...)
 		}
+		all = append(all, projectRules...)
 	}
 
 	return domain.NewAllowSet(all)
@@ -191,13 +192,14 @@ func (l *Loader) Load() (domain.AllowSet, error) {
 func (l *Loader) LoadRaw() ([]domain.AllowRule, error) {
 	all := []domain.AllowRule{}
 	all = append(all, domain.BuiltinAllowRules()...)
-	if rules, err := l.readFile(l.UserPath(), "user"); err != nil {
+	userRules, err := l.readFile(l.UserPath(), "user")
+	if err != nil {
 		return nil, err
-	} else {
-		all = append(all, rules...)
 	}
+	all = append(all, userRules...)
 	if l.server != nil {
-		if rules, err := l.server.Load(); err != nil {
+		rules, err := l.server.Load()
+		if err != nil {
 			// Same defensive read as Load — `aegis allowlist list`
 			// shouldn't blow up on a stale cache; surface a warning
 			// and proceed.
@@ -207,11 +209,11 @@ func (l *Loader) LoadRaw() ([]domain.AllowRule, error) {
 		}
 	}
 	if l.projectDir != "" {
-		if rules, err := l.readFile(l.ProjectPath(), "project"); err != nil {
+		projectRules, err := l.readFile(l.ProjectPath(), "project")
+		if err != nil {
 			return nil, err
-		} else {
-			all = append(all, rules...)
 		}
+		all = append(all, projectRules...)
 	}
 	return all, nil
 }

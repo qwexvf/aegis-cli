@@ -1,5 +1,7 @@
 package domain
 
+import "strings"
+
 // Risk scoring is a deliberately simple weighted-sum heuristic. We
 // chose this over ML / rule-engines for three reasons:
 //
@@ -341,11 +343,13 @@ func joinNames(names []string, max int) string {
 	if len(names) > max {
 		names = names[:max]
 	}
-	out := names[0]
+	var b strings.Builder
+	b.WriteString(names[0])
 	for _, n := range names[1:] {
-		out += ", " + n
+		b.WriteString(", ")
+		b.WriteString(n)
 	}
-	return out
+	return b.String()
 }
 
 // --- Verdict ----------------------------------------------------------
@@ -518,9 +522,11 @@ func capListString(caps CapabilitySet) string {
 	if len(caps) == 0 {
 		return ""
 	}
-	out := caps[0].String()
+	var b strings.Builder
+	b.WriteString(caps[0].String())
 	for _, c := range caps[1:] {
-		out += ", " + c.String()
+		b.WriteString(", ")
+		b.WriteString(c.String())
 	}
-	return out
+	return b.String()
 }

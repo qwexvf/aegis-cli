@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -29,11 +28,12 @@ func auditTailCommand(w *ndjsonaudit.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			out := cmd.OutOrStdout()
 			if len(entries) == 0 {
-				fmt.Fprintln(os.Stdout, "(empty)")
+				fmt.Fprintln(out, "(empty)")
 				return nil
 			}
-			tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "TIME\tECO\tPACKAGE@VERSION\tDECISION\tACTION\tSOURCE\tOVERRIDE")
 			for _, e := range entries {
 				override := ""

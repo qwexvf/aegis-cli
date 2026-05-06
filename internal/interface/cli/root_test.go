@@ -123,8 +123,8 @@ func TestNewRoot_VersionCommandUsable(t *testing.T) {
 	root := NewRoot(emptyDeps(t))
 	for _, c := range root.Commands() {
 		if c.Name() == "version" {
-			if c.Run == nil {
-				t.Error("version command has no Run")
+			if c.RunE == nil {
+				t.Error("version command has no RunE")
 			}
 			return
 		}
