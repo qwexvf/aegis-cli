@@ -219,7 +219,7 @@ func TestIncidents_PyPI(t *testing.T) {
 		// shapes; a stray binary outside those paths flags.
 		src := usecase.PackageSource{
 			Files: map[string][]byte{
-				"ultralytics/__init__.py":      []byte("from . import data"),
+				"ultralytics/__init__.py":          []byte("from . import data"),
 				"ultralytics/data/.cache/xmrig.so": []byte("ELF\x7fdrop"),
 			},
 		}
