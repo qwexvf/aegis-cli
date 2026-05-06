@@ -39,6 +39,16 @@ func Run(eco domain.Ecosystem, name string, manifestRaw []byte, src usecase.Pack
 	if c := DetectSuspiciousInstallHook(manifestRaw); c != 0 {
 		caps = append(caps, c)
 	}
+	// Cargo's install-time arbitrary-code surface is build.rs, not the
+	// manifest. We dedupe so a crate that has both manifest-side and
+	// build.rs-side hooks doesn't double-flag.
+	if eco == domain.EcoCrates {
+		if body, ok := src.Files["build.rs"]; ok {
+			if c := DetectCargoBuildHook(body); c != 0 && !hasCapability(caps, c) {
+				caps = append(caps, c)
+			}
+		}
+	}
 	if c := DetectBinaryDropper(eco, src); c != 0 {
 		caps = append(caps, c)
 	}
@@ -50,6 +60,15 @@ func Run(eco domain.Ecosystem, name string, manifestRaw []byte, src usecase.Pack
 	}
 
 	return caps
+}
+
+func hasCapability(caps []domain.Capability, want domain.Capability) bool {
+	for _, c := range caps {
+		if c == want {
+			return true
+		}
+	}
+	return false
 }
 
 // RunMaintainerSignal is the second entry point — separated from
