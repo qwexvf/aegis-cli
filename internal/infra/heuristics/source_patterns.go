@@ -261,7 +261,7 @@ func isAnalyzableSource(filename string) bool {
 		return true
 	}
 	switch strings.ToLower(path.Ext(filename)) {
-	case ".py", ".pyi", ".pyx", ".rb", ".gemspec", ".rs", ".go":
+	case ".py", ".pyi", ".pyx", ".rb", ".gemspec", ".rs", ".go", ".java", ".php", ".phtml":
 		return true
 	}
 	return false

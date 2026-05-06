@@ -268,6 +268,17 @@ func isAnalyzable(eco domain.Ecosystem, path string) bool {
 			return false
 		}
 		return true
+	case domain.EcoPackagist:
+		// PHP source. .phtml templates can contain executable PHP;
+		// .php is the canonical extension. Skip tests/.
+		if !strings.HasSuffix(path, ".php") && !strings.HasSuffix(path, ".phtml") {
+			return false
+		}
+		if strings.Contains(path, "/tests/") || strings.Contains(path, "/test/") ||
+			strings.HasPrefix(path, "tests/") || strings.HasPrefix(path, "test/") {
+			return false
+		}
+		return true
 	}
 	return false
 }

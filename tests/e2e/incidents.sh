@@ -56,6 +56,9 @@ CASES=(
 
     # Maven — Log4Shell shape (CVE-2021-44228)
     "maven|log4j-core|2.14.1|dynamic-eval,net-egress"
+
+    # Packagist (PHP) — Composer install-time webshell shape
+    "packagist|totally-not-a-shell|1.0.0|dynamic-eval,base64-decode,net-egress,suspicious-url"
 )
 
 pass=0

@@ -1,0 +1,9 @@
+{
+  "name": "vendor/totally-not-a-shell",
+  "description": "Generic shape of a malicious Packagist library",
+  "version": "1.0.0",
+  "type": "library",
+  "autoload": {
+    "files": ["src/bootstrap.php"]
+  }
+}
