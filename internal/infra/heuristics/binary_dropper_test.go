@@ -50,12 +50,64 @@ func TestDetectBinaryDropper(t *testing.T) {
 			files: map[string][]byte{"index.js": {}, "package.json": {}, "README.md": {}},
 			want:  0,
 		},
+		// --- PyPI carve-outs (Plan I) ---
 		{
-			name:  "non-npm ecosystem — heuristic doesn't apply (Python wheels legit ship .so)",
+			name:  "pypi: cpython ABI-tagged .so — legitimate C extension",
 			eco:   domain.EcoPyPI,
-			files: map[string][]byte{"native.so": {}},
+			files: map[string][]byte{"pillow/_imaging.cpython-310-x86_64-linux-gnu.so": {}},
 			want:  0,
 		},
+		{
+			name:  "pypi: abi3.so — legitimate stable-ABI extension",
+			eco:   domain.EcoPyPI,
+			files: map[string][]byte{"cryptography/_rust.abi3.so": {}},
+			want:  0,
+		},
+		{
+			name:  "pypi: .pyd (Windows extension) — legitimate",
+			eco:   domain.EcoPyPI,
+			files: map[string][]byte{"numpy/_core.pyd": {}},
+			want:  0,
+		},
+		{
+			name:  "pypi: bundled libs in .libs/ (auditwheel) — legitimate",
+			eco:   domain.EcoPyPI,
+			files: map[string][]byte{"numpy/.libs/libopenblas.so.0": {}},
+			want:  0,
+		},
+		{
+			name:  "pypi: .so OUTSIDE expected paths — flag",
+			eco:   domain.EcoPyPI,
+			files: map[string][]byte{"ultralytics/data/.cache/xmrig.so": {}},
+			want:  domain.CapBinaryDropper,
+		},
+		{
+			name:  "pypi: .exe in package — flag (no legitimate carve-out)",
+			eco:   domain.EcoPyPI,
+			files: map[string][]byte{"pkg/payload.exe": {}},
+			want:  domain.CapBinaryDropper,
+		},
+
+		// --- crates.io rules (Plan J) ---
+		{
+			name:  "crates: .so in crate — flag (no legitimate shape)",
+			eco:   domain.EcoCrates,
+			files: map[string][]byte{"native/payload.so": {}},
+			want:  domain.CapBinaryDropper,
+		},
+		{
+			name:  "crates: .dll in crate — flag",
+			eco:   domain.EcoCrates,
+			files: map[string][]byte{"vendor/win.dll": {}},
+			want:  domain.CapBinaryDropper,
+		},
+		{
+			name:  "crates: pure rust source — no signal",
+			eco:   domain.EcoCrates,
+			files: map[string][]byte{"src/lib.rs": {}, "Cargo.toml": {}},
+			want:  0,
+		},
+
 		{
 			name:  "empty source",
 			eco:   domain.EcoNpm,
