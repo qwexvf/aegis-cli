@@ -4,6 +4,19 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.11.0](https://github.com/qwexvf/aegis-cli/compare/v0.10.0...v0.11.0) (2026-05-06)
+
+
+### Added
+
+* **astscan:** go AST scanner via tree-sitter-go + go-module incident fixture ([cb0ffc2](https://github.com/qwexvf/aegis-cli/commit/cb0ffc2db845ab60e326808822e856cf4bdbc7e4))
+* **astscan:** rust AST scanner via tree-sitter-rust + 3 crates incident fixtures ([dc581cb](https://github.com/qwexvf/aegis-cli/commit/dc581cba57718c05bfcba1b944e4bc4275c08edf))
+
+
+### CI
+
+* introduce release-please + zig cache reuse ([3ef0d87](https://github.com/qwexvf/aegis-cli/commit/3ef0d87b2b83bb4d8ab17d9c0b1afa4f7ec2d01a))
+
 ## [Unreleased]
 
 ## [0.10.0] — 2026-05-06
