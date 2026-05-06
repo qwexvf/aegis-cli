@@ -25,7 +25,10 @@ jobs:
 
       # zig provides the cross-cgo C toolchain (linux/darwin/windows × amd64/arm64)
       # so a single ubuntu runner can produce every cgo build flavour.
-      - uses: goto-bus-stop/setup-zig@v2
+      # mlugg/setup-zig is the actively-maintained fork of
+      # goto-bus-stop/setup-zig — uses mirror fallback so zig CDN
+      # outages don't block releases.
+      - uses: mlugg/setup-zig@v1
         with:
           version: 0.13.0
 
