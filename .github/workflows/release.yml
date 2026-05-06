@@ -5,6 +5,13 @@ on:
     tags:
       - 'v*'
 
+# Same tag re-pushed (e.g. force-update during a rocky release) cancels
+# nothing — we want both runs to finish so we can pick the green one.
+# release-please-driven tags never overlap.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write       # publish release + assets
   id-token: write       # cosign keyless OIDC + attestation OIDC
@@ -13,6 +20,7 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    timeout-minutes: 30   # cross-cgo + cosign + SLSA attest typically 6-8 min
     steps:
       - uses: actions/checkout@v6
         with:
@@ -27,10 +35,13 @@ jobs:
       # so a single ubuntu runner can produce every cgo build flavour.
       # mlugg/setup-zig is the actively-maintained fork of
       # goto-bus-stop/setup-zig — uses mirror fallback so zig CDN
-      # outages don't block releases.
+      # outages don't block releases. use-cache: true reuses the zig
+      # binary across runs (saves ~3 min on warm cache, avoids the
+      # CDN entirely).
       - uses: mlugg/setup-zig@v1
         with:
           version: 0.13.0
+          use-cache: true
 
       - uses: sigstore/cosign-installer@v3
 

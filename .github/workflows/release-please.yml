@@ -1,0 +1,34 @@
+name: release-please
+
+# Conventional-commit-driven release automation.
+#
+# Flow:
+#   1. Every push to main triggers this workflow.
+#   2. release-please scans commits since the last release and either:
+#      - opens / updates a "release-PR" with a CHANGELOG entry and
+#        a version bump derived from commit prefixes (feat: → minor,
+#        fix: → patch, feat!: / BREAKING CHANGE → major), OR
+#      - creates the release tag if the previous release-PR was just
+#        merged. The tag (vX.Y.Z) then triggers release.yml below,
+#        which runs goreleaser to publish the binaries.
+#
+# All version state lives in .release-please-manifest.json and
+# release-please-config.json — release-please owns those files; humans
+# only edit them to seed the initial version or change the policy.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write          # create tags, GitHub releases
+  pull-requests: write     # open / update release-PR
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
