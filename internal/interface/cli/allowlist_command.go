@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -93,6 +94,7 @@ func allowlistVerifyCommand(loaderFactory func() *allowlist.Loader, p *presenter
 
 func allowlistListCommand(loaderFactory func() *allowlist.Loader, p *presentercli.AllowlistPresenter) *cobra.Command {
 	var sourceFilter string
+	var jsonOut bool
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "Show all allowlist rules (builtin + user + project)",
@@ -111,11 +113,36 @@ func allowlistListCommand(loaderFactory func() *allowlist.Loader, p *presentercl
 				}
 				rules = kept
 			}
+			if jsonOut {
+				type rule struct {
+					Ecosystem    string `json:"ecosystem"`
+					Name         string `json:"name"`
+					VersionRange string `json:"version_range,omitempty"`
+					Capability   string `json:"capability"`
+					Reason       string `json:"reason,omitempty"`
+					Source       string `json:"source"`
+				}
+				rows := make([]rule, 0, len(rules))
+				for _, r := range rules {
+					rows = append(rows, rule{
+						Ecosystem:    string(r.Ecosystem),
+						Name:         r.Name,
+						VersionRange: r.VersionRange,
+						Capability:   r.Capability.String(),
+						Reason:       r.Reason,
+						Source:       r.Source,
+					})
+				}
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(rows)
+			}
 			p.OnList(rules)
 			return nil
 		},
 	}
 	c.Flags().StringVar(&sourceFilter, "source", "", "filter by source (builtin|user|project)")
+	c.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	return c
 }
 
