@@ -132,7 +132,15 @@ func main() {
 	scanner := locksnap.NewScanner()
 
 	// Use cases.
-	gate := usecase.NewInstallGate(resolver, apiClient, cache, audit, confirm, env, presenter)
+	gate := usecase.NewInstallGate(usecase.InstallGateDeps{
+		Resolver:  resolver,
+		Checker:   apiClient,
+		Cache:     cache,
+		Audit:     audit,
+		Confirm:   confirm,
+		Env:       env,
+		Presenter: presenter,
+	})
 	snapshot := usecase.NewSnapshot(store, scanner,
 		cli.NewEnrichLivePresenter(cli.NewSnapshotPresenter(presenter)),
 		clii.Version)

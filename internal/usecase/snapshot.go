@@ -566,57 +566,65 @@ func updateReportFlags(r *DiffReport, v domain.VerdictKind) {
 }
 
 func (s *Snapshot) loadDiffOperands(projectDir, fileA, fileB string) (domain.Snapshot, domain.Snapshot, error) {
+	bothFiles := fileA != "" && fileB != ""
+	noFiles := fileA == "" && fileB == ""
 	switch {
-	case fileA != "" && fileB != "":
-		a, err := s.store.LoadFile(fileA)
-		if err != nil {
-			return domain.Snapshot{}, domain.Snapshot{}, fmt.Errorf("read %s: %w", fileA, err)
-		}
-		b, err := s.store.LoadFile(fileB)
-		if err != nil {
-			return domain.Snapshot{}, domain.Snapshot{}, fmt.Errorf("read %s: %w", fileB, err)
-		}
-		return a, b, nil
-
-	case fileA == "" && fileB == "":
-		saved, ok, err := s.store.Load(projectDir)
-		if err != nil {
-			return domain.Snapshot{}, domain.Snapshot{}, err
-		}
-		if !ok {
-			return domain.Snapshot{}, domain.Snapshot{}, fmt.Errorf("no snapshot saved — run 'aegis snapshot save' first")
-		}
-		liveDeps, err := s.scanner.ScanProject(projectDir)
-		if err != nil {
-			return domain.Snapshot{}, domain.Snapshot{}, err
-		}
-		// Carry forward fingerprints from the saved snapshot for deps
-		// whose version is unchanged. This avoids needing to re-enrich
-		// the live scan: we want to know fingerprint-old vs
-		// fingerprint-new, not "live has nothing".
-		fpByVerKey := map[string]*domain.Fingerprint{}
-		for _, d := range saved.Deps {
-			if d.Fingerprint != nil && d.Fingerprint.Analyzed {
-				fpByVerKey[d.VersionedKey()] = d.Fingerprint
-			}
-		}
-		for i, d := range liveDeps {
-			if fp, ok := fpByVerKey[d.VersionedKey()]; ok {
-				liveDeps[i].Fingerprint = fp
-			}
-		}
-		live := domain.Snapshot{
-			SchemaVersion: domain.SnapshotSchemaVersion,
-			CreatedAt:     s.now(),
-			AegisVersion:  s.aegisVersion,
-			Project:       saved.Project,
-			Deps:          liveDeps,
-		}
-		return saved, live, nil
-
+	case bothFiles:
+		return s.loadDiffFromFiles(fileA, fileB)
+	case noFiles:
+		return s.loadDiffSavedVsLive(projectDir)
 	default:
 		return domain.Snapshot{}, domain.Snapshot{}, fmt.Errorf("diff requires either zero arguments (saved vs live) or two file paths")
 	}
+}
+
+func (s *Snapshot) loadDiffFromFiles(fileA, fileB string) (domain.Snapshot, domain.Snapshot, error) {
+	a, err := s.store.LoadFile(fileA)
+	if err != nil {
+		return domain.Snapshot{}, domain.Snapshot{}, fmt.Errorf("read %s: %w", fileA, err)
+	}
+	b, err := s.store.LoadFile(fileB)
+	if err != nil {
+		return domain.Snapshot{}, domain.Snapshot{}, fmt.Errorf("read %s: %w", fileB, err)
+	}
+	return a, b, nil
+}
+
+func (s *Snapshot) loadDiffSavedVsLive(projectDir string) (domain.Snapshot, domain.Snapshot, error) {
+	saved, ok, err := s.store.Load(projectDir)
+	if err != nil {
+		return domain.Snapshot{}, domain.Snapshot{}, err
+	}
+	if !ok {
+		return domain.Snapshot{}, domain.Snapshot{}, fmt.Errorf("no snapshot saved — run 'aegis snapshot save' first")
+	}
+	liveDeps, err := s.scanner.ScanProject(projectDir)
+	if err != nil {
+		return domain.Snapshot{}, domain.Snapshot{}, err
+	}
+	// Carry forward fingerprints from the saved snapshot for deps
+	// whose version is unchanged. This avoids needing to re-enrich
+	// the live scan: we want to know fingerprint-old vs
+	// fingerprint-new, not "live has nothing".
+	fpByVerKey := map[string]*domain.Fingerprint{}
+	for _, d := range saved.Deps {
+		if d.Fingerprint != nil && d.Fingerprint.Analyzed {
+			fpByVerKey[d.VersionedKey()] = d.Fingerprint
+		}
+	}
+	for i, d := range liveDeps {
+		if fp, ok := fpByVerKey[d.VersionedKey()]; ok {
+			liveDeps[i].Fingerprint = fp
+		}
+	}
+	live := domain.Snapshot{
+		SchemaVersion: domain.SnapshotSchemaVersion,
+		CreatedAt:     s.now(),
+		AegisVersion:  s.aegisVersion,
+		Project:       saved.Project,
+		Deps:          liveDeps,
+	}
+	return saved, live, nil
 }
 
 // Submit posts every analyzed dep in the saved snapshot to the Aegis
@@ -749,8 +757,17 @@ func (s *Snapshot) submitOne(ctx context.Context, dep domain.Dependency, reporte
 		}
 	}
 
-	req := buildReportRequest(reporterID, s.aegisVersion, dep, fp, evidence, risk,
-		src.TarballSha256, emails, publishedAt)
+	req := buildReportRequest(reportInputs{
+		reporterID:       reporterID,
+		aegisVersion:     s.aegisVersion,
+		dep:              dep,
+		fp:               fp,
+		evidence:         evidence,
+		risk:             risk,
+		tarballSha256:    src.TarballSha256,
+		maintainerEmails: emails,
+		publishedAt:      publishedAt,
+	})
 	ack, err := s.submitter.SubmitReport(ctx, req)
 	if err != nil {
 		return PackageReportAck{}, "submit", err
@@ -758,30 +775,35 @@ func (s *Snapshot) submitOne(ctx context.Context, dep domain.Dependency, reporte
 	return ack, "", nil
 }
 
-func buildReportRequest(
-	reporterID, aegisVersion string,
-	dep domain.Dependency,
-	fp domain.Fingerprint,
-	evidence []domain.Evidence,
-	risk domain.RiskAssessment,
-	tarballSha256 string,
-	maintainerEmails []string,
-	publishedAt string,
-) PackageReportRequest {
-	caps := make([]string, 0, len(fp.Capabilities))
-	for _, c := range fp.Capabilities {
+// reportInputs bundles the inputs to buildReportRequest. Internal-only —
+// it groups what would otherwise be a 9-arg signature.
+type reportInputs struct {
+	reporterID       string
+	aegisVersion     string
+	dep              domain.Dependency
+	fp               domain.Fingerprint
+	evidence         []domain.Evidence
+	risk             domain.RiskAssessment
+	tarballSha256    string
+	maintainerEmails []string
+	publishedAt      string
+}
+
+func buildReportRequest(in reportInputs) PackageReportRequest {
+	caps := make([]string, 0, len(in.fp.Capabilities))
+	for _, c := range in.fp.Capabilities {
 		caps = append(caps, c.String())
 	}
-	hooks := make([]ReportHook, 0, len(fp.Hooks))
-	for _, h := range fp.Hooks {
+	hooks := make([]ReportHook, 0, len(in.fp.Hooks))
+	for _, h := range in.fp.Hooks {
 		hooks = append(hooks, ReportHook{
 			Phase:  h.Phase.String(),
 			Source: h.Source,
 			Sha256: h.Sha256,
 		})
 	}
-	ev := make([]ReportEvidence, 0, len(evidence))
-	for _, e := range evidence {
+	ev := make([]ReportEvidence, 0, len(in.evidence))
+	for _, e := range in.evidence {
 		ev = append(ev, ReportEvidence{
 			Capability: e.Capability.String(),
 			File:       e.File,
@@ -789,8 +811,8 @@ func buildReportRequest(
 			Snippet:    e.Snippet,
 		})
 	}
-	flags := make([]ReportRiskFlag, 0, len(risk.Flags))
-	for _, f := range risk.Flags {
+	flags := make([]ReportRiskFlag, 0, len(in.risk.Flags))
+	for _, f := range in.risk.Flags {
 		if f.Suppressed {
 			continue
 		}
@@ -798,24 +820,25 @@ func buildReportRequest(
 			Code: f.Code, Detail: f.Detail, Weight: f.Weight,
 		})
 	}
-	if maintainerEmails == nil {
-		maintainerEmails = []string{}
+	emails := in.maintainerEmails
+	if emails == nil {
+		emails = []string{}
 	}
 	return PackageReportRequest{
-		ReporterID:         reporterID,
-		AegisVersion:       aegisVersion,
-		Ecosystem:          string(dep.Ecosystem),
-		Name:               dep.Name,
-		Version:            dep.Version,
+		ReporterID:         in.reporterID,
+		AegisVersion:       in.aegisVersion,
+		Ecosystem:          string(in.dep.Ecosystem),
+		Name:               in.dep.Name,
+		Version:            in.dep.Version,
 		Capabilities:       caps,
-		EnvReads:           fp.EnvReads,
+		EnvReads:           in.fp.EnvReads,
 		Hooks:              hooks,
 		Evidence:           ev,
-		RiskScore:          risk.Score,
+		RiskScore:          in.risk.Score,
 		RiskFlags:          flags,
-		TarballSha256:      tarballSha256,
-		MaintainerEmails:   maintainerEmails,
-		PackagePublishedAt: publishedAt,
+		TarballSha256:      in.tarballSha256,
+		MaintainerEmails:   emails,
+		PackagePublishedAt: in.publishedAt,
 	}
 }
 
