@@ -21,8 +21,9 @@ import (
 //	2   fetch / analyze error (couldn't reach a verdict)
 func analyzeCommand(uc *usecase.Analyze, presenter *presentercli.AnalyzePresenter) *cobra.Command {
 	var (
-		evidence bool
-		jsonOut  bool
+		evidence  bool
+		jsonOut   bool
+		localPath string
 	)
 	cmd := &cobra.Command{
 		Use:   "analyze <pkg-spec>",
@@ -31,10 +32,16 @@ func analyzeCommand(uc *usecase.Analyze, presenter *presentercli.AnalyzePresente
 AST risk scanner over its source, applies the allowlist, and prints
 a verdict. Spec is [ecosystem/]name@version. Default ecosystem is npm.
 
+With --local <path>, the registry fetch is skipped and the source is
+read from the on-disk directory at <path> instead. The spec is still
+required as a label for the result. Useful for fixture-based testing
+(examples/incidents/...) and for analysing a tree before publish.
+
 Examples:
   aegis analyze lodash@4.17.21
   aegis analyze @solana/web3.js@1.95.4
-  aegis analyze npm/event-stream@3.3.6`,
+  aegis analyze npm/event-stream@3.3.6
+  aegis analyze rubygems/rest-client@1.6.13 --local examples/incidents/rubygems/rest-client-1.6.13/`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eco, name, version, err := parsePkgSpec(args[0])
@@ -47,6 +54,7 @@ Examples:
 				Name:         name,
 				Version:      version,
 				WantEvidence: evidence || jsonOut,
+				LocalPath:    localPath,
 			})
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
@@ -71,6 +79,8 @@ Examples:
 		"include file:line snippets for each detected capability")
 	cmd.Flags().BoolVar(&jsonOut, "json", false,
 		"emit a machine-readable JSON object to stdout (suppresses human output)")
+	cmd.Flags().StringVar(&localPath, "local", "",
+		"read package source from this on-disk directory instead of fetching from the registry")
 	return cmd
 }
 
@@ -113,16 +123,16 @@ func parsePkgSpec(s string) (domain.Ecosystem, string, string, error) {
 }
 
 // isKnownEcosystem returns true for the ecosystem strings the analyzer
-// can actually fetch + scan. Today only npm; pip/cargo land here when
-// their pkgsource adapters do.
+// recognises. The registry-fetch path only supports npm today; the
+// other ecosystems are accepted so `--local` can scan their on-disk
+// source via the AST scanners (pyscan / rbscan / ...).
 //
-// TODO(ecosystems): when a second ecosystem ships, derive this from the
-// set of registered fetchers in the composition root rather than a
-// hand-maintained switch. Until then the switch is fine — adding one
-// case is cheaper than wiring a registry through Cobra.
+// TODO(ecosystems): derive this from the set of registered fetchers
+// + scanners in the composition root rather than a hand-maintained
+// switch.
 func isKnownEcosystem(s string) bool {
 	switch s {
-	case "npm":
+	case "npm", "pypi", "rubygems", "crates", "go":
 		return true
 	}
 	return false

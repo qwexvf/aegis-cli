@@ -108,8 +108,12 @@ fmt-check:                      ## fail if any .go file is unformatted (mirrors 
 	  exit 1; \
 	fi
 
+.PHONY: test-e2e
+test-e2e:                       ## run end-to-end CLI tests (examples/incidents)
+	@bash tests/e2e/incidents.sh
+
 .PHONY: precommit
-precommit: fmt-check vet test-race  ## run before every commit/push (CI parity)
+precommit: fmt-check vet test-race test-e2e  ## run before every commit/push (CI parity)
 	@echo "precommit OK"
 
 .PHONY: install-hooks

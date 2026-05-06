@@ -60,6 +60,13 @@ type AnalyzeRequest struct {
 	Version      string
 	WantEvidence bool
 	Silent       bool
+
+	// LocalPath, when non-empty, makes Run skip the registry fetcher
+	// and build the PackageSource from the on-disk directory at the
+	// given path. The (Ecosystem, Name, Version) triple is still used
+	// as the label in the result. Useful for fixture-based testing
+	// (examples/incidents/...) and for analysing a tree before publish.
+	LocalPath string
 }
 
 // AnalyzeResult is the structured output of Analyze.Run. The CLI
@@ -99,7 +106,12 @@ func (a *Analyze) Run(ctx context.Context, req AnalyzeRequest) (AnalyzeResult, e
 			fn()
 		}
 	}
-	if a.fetcher == nil || a.evidenceAnalyzer == nil {
+	if a.evidenceAnalyzer == nil {
+		err := fmt.Errorf("risk engine not configured (build with AST scanner)")
+		emit(func() { a.presenter.OnAnalyzeError(req.Ecosystem, req.Name, req.Version, err) })
+		return AnalyzeResult{}, err
+	}
+	if req.LocalPath == "" && a.fetcher == nil {
 		err := fmt.Errorf("risk engine not configured (build with AST scanner)")
 		emit(func() { a.presenter.OnAnalyzeError(req.Ecosystem, req.Name, req.Version, err) })
 		return AnalyzeResult{}, err
@@ -113,7 +125,13 @@ func (a *Analyze) Run(ctx context.Context, req AnalyzeRequest) (AnalyzeResult, e
 	emit(func() { a.presenter.OnAnalyzeStart(req.Ecosystem, req.Name, req.Version) })
 	emit(func() { a.presenter.OnAnalyzeStage(EnrichStageFetch) })
 
-	src, err := a.fetcher.Fetch(ctx, req.Ecosystem, req.Name, req.Version)
+	var src PackageSource
+	var err error
+	if req.LocalPath != "" {
+		src, err = readLocalPackageSource(req.LocalPath, req.Ecosystem)
+	} else {
+		src, err = a.fetcher.Fetch(ctx, req.Ecosystem, req.Name, req.Version)
+	}
 	if err != nil {
 		wrapped := fmt.Errorf("fetch: %w", err)
 		emit(func() { a.presenter.OnAnalyzeError(req.Ecosystem, req.Name, req.Version, wrapped) })
