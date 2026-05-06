@@ -138,19 +138,32 @@ cmd      → interface → usecase → domain
 │       ├── aegisapi/              HTTP DecisionChecker
 │       ├── allowlist/             YAML loader (user + project)
 │       ├── astscan/               LanguageScanner dispatcher
-│       │   └── jsscan/            tree-sitter-javascript + queries.scm
+│       │   ├── jsscan/            tree-sitter-javascript + queries.scm
+│       │   ├── pyscan/            tree-sitter-python + queries.scm
+│       │   ├── rbscan/            tree-sitter-ruby + queries.scm
+│       │   ├── rsscan/            tree-sitter-rust + queries.scm
+│       │   └── goscan/            tree-sitter-go + queries.scm
+│       ├── aegisapi/              HTTP DecisionChecker + VulnLookup
 │       ├── diskcache/             DecisionCache + FingerprintCache
 │       ├── envprobe/              CI markers + AEGIS_OVERRIDE/_REASON
+│       ├── heuristics/            install-hook regex, URL scan, typosquat,
+│       │                          binary-dropper, obfuscated-payload patterns
 │       ├── jspkgsource/           npm tarball fetch + extract
 │       ├── locksnap/              lockfile parsers + zstd snapshot store
 │       │   ├── lockfile_npm.go    package-lock.json v1/v2/v3
 │       │   ├── lockfile_pnpm.go   pnpm-lock.yaml
 │       │   ├── lockfile_yarn.go   yarn.lock classic + berry
-│       │   └── lockfile_bun.go    bun.lock JSONC
+│       │   ├── lockfile_bun.go    bun.lock JSONC
+│       │   ├── lockfile_pip.go    requirements / Pipfile / poetry / uv
+│       │   ├── lockfile_gemfile.go Gemfile.lock
+│       │   ├── lockfile_cargo.go  Cargo.lock
+│       │   └── lockfile_go.go     go.mod / go.sum
 │       ├── ndjsonaudit/           AuditWriter (NDJSON to ~/.aegis/audit.jsonl)
 │       ├── npmregistry/           VersionResolver (npm registry)
+│       ├── osv/                   VulnLookup against OSV.dev (default)
 │       ├── pmwrapper/             PackageManager: npm/bun/yarn/pnpm
-│       └── ttyprompt/             Confirmer (/dev/tty)
+│       ├── ttyprompt/             Confirmer (/dev/tty)
+│       └── vulnlookup/            Fallback composer (Aegis primary, OSV secondary)
 │
 ├── Makefile                       build / build-release / build-core / size
 ├── README.md                      user-facing entrypoint
