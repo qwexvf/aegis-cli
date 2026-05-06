@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*'
+  # release-please creates the tag + GitHub Release via the GITHUB_TOKEN,
+  # and tags created by GITHUB_TOKEN do NOT fire `push` workflows (anti-loop
+  # guard). The `release: published` event DOES fire, so this branch picks
+  # up release-please-driven releases. Manual `git push origin v*` still
+  # uses the `push: tags` branch above.
+  release:
+    types: [published]
 
 # Same tag re-pushed (e.g. force-update during a rocky release) cancels
 # nothing — we want both runs to finish so we can pick the green one.
