@@ -38,4 +38,13 @@ func init() {
 
 	// Ruby
 	Register(newFuncParser("Gemfile.lock", domain.EcoRubyGems, parseGemfileLock))
+
+	// Maven / Java — gradle.lockfile is comprehensive (every resolved
+	// coordinate); pom.xml only lists direct deps but wins when
+	// gradle.lockfile is absent.
+	Register(newFuncParser("gradle.lockfile", domain.EcoMaven, parseGradleLockfile))
+	Register(newFuncParser("pom.xml", domain.EcoMaven, parsePomXml))
+
+	// PHP / Composer — composer.lock is the post-resolution snapshot.
+	Register(newFuncParser("composer.lock", domain.EcoPackagist, parseComposerLock))
 }

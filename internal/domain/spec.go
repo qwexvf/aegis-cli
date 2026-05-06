@@ -22,12 +22,13 @@ package domain
 type Ecosystem string
 
 const (
-	EcoNpm      Ecosystem = "npm"
-	EcoPyPI     Ecosystem = "pypi"
-	EcoCrates   Ecosystem = "crates"
-	EcoGo       Ecosystem = "go"
-	EcoMaven    Ecosystem = "maven"
-	EcoRubyGems Ecosystem = "rubygems"
+	EcoNpm       Ecosystem = "npm"
+	EcoPyPI      Ecosystem = "pypi"
+	EcoCrates    Ecosystem = "crates"
+	EcoGo        Ecosystem = "go"
+	EcoMaven     Ecosystem = "maven"
+	EcoRubyGems  Ecosystem = "rubygems"
+	EcoPackagist Ecosystem = "packagist"
 )
 
 // PackageSpec is one parsed install target. Version is the literal

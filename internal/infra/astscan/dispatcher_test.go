@@ -272,6 +272,38 @@ func TestDispatcher_FiltersFilesByExtension_Java(t *testing.T) {
 	}
 }
 
+func TestDispatcher_FiltersFilesByExtension_PHP(t *testing.T) {
+	php := &fakeLanguageScanner{}
+	d := NewDispatcher()
+	d.Register(domain.EcoPackagist, php)
+
+	src := usecase.PackageSource{Files: map[string][]byte{
+		"src/bootstrap.php":    []byte("a"), // analyzed
+		"templates/page.phtml": []byte("a"), // analyzed
+		"tests/UnitTest.php":   []byte("a"), // skipped (test path)
+		"composer.json":        []byte("a"), // skipped (manifest)
+		"composer.lock":        []byte("a"), // skipped
+		"README.md":            []byte("a"), // skipped
+	}}
+	if _, err := d.Analyze(context.Background(), domain.EcoPackagist, src); err != nil {
+		t.Fatal(err)
+	}
+	visited := map[string]bool{}
+	for _, p := range php.visitedPaths {
+		visited[p] = true
+	}
+	for _, want := range []string{"src/bootstrap.php", "templates/page.phtml"} {
+		if !visited[want] {
+			t.Errorf("expected scanner to see %q, didn't", want)
+		}
+	}
+	for _, skip := range []string{"tests/UnitTest.php", "composer.json", "composer.lock", "README.md"} {
+		if visited[skip] {
+			t.Errorf("scanner visited %q but should have skipped", skip)
+		}
+	}
+}
+
 func TestFindings_AddCapabilityDedups(t *testing.T) {
 	f := NewFindings()
 	f.AddCapability(domain.CapShellSpawn)
