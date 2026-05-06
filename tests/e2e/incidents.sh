@@ -53,6 +53,9 @@ CASES=(
 
     # Go modules — init()-time exfil generic shape
     "go|boltdb-go|1.0.0|shell-spawn,net-egress,suspicious-url"
+
+    # Maven — Log4Shell shape (CVE-2021-44228)
+    "maven|log4j-core|2.14.1|dynamic-eval,net-egress"
 )
 
 pass=0

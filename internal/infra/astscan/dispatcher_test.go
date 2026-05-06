@@ -241,6 +241,37 @@ func TestDispatcher_FiltersFilesByExtension_Go(t *testing.T) {
 	}
 }
 
+func TestDispatcher_FiltersFilesByExtension_Java(t *testing.T) {
+	jv := &fakeLanguageScanner{}
+	d := NewDispatcher()
+	d.Register(domain.EcoMaven, jv)
+
+	src := usecase.PackageSource{Files: map[string][]byte{
+		"src/main/java/com/example/Foo.java":     []byte("a"), // analyzed
+		"src/main/java/com/example/Bar.java":     []byte("a"), // analyzed
+		"src/test/java/com/example/FooTest.java": []byte("a"), // skipped (test path)
+		"pom.xml":                                []byte("a"), // skipped (manifest)
+		"README.md":                              []byte("a"), // skipped
+	}}
+	if _, err := d.Analyze(context.Background(), domain.EcoMaven, src); err != nil {
+		t.Fatal(err)
+	}
+	visited := map[string]bool{}
+	for _, p := range jv.visitedPaths {
+		visited[p] = true
+	}
+	for _, want := range []string{"src/main/java/com/example/Foo.java", "src/main/java/com/example/Bar.java"} {
+		if !visited[want] {
+			t.Errorf("expected scanner to see %q, didn't", want)
+		}
+	}
+	for _, skip := range []string{"src/test/java/com/example/FooTest.java", "pom.xml", "README.md"} {
+		if visited[skip] {
+			t.Errorf("scanner visited %q but should have skipped", skip)
+		}
+	}
+}
+
 func TestFindings_AddCapabilityDedups(t *testing.T) {
 	f := NewFindings()
 	f.AddCapability(domain.CapShellSpawn)
