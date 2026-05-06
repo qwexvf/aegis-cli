@@ -106,11 +106,11 @@ func (ap *AnalyzePresenter) OnAnalyzeResult(r usecase.AnalyzeResult, withEvidenc
 	if len(r.Fingerprint.Hooks) > 0 {
 		fmt.Fprintf(ap.p.w, "\n%sHooks:%s\n", ap.p.bold(), ap.p.reset())
 		for _, h := range r.Fingerprint.Hooks {
-			line := fmt.Sprintf("  %s  %s", h.Phase, h.Source)
 			if h.Sha256 != "" {
-				line += "  sha256:" + shortHash(h.Sha256)
+				fmt.Fprintf(ap.p.w, "  %s  %s  sha256:%s\n", h.Phase, h.Source, shortHash(h.Sha256))
+			} else {
+				fmt.Fprintf(ap.p.w, "  %s  %s\n", h.Phase, h.Source)
 			}
-			fmt.Fprintln(ap.p.w, line)
 		}
 	}
 	if len(r.Fingerprint.EnvReads) > 0 {

@@ -80,7 +80,9 @@ func (e *Explain) Run(ctx context.Context, req ExplainRequest) (ExplainResult, e
 		return ExplainResult{}, err
 	}
 
-	if dep, found := e.findInSnapshot(req); found && dep.Fingerprint != nil && dep.Fingerprint.Analyzed {
+	dep, found := e.findInSnapshot(req)
+	hasAnalyzedFingerprint := found && dep.Fingerprint != nil && dep.Fingerprint.Analyzed
+	if hasAnalyzedFingerprint {
 		out := e.scoreFromSnapshot(dep)
 		e.presenter.OnExplainResult(out)
 		return out, nil

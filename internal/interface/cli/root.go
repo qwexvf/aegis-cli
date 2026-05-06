@@ -4,10 +4,13 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
 	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
@@ -17,6 +20,15 @@ import (
 	presentercli "github.com/qwexvf/aegis-cli/internal/presenter/cli"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
+)
+
+// Command groups for `aegis --help`. Order here is the order they
+// render in.
+const (
+	groupGate       = "gate"
+	groupInspect    = "inspect"
+	groupConfigure  = "configure"
+	groupMaintain   = "maintain"
 )
 
 // Version, Commit, and Date are stamped at build time via -ldflags=-X.
@@ -101,35 +113,50 @@ func NewRoot(d Deps) *cobra.Command {
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false,
 		"enable debug-level structured logging to stderr")
 
-	root.AddCommand(versionCommand())
-	root.AddCommand(cacheCommand(d.Cache))
-	root.AddCommand(auditCommand(d.Audit))
-	root.AddCommand(adminCommand())
-	root.AddCommand(doctorCommand(d.API, d.AllowlistLoader))
+	root.AddGroup(
+		&cobra.Group{ID: groupGate, Title: "Install gate:"},
+		&cobra.Group{ID: groupInspect, Title: "Inspect:"},
+		&cobra.Group{ID: groupConfigure, Title: "Configure:"},
+		&cobra.Group{ID: groupMaintain, Title: "Maintain:"},
+	)
+
+	add := func(c *cobra.Command, group string) {
+		c.GroupID = group
+		root.AddCommand(c)
+	}
+
+	add(versionCommand(), groupMaintain)
+	add(cacheCommand(d.Cache), groupMaintain)
+	add(auditCommand(d.Audit), groupInspect)
+	add(adminCommand(), groupMaintain)
+	add(doctorCommand(d.API, d.AllowlistLoader), groupMaintain)
 	if d.Snapshot != nil {
-		root.AddCommand(snapshotCommand(d.Snapshot))
+		add(snapshotCommand(d.Snapshot), groupInspect)
 	}
 	if d.Analyze != nil && d.AnalyzePresenter != nil {
-		root.AddCommand(analyzeCommand(d.Analyze, d.AnalyzePresenter))
+		add(analyzeCommand(d.Analyze, d.AnalyzePresenter), groupInspect)
 	}
 	if d.CI != nil && d.CIPresenter != nil {
-		root.AddCommand(ciCommand(d.CI, d.CIPresenter))
+		add(ciCommand(d.CI, d.CIPresenter), groupGate)
 	}
 	if d.Recheck != nil && d.RecheckPresenter != nil {
-		root.AddCommand(recheckCommand(d.Recheck, d.RecheckPresenter))
+		add(recheckCommand(d.Recheck, d.RecheckPresenter), groupGate)
 	}
 	if d.Explain != nil && d.ExplainPresenter != nil {
-		root.AddCommand(explainCommand(d.Explain, d.ExplainPresenter))
+		add(explainCommand(d.Explain, d.ExplainPresenter), groupInspect)
 	}
 	if d.Hook != nil {
-		root.AddCommand(hookCommand(d.Hook))
+		add(hookCommand(d.Hook), groupConfigure)
 	}
 	if d.AllowlistLoader != nil && d.AllowlistPresenter != nil {
-		root.AddCommand(allowlistCommand(d.AllowlistLoader, d.AllowlistPresenter))
+		add(allowlistCommand(d.AllowlistLoader, d.AllowlistPresenter), groupConfigure)
 	}
 	for _, m := range d.Managers {
-		root.AddCommand(pmCommand(m, d.Gate))
+		add(pmCommand(m, d.Gate), groupGate)
 	}
+
+	root.AddCommand(completionCommand())
+
 	return root
 }
 
@@ -139,10 +166,20 @@ func NewRoot(d Deps) *cobra.Command {
 // returned exitCodeError is silent (presenter already rendered the
 // failure), the default "aegis: <err>" line is suppressed.
 func Execute(d Deps) {
+	// Signal-aware context: SIGINT/SIGTERM cancels long-running ops
+	// (snapshot enrich, ci, analyze) instead of dropping mid-flight
+	// HTTP requests. A second signal exits 130 without waiting for
+	// graceful shutdown — standard Unix convention.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	root := NewRoot(d)
-	err := root.Execute()
+	err := root.ExecuteContext(ctx)
 	if err == nil {
 		return
+	}
+	if errors.Is(err, context.Canceled) {
+		os.Exit(130)
 	}
 	var ec *exitCodeError
 	if errors.As(err, &ec) {
@@ -182,8 +219,10 @@ func versionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print aegis version",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("aegis %s (commit %s, built %s)\n", Version, Commit, Date)
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "aegis %s (commit %s, built %s)\n", Version, Commit, Date)
+			return err
 		},
 	}
 }

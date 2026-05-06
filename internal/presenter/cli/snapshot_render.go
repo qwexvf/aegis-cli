@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strconv"
 	"text/tabwriter"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -74,7 +75,7 @@ func snapshotCapsCell(d domain.Dependency) string {
 	if n == 0 {
 		return "—"
 	}
-	return fmt.Sprintf("%d", n)
+	return strconv.Itoa(n)
 }
 
 // snapshotAdvisoryCell renders the ADVISORIES column for one dep:

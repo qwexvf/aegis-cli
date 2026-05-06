@@ -39,7 +39,7 @@ func doctorCommand(api *aegisapi.Client, allowlistLoader func() *allowlist.Loade
 				allowlistLoader: allowlistLoader,
 				cwd:             cwd,
 			})
-			renderDoctorResults(os.Stdout, results, jsonOut)
+			renderDoctorResults(cmd.OutOrStdout(), results, jsonOut)
 
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true

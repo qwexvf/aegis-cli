@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -29,11 +28,12 @@ func cacheListCommand(c *diskcache.Cache) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			out := cmd.OutOrStdout()
 			if len(entries) == 0 {
-				fmt.Fprintln(os.Stdout, "(empty)")
+				fmt.Fprintln(out, "(empty)")
 				return nil
 			}
-			tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "KEY\tDECISION\tSEVERITY\tEXPIRES")
 			for _, e := range entries {
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
@@ -58,6 +58,7 @@ Flags:
   --all            equivalent to passing both default-clear and
                    --fingerprints together.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			out := cmd.OutOrStdout()
 			clearedDecisions := false
 			clearedFingerprints := false
 
@@ -68,7 +69,7 @@ Flags:
 				if err := c.Clear(); err != nil {
 					return fmt.Errorf("clear decisions: %w", err)
 				}
-				fmt.Fprintln(os.Stdout, "decision cache cleared:", c.Path())
+				fmt.Fprintln(out, "decision cache cleared:", c.Path())
 				clearedDecisions = true
 			}
 
@@ -77,7 +78,7 @@ Flags:
 				if err := fp.Clear(); err != nil {
 					return fmt.Errorf("clear fingerprints: %w", err)
 				}
-				fmt.Fprintln(os.Stdout, "fingerprint cache cleared:", fp.Dir())
+				fmt.Fprintln(out, "fingerprint cache cleared:", fp.Dir())
 				clearedFingerprints = true
 			}
 

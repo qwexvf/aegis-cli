@@ -131,7 +131,9 @@ func ParseInstallArgsWith(argv []string, takesValue func(flag string) bool) []Sp
 			continue
 		}
 		if strings.HasPrefix(a, "-") {
-			if takesValue != nil && takesValue(a) && i+1 < len(argv) && !strings.HasPrefix(argv[i+1], "-") {
+			hasNext := i+1 < len(argv)
+			consumesNext := takesValue != nil && takesValue(a) && hasNext && !strings.HasPrefix(argv[i+1], "-")
+			if consumesNext {
 				i++
 			}
 			continue
