@@ -6,6 +6,36 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-05-06
+
+CLI ergonomics + scriptability pass. Signal handling, shell completion, grouped help, and `--json` on every read-only inspection command.
+
+### Added
+- **Signal handling** — `aegis` now installs `signal.NotifyContext` for `SIGINT`/`SIGTERM` in `Execute`. Long-running commands (`snapshot enrich`, `ci`, `analyze`, the install gate) cancel cleanly mid-flight instead of dropping HTTP requests. Ctrl-C exits 130 (Unix convention).
+- **`aegis completion {bash|zsh|fish|powershell}`** — generates shell completion scripts. Install instructions in the command's `--help`.
+- **Grouped help** — `aegis --help` now renders four sections (`Install gate`, `Inspect`, `Configure`, `Maintain`) instead of a flat 14-item list.
+- **`--json` output for read-only inspection commands** — for CI scripts that need to parse aegis output:
+  - `aegis cache list --json` — emits `[{key, decision, severity, expires_at}, ...]`
+  - `aegis audit tail --json` — emits the same snake_case shape as the underlying NDJSON audit log
+  - `aegis allowlist list --json` — emits `[{ecosystem, name, version_range, capability, reason, source}, ...]` (composes with `--source` filter)
+  - `aegis snapshot show --json` — marshals the saved snapshot directly; respects `--all` for transitive deps
+- **`usecase.Snapshot.Load(projectDir)`** — public accessor so callers can render a saved snapshot themselves instead of going through the presenter.
+
+### Changed
+- **`NewInstallGate` signature** — 7 positional parameters → `InstallGateDeps` struct. Internal-only (`internal/usecase`), no external API impact.
+- **`buildReportRequest`** — 9-parameter signature → internal `reportInputs` struct.
+- **`loadDiffOperands`** — 3-case switch body extracted into `loadDiffFromFiles` and `loadDiffSavedVsLive` helpers.
+- **`version` subcommand** — `Run` → `RunE`, output via `cmd.OutOrStdout()` for testability.
+
+### Fixed
+- **`aegis npm install` exit-code path** — pm wrappers used `os.Exit(1)` directly inside `RunE`, bypassing deferred cleanup and the established `exitCodeError` flow. Now returns a silent exit-code error.
+- **`pm` wrapper context** — install gate now runs under `cmd.Context()` instead of `context.Background()`, so Ctrl-C actually cancels the gate.
+- **`doctor`/`cache`/`audit` output** — switched from direct `os.Stdout` writes to `cmd.OutOrStdout()` so tests can capture output.
+- **Allowlist loader** — removed four `else`-after-return blocks; replaced ad-hoc string concatenation in risk reporting with `strings.Builder`.
+
+### Tests
+- 675 pass with race detector across 26 packages (no change in count from 0.7.1 — refactors preserved behaviour).
+
 ## [0.7.1] — 2026-05-04
 
 ### Fixed
