@@ -15,6 +15,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan/jsscan"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan/pyscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/astscan/rbscan"
 	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis-cli/internal/infra/jspkgsource"
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
@@ -33,14 +34,20 @@ func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiC
 	dispatcher := astscan.NewDispatcher()
 	dispatcher.Register(domain.EcoNpm, jsScanner)
 
-	// Python scanner — best-effort. If queries fail to compile we
-	// just don't get Python AST findings; OSV vulnerability lookup
-	// and source-pattern heuristics still run for PyPI deps.
-	if pyScanner, err := pyscan.New(); err == nil {
-		dispatcher.Register(domain.EcoPyPI, pyScanner)
-	} else {
-		fmt.Fprintln(os.Stderr, "aegis: Python scanner init failed:", err)
+	// Non-JS scanners are best-effort: a constructor failure means the
+	// embedded queries don't compile (developer bug), but the rest of
+	// the gate (OSV lookup, source-pattern heuristics, install-hook
+	// detection) still runs for those ecosystems. Warn and continue.
+	tryRegister := func(name string, eco domain.Ecosystem, ctor func() (astscan.LanguageScanner, error)) {
+		s, err := ctor()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "aegis: %s scanner init failed: %v\n", name, err)
+			return
+		}
+		dispatcher.Register(eco, s)
 	}
+	tryRegister("Python", domain.EcoPyPI, func() (astscan.LanguageScanner, error) { return pyscan.New() })
+	tryRegister("Ruby", domain.EcoRubyGems, func() (astscan.LanguageScanner, error) { return rbscan.New() })
 
 	fetcher := jspkgsource.New(jspkgsource.WithHTTPClient(httpClient))
 	snapshot.WithRiskEngine(
