@@ -22,9 +22,9 @@ import (
 func BenchmarkConcurrentSamePackage(b *testing.B) {
 	const fanout = 8 // matches enrichWorkers
 
-	var hits int64
+	var hits atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&hits, 1)
+		hits.Add(1)
 		// Realistic-ish latency. Real registry round-trip from a
 		// dev workstation is 30–120 ms; 5 ms keeps the bench short
 		// while still letting a goroutine race meaningfully.
@@ -35,14 +35,14 @@ func BenchmarkConcurrentSamePackage(b *testing.B) {
 	}))
 	defer srv.Close()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		// Each iteration uses a fresh client so the cache is cold —
 		// otherwise we'd be measuring the cache hit, which is a
 		// trivially-fast map lookup and not the interesting case.
 		client := New(WithRegistry(srv.URL), WithHTTPClient(srv.Client()))
 		var wg sync.WaitGroup
 		wg.Add(fanout)
-		for k := 0; k < fanout; k++ {
+		for range fanout {
 			go func() {
 				defer wg.Done()
 				_, _ = client.Resolve(context.Background(), "lodash", "latest")
@@ -54,5 +54,5 @@ func BenchmarkConcurrentSamePackage(b *testing.B) {
 	// Report the per-iteration HTTP calls. Without coalescing this
 	// will be `fanout` (one per goroutine); with singleflight it
 	// should drop to 1.
-	b.ReportMetric(float64(atomic.LoadInt64(&hits))/float64(b.N), "http_calls/op")
+	b.ReportMetric(float64(hits.Load())/float64(b.N), "http_calls/op")
 }

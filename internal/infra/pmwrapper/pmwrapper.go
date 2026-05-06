@@ -73,9 +73,9 @@ func parseSpec(token string) SpecToken {
 
 	if strings.HasPrefix(token, "@") {
 		rest := token[1:]
-		if idx := strings.Index(rest, "@"); idx >= 0 {
-			tok.Name = "@" + rest[:idx]
-			tok.Version = rest[idx+1:]
+		if before, after, ok := strings.Cut(rest, "@"); ok {
+			tok.Name = "@" + before
+			tok.Version = after
 		} else {
 			tok.Name = token
 		}

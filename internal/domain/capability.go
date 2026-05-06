@@ -1,6 +1,6 @@
 package domain
 
-import "sort"
+import "slices"
 
 // Capability is a language-neutral observable behavior of a package.
 // AST scanners (per-ecosystem) extract Capabilities from source; the
@@ -234,18 +234,13 @@ func NewCapabilitySet(caps ...Capability) CapabilitySet {
 		seen[c] = struct{}{}
 		out = append(out, c)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 
 // Has reports whether c is in the set.
 func (s CapabilitySet) Has(c Capability) bool {
-	for _, x := range s {
-		if x == c {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, c)
 }
 
 // Union returns s ∪ other as a new set.

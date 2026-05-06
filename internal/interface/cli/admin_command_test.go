@@ -57,9 +57,9 @@ func TestRunGenKey_Random(t *testing.T) {
 
 func mustExtract(t *testing.T, s, prefix string) string {
 	t.Helper()
-	for _, line := range strings.Split(s, "\n") {
-		if strings.HasPrefix(line, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	for line := range strings.SplitSeq(s, "\n") {
+		if after, ok := strings.CutPrefix(line, prefix); ok {
+			return strings.TrimSpace(after)
 		}
 	}
 	t.Fatalf("could not find %q in output:\n%s", prefix, s)

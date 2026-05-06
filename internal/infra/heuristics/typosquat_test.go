@@ -63,9 +63,11 @@ func TestLevenshtein(t *testing.T) {
 		{"kitten", "sitting", 3},
 	}
 	for _, tc := range tests {
-		got := levenshtein(tc.a, tc.b)
-		if got != tc.want {
-			t.Errorf("levenshtein(%q, %q) = %d, want %d", tc.a, tc.b, got, tc.want)
-		}
+		t.Run(tc.a+"/"+tc.b, func(t *testing.T) {
+			got := levenshtein(tc.a, tc.b)
+			if got != tc.want {
+				t.Errorf("levenshtein(%q, %q) = %d, want %d", tc.a, tc.b, got, tc.want)
+			}
+		})
 	}
 }

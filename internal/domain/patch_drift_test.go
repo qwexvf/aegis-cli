@@ -58,10 +58,12 @@ func TestSplitSemver(t *testing.T) {
 		{"", 0, 0, 0, false},
 	}
 	for _, tc := range tests {
-		ma, mi, pa, ok := splitSemver(tc.in)
-		if ok != tc.ok || (ok && (ma != tc.major || mi != tc.minor || pa != tc.pat)) {
-			t.Errorf("splitSemver(%q) = (%d,%d,%d,%v); want (%d,%d,%d,%v)",
-				tc.in, ma, mi, pa, ok, tc.major, tc.minor, tc.pat, tc.ok)
-		}
+		t.Run(tc.in, func(t *testing.T) {
+			ma, mi, pa, ok := splitSemver(tc.in)
+			if ok != tc.ok || (ok && (ma != tc.major || mi != tc.minor || pa != tc.pat)) {
+				t.Errorf("splitSemver(%q) = (%d,%d,%d,%v); want (%d,%d,%d,%v)",
+					tc.in, ma, mi, pa, ok, tc.major, tc.minor, tc.pat, tc.ok)
+			}
+		})
 	}
 }

@@ -62,7 +62,7 @@ func TestWriter_PreservesIncidentMetadata(t *testing.T) {
 
 func TestWriter_TailLimit(t *testing.T) {
 	w := tmpWriter(t)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		w.Write(outcome("p", string(rune('a'+i)), domain.DecisionAllow, domain.ActionProceed))
 	}
 	got, _ := w.Tail(2)
@@ -82,7 +82,7 @@ func TestWriter_TailMissingFile(t *testing.T) {
 func TestWriter_ConcurrentWrites(t *testing.T) {
 	w := tmpWriter(t)
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()

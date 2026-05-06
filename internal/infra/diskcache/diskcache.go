@@ -4,12 +4,13 @@
 package diskcache
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -194,7 +195,7 @@ func (c *Cache) List() ([]Listing, error) {
 			ExpiresAt: e.ExpiresAt,
 		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	slices.SortFunc(out, func(a, b Listing) int { return cmp.Compare(a.Key, b.Key) })
 	return out, nil
 }
 

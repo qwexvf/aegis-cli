@@ -20,7 +20,7 @@ package astscan
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -199,7 +199,7 @@ func findingsToFingerprint(f *Findings, hooks []domain.InstallHook) domain.Finge
 	for n := range f.EnvReads {
 		envs = append(envs, n)
 	}
-	sort.Strings(envs)
+	slices.Sort(envs)
 	return domain.Fingerprint{
 		Analyzed:        true,
 		Capabilities:    domain.NewCapabilitySet(caps...),

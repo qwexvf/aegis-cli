@@ -34,7 +34,7 @@ func (i memFileInfo) Size() int64        { return 0 }
 func (i memFileInfo) Mode() os.FileMode  { return 0o644 }
 func (i memFileInfo) ModTime() time.Time { return time.Time{} }
 func (i memFileInfo) IsDir() bool        { return i.dir }
-func (i memFileInfo) Sys() interface{}   { return nil }
+func (i memFileInfo) Sys() any           { return nil }
 
 func (m *memFS) Stat(path string) (os.FileInfo, error) {
 	m.mu.Lock()
@@ -169,7 +169,7 @@ func TestHook_InstallIsIdempotent(t *testing.T) {
 	fs.dirs["/proj/.git"] = true
 	hook := NewHook(fs, &hookCapturingPresenter{})
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := hook.Install("/proj"); err != nil {
 			t.Fatalf("install %d: %v", i, err)
 		}

@@ -1,10 +1,11 @@
 package astscan
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"sort"
+	"slices"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 )
@@ -65,11 +66,11 @@ func npmManifestHooks(manifest []byte) []domain.InstallHook {
 	add("prepare", domain.PhasePostInstall)
 
 	// Stable ordering for equality tests.
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Phase != out[j].Phase {
-			return out[i].Phase < out[j].Phase
+	slices.SortFunc(out, func(a, b domain.InstallHook) int {
+		if a.Phase != b.Phase {
+			return cmp.Compare(a.Phase, b.Phase)
 		}
-		return out[i].Source < out[j].Source
+		return cmp.Compare(a.Source, b.Source)
 	})
 	return out
 }

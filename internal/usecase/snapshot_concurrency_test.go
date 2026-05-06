@@ -16,9 +16,9 @@ import (
 type slowAnalyzer struct {
 	delay     time.Duration
 	out       domain.Fingerprint
-	inflight  int32
-	maxInFly  int32
-	totalSeen int32
+	inflight  atomic.Int32
+	maxInFly  atomic.Int32
+	totalSeen atomic.Int32
 }
 
 // HasScanner — concurrency tests exercise the AST path for every
@@ -26,18 +26,18 @@ type slowAnalyzer struct {
 func (a *slowAnalyzer) HasScanner(_ domain.Ecosystem) bool { return true }
 
 func (a *slowAnalyzer) Analyze(ctx context.Context, _ domain.Ecosystem, _ PackageSource) (domain.Fingerprint, error) {
-	cur := atomic.AddInt32(&a.inflight, 1)
-	defer atomic.AddInt32(&a.inflight, -1)
+	cur := a.inflight.Add(1)
+	defer a.inflight.Add(-1)
 	for {
-		max := atomic.LoadInt32(&a.maxInFly)
+		max := a.maxInFly.Load()
 		if cur <= max {
 			break
 		}
-		if atomic.CompareAndSwapInt32(&a.maxInFly, max, cur) {
+		if a.maxInFly.CompareAndSwap(max, cur) {
 			break
 		}
 	}
-	atomic.AddInt32(&a.totalSeen, 1)
+	a.totalSeen.Add(1)
 	select {
 	case <-ctx.Done():
 		return domain.Fingerprint{}, ctx.Err()
@@ -73,10 +73,10 @@ func TestEnrich_RunsInParallel(t *testing.T) {
 	if elapsed >= 200*time.Millisecond {
 		t.Errorf("enrich took %v; expected parallel speedup", elapsed)
 	}
-	if max := atomic.LoadInt32(&analyzer.maxInFly); max < 2 {
+	if max := analyzer.maxInFly.Load(); max < 2 {
 		t.Errorf("max concurrent in-flight = %d; expected > 1", max)
 	}
-	if got := atomic.LoadInt32(&analyzer.totalSeen); int(got) != n {
+	if got := analyzer.totalSeen.Load(); int(got) != n {
 		t.Errorf("expected %d calls, got %d", n, got)
 	}
 

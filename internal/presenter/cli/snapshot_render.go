@@ -211,10 +211,7 @@ func (sp *SnapshotPresenter) renderEntry(e usecase.DiffEntry) {
 			sp.p.yellow(), e.New.Version, sp.p.reset())
 	}
 
-	totalScore := e.Risk.Score
-	if e.Drift.Score > totalScore {
-		totalScore = e.Drift.Score
-	}
+	totalScore := max(e.Drift.Score, e.Risk.Score)
 	// Show breakdown when ANY of: non-zero score, OR any flag exists
 	// (suppressed flags are kept visible for transparency).
 	if totalScore == 0 && len(e.Risk.Flags) == 0 && len(e.Drift.Flags) == 0 {

@@ -13,9 +13,9 @@ import (
 )
 
 func TestDo_RetriesOn503ThenSucceeds(t *testing.T) {
-	var hits int64
+	var hits atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n := atomic.AddInt64(&hits, 1)
+		n := hits.Add(1)
 		if n < 3 {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -37,15 +37,15 @@ func TestDo_RetriesOn503ThenSucceeds(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("got %d, want 200", resp.StatusCode)
 	}
-	if got := atomic.LoadInt64(&hits); got != 3 {
+	if got := hits.Load(); got != 3 {
 		t.Fatalf("expected 3 hits (2 retries + success), got %d", got)
 	}
 }
 
 func TestDo_NoRetryOn400(t *testing.T) {
-	var hits int64
+	var hits atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&hits, 1)
+		hits.Add(1)
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer srv.Close()
@@ -63,7 +63,7 @@ func TestDo_NoRetryOn400(t *testing.T) {
 	if resp.StatusCode != 400 {
 		t.Fatalf("expected 400 surfaced, got %d", resp.StatusCode)
 	}
-	if got := atomic.LoadInt64(&hits); got != 1 {
+	if got := hits.Load(); got != 1 {
 		t.Fatalf("expected 1 hit (no retry on 4xx), got %d", got)
 	}
 }

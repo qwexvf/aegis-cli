@@ -1,10 +1,11 @@
 package usecase
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"runtime"
-	"sort"
+	"slices"
 	"sync"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -108,12 +109,12 @@ func (rc *Recheck) Run(ctx context.Context, req RecheckRequest) (RecheckResult, 
 	result := rc.summarize(deps, raws, req.FailOnPrompt)
 	// Stable severity order for output. Block first, then prompt;
 	// same-kind alphabetical.
-	sort.Slice(result.Findings, func(i, j int) bool {
-		ki, kj := result.Findings[i].Decision.Kind, result.Findings[j].Decision.Kind
-		if ki != kj {
-			return decisionWeight(ki) > decisionWeight(kj)
+	slices.SortFunc(result.Findings, func(a, b RecheckFinding) int {
+		if a.Decision.Kind != b.Decision.Kind {
+			// higher decisionWeight should come first → reverse the cmp
+			return cmp.Compare(decisionWeight(b.Decision.Kind), decisionWeight(a.Decision.Kind))
 		}
-		return result.Findings[i].Dep.Name < result.Findings[j].Dep.Name
+		return cmp.Compare(a.Dep.Name, b.Dep.Name)
 	})
 	rc.presenter.OnRecheckResult(result)
 	return result, nil
