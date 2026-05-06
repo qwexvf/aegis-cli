@@ -241,20 +241,28 @@ aegis recheck --json
 
 ## `aegis analyze <pkg-spec>`
 
-Fetch and AST-scan a single package — fallback when the incident DB has no record. Spec is `[ecosystem/]name@version`. Default ecosystem is `npm`.
+Fetch and AST-scan a single package — fallback when the incident DB has no record. Spec is `[ecosystem/]name@version`. Default ecosystem is `npm`. Recognised ecosystem prefixes: `npm`, `pypi`, `rubygems`, `crates`, `go`. The registry-fetch path supports `npm` today; the other ecosystems work through `--local`.
 
 ```sh
 aegis analyze lodash@4.17.21
 aegis analyze @solana/web3.js@1.95.4
 aegis analyze npm/event-stream@3.3.6
-aegis analyze --evidence ua-parser-js@0.7.29     # show file:line snippets
+aegis analyze --evidence ua-parser-js@0.7.29       # show file:line snippets
 aegis analyze --json lodash@4.17.21
+
+# --local skips the registry fetcher and reads source from the
+# on-disk directory at <path>. Spec is still required as a label.
+aegis analyze rubygems/rest-client@1.6.13 \
+  --local examples/incidents/rubygems/rest-client-1.6.13/
 ```
 
 | Flag | Description |
 |---|---|
 | `--evidence` | Include file:line snippets for each detected capability |
 | `--json` | Emit JSON to stdout (suppresses human output) |
+| `--local <path>` | Skip the registry fetcher and read package source from `<path>`. Useful for fixture-based testing and pre-publish self-checks. The spec (`<eco>/<name>@<version>`) is still required as a label. |
+
+The `--local` mode runs the same AST + heuristics pipeline `snapshot enrich` does, so the capability set is identical for the same input. Real-world incident fixtures ship under `examples/incidents/` (`rubygems/`, `pypi/`, `npm/`, `crates/`, `go/`) and are validated by `tests/e2e/incidents.sh` on every CI run.
 
 ---
 
@@ -465,3 +473,28 @@ aegis 0.1.0 (commit 6c5844916d8831d841edb2fec1e9dbd615519e9c, built 2026-05-03T0
 ```
 
 All three values are stamped at build time via `-ldflags=-X`. A binary built locally with plain `go build` (no ldflags) reports `0.1.0-demo (commit none, built unknown)`.
+
+---
+
+## `aegis completion {bash|zsh|fish|powershell}`
+
+Generate a shell completion script. Pipe to your shell or write to the canonical completions directory:
+
+```sh
+# Bash (current shell only)
+source <(aegis completion bash)
+
+# Bash (persistent, Linux)
+aegis completion bash > /etc/bash_completion.d/aegis
+
+# Zsh
+aegis completion zsh > "${fpath[1]}/_aegis"
+
+# Fish
+aegis completion fish > ~/.config/fish/completions/aegis.fish
+
+# PowerShell
+aegis completion powershell | Out-String | Invoke-Expression
+```
+
+Completes subcommand names, flag names, and (where applicable) flag values. The package-manager wrappers (`aegis npm`, `aegis bun`, etc.) use `DisableFlagParsing` and pass argv through unchanged, so completion of their inner args is delegated to the underlying tool.

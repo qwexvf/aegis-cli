@@ -44,24 +44,26 @@ The override is the operator's "I know what I'm doing" escape hatch. Both env va
 | `AEGIS_CONFIG_DIR` | `~/.aegis` | Where the user-level allowlist (`allowlist.yaml`), audit log, and reporter ID live. Override to keep multiple aegis profiles (e.g. work vs personal). |
 | `AEGIS_AUDIT_DIR` | (= `AEGIS_CONFIG_DIR`) | Override only the audit log location. Useful for sending to a syslog-style central path while keeping config local. |
 
-### Vulnerability lookup (OSV.dev)
+### Vulnerability lookup
 
-`aegis snapshot enrich` / `aegis ci` cross-reference every dep against the public OSV.dev vulnerability database — **no Aegis API required, no auth needed**. The two env vars below tune that lookup.
+`aegis snapshot enrich` / `aegis ci` / `aegis analyze` cross-reference every dep against a vulnerability feed. The default backend is **OSV.dev** (Google) — public, free, no auth required. When `AEGIS_API_KEY` is set, the **Aegis-managed feed** (curated OSV + GHSA + npm advisories) is preferred and OSV is used as a fallback on transient errors. Both backends share the same `usecase.VulnLookup` interface.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `AEGIS_OSV_URL` | `https://api.osv.dev` | Override the OSV endpoint. Use this to point at a self-hosted OSV mirror or a corporate proxy. The wire shape (`/v1/querybatch`, `/v1/vulns/{id}`) must match upstream. |
-| `AEGIS_NO_VULN_LOOKUP` | (unset) | When set to anything non-empty, disables the OSV lookup entirely. The snapshot enrich step still runs the AST scanner; only the advisory column is empty. Useful for fully-offline runs or air-gapped CI. |
+| `AEGIS_VULN_SOURCE` | (unset) | Pin the lookup source explicitly. `osv` = OSV only (no Aegis call even when a key is set). `aegis` = Aegis only (no OSV fallback). `none` = disable the lookup entirely (same as `AEGIS_NO_VULN_LOOKUP=1`). When unset: prefer Aegis if `AEGIS_API_KEY` is set, OSV otherwise. |
+| `AEGIS_NO_VULN_LOOKUP` | (unset) | When set to anything non-empty, disables the lookup entirely. The snapshot enrich step still runs the AST scanner; only the advisory column is empty. Useful for fully-offline runs or air-gapped CI. |
 
 ### Malware heuristics
 
-`aegis snapshot enrich` runs a chain of behavior-based malware detectors over every JS package source after the AST scanner finishes. The heuristics catch zero-day patterns OSV doesn't know about yet:
+`aegis snapshot enrich` and `aegis analyze` run a chain of behavior-based malware detectors over every package source after the AST scanner finishes. The heuristics are language-agnostic where possible and catch zero-day patterns OSV doesn't know about yet:
 
-- Suspicious install hooks (`curl|sh`, `node -e`, base64-piped-to-shell, Pastebin/Discord/ngrok hosts)
-- Obfuscated payload (`eval(atob(...))`, `Function(decodeURIComponent(...))`)
-- Suspicious URL targets (Pastebin, Discord webhooks, Telegram bots, IP grabbers, IDN homoglyphs)
-- Binary droppers (`.exe`/`.dll`/`.so`/`.scpt`/`.ps1` in an npm tarball)
-- Typosquat names (Levenshtein ≤ 2 from a top-1000 npm package)
+- **Suspicious install hooks** — `curl|sh`, inline `node -e`, base64-piped-to-shell, Pastebin/Discord/ngrok hosts. Covers npm `package.json` scripts and crates.io `build.rs`.
+- **Obfuscated payload** — `eval(atob(...))` (JS), `eval(Net::HTTP.get(...))` (Ruby), `exec(urlopen(...).read())` / `exec(base64.b64decode(...))` (Python).
+- **Suspicious URL targets** — Pastebin, Discord webhooks, Telegram bots, IP grabbers, IDN homoglyphs. Runs across `.js` / `.ts` / `.py` / `.rb` / `.rs` / `.go` source.
+- **Binary droppers** — stray `.exe`/`.dll`/`.so`/`.scpt`/`.ps1` in a package tarball. Per-ecosystem carve-outs recognise legitimate native shapes (PyPI `<pkg>/.cpython-*-*.so`, `<pkg>/.libs/`, `.abi3.so`, `.pyd`).
+- **Typosquat names** — Levenshtein ≤ 2 from a curated top-list per ecosystem (npm, PyPI, crates.io). One-line addition per new ecosystem via `top_<eco>_packages.txt`.
+- **Maintainer hijack** — fresh release after a long quiet period from a low-download package, the canonical event-stream / ctx / rest-client shape.
 
 | Variable | Default | Purpose |
 |---|---|---|
