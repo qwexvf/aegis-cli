@@ -220,9 +220,7 @@ func (lp *EnrichLivePresenter) OnSnapshotEnrichProgress(done, total int, _ strin
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
 	lp.completed = done
-	if total > lp.total {
-		lp.total = total
-	}
+	lp.total = max(lp.total, total)
 }
 
 // OnSnapshotInfo buffers the message during a live enrich and lets

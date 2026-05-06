@@ -1,7 +1,8 @@
 package domain
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"time"
 )
 
@@ -144,9 +145,9 @@ func DiffSnapshots(a, b Snapshot) SnapshotDelta {
 		}
 	}
 
-	sort.Slice(delta.Added, func(i, j int) bool { return delta.Added[i].Key() < delta.Added[j].Key() })
-	sort.Slice(delta.Removed, func(i, j int) bool { return delta.Removed[i].Key() < delta.Removed[j].Key() })
-	sort.Slice(delta.Upgraded, func(i, j int) bool { return delta.Upgraded[i].Old.Key() < delta.Upgraded[j].Old.Key() })
+	slices.SortFunc(delta.Added, func(a, b Dependency) int { return cmp.Compare(a.Key(), b.Key()) })
+	slices.SortFunc(delta.Removed, func(a, b Dependency) int { return cmp.Compare(a.Key(), b.Key()) })
+	slices.SortFunc(delta.Upgraded, func(a, b DepUpgrade) int { return cmp.Compare(a.Old.Key(), b.Old.Key()) })
 
 	return delta
 }

@@ -310,10 +310,7 @@ func (c *CI) scoreSnapshot(snap domain.Snapshot, failOn domain.VerdictKind) CIRe
 		// (OSV.dev). A Critical CVE outranks a clean AST every
 		// time — `max(ast, advisory)` is the right combinator.
 		advVerdict := domain.VerdictForAdvisories(d.Advisories)
-		verdict := astVerdict
-		if advVerdict > verdict {
-			verdict = advVerdict
-		}
+		verdict := max(astVerdict, advVerdict)
 
 		switch verdict {
 		case domain.VerdictSafe:

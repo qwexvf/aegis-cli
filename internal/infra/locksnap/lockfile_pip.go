@@ -121,16 +121,16 @@ func parseRequirementsTxt(raw []byte, _ map[string]bool) ([]domain.Dependency, e
 		// Must be pinned with `==`. PEP 440 allows other operators
 		// (~=, >=, ...) but those don't give us a single version
 		// to look up.
-		idx := strings.Index(line, "==")
-		if idx < 0 {
+		before, after, ok := strings.Cut(line, "==")
+		if !ok {
 			continue
 		}
-		name := strings.TrimSpace(line[:idx])
+		name := strings.TrimSpace(before)
 		// trim PEP 508 extras: requests[security]==2.31.0
 		if br := strings.Index(name, "["); br >= 0 {
 			name = name[:br]
 		}
-		ver := strings.TrimSpace(line[idx+2:])
+		ver := strings.TrimSpace(after)
 		// trim PEP 440 environment markers / hashes:
 		// foo==1.0 ; python_version >= "3.8"
 		// foo==1.0 --hash=sha256:...
@@ -212,11 +212,11 @@ func parseTOMLPackages(raw []byte) ([]tomlPackage, error) {
 // the multi-line literal forms for name/version. Returns "" on parse
 // failure (caller treats empty as "skip this entry").
 func tomlString(line string) string {
-	eq := strings.Index(line, "=")
-	if eq < 0 {
+	_, after, ok := strings.Cut(line, "=")
+	if !ok {
 		return ""
 	}
-	rhs := strings.TrimSpace(line[eq+1:])
+	rhs := strings.TrimSpace(after)
 	if len(rhs) < 2 || rhs[0] != '"' {
 		return ""
 	}

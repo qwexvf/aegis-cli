@@ -114,10 +114,7 @@ func (c *Client) Lookup(ctx context.Context, queries []domain.AdvisoryQuery) (ma
 	}
 
 	for start := 0; start < len(queries); start += MaxQueriesPerBatch {
-		end := start + MaxQueriesPerBatch
-		if end > len(queries) {
-			end = len(queries)
-		}
+		end := min(start+MaxQueriesPerBatch, len(queries))
 		ids, err := c.batchIDs(ctx, queries[start:end])
 		if err != nil {
 			return nil, err
@@ -386,8 +383,8 @@ func bucketCVSS(score float64) domain.Severity {
 }
 
 func firstLine(s string) string {
-	if idx := strings.Index(s, "\n"); idx >= 0 {
-		return s[:idx]
+	if before, _, ok := strings.Cut(s, "\n"); ok {
+		return before
 	}
 	return s
 }

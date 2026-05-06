@@ -12,7 +12,7 @@ import (
 func BenchmarkAllowSet_Suppresses(b *testing.B) {
 	rules := make([]AllowRule, 0, 500)
 	rules = append(rules, BuiltinAllowRules()...)
-	for i := 0; i < 480; i++ {
+	for i := range 480 {
 		rules = append(rules, AllowRule{
 			Ecosystem:  EcoNpm,
 			Name:       "synthetic-pkg-" + strconv.Itoa(i),
@@ -27,12 +27,12 @@ func BenchmarkAllowSet_Suppresses(b *testing.B) {
 	}
 
 	b.Run("hit-specific", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = set.Suppresses(EcoNpm, "lodash", "4.17.21", CapDynamicEval)
 		}
 	})
 	b.Run("miss", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = set.Suppresses(EcoNpm, "no-such-package-anywhere", "1.0.0", CapShellSpawn)
 		}
 	})
@@ -43,7 +43,7 @@ func BenchmarkAllowSet_MatchAll(b *testing.B) {
 	rules = append(rules,
 		AllowRule{Ecosystem: EcoNpm, Name: "*", Capability: CapNetEgress, Reason: "wide", Source: "user"})
 	set, _ := NewAllowSet(rules)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = set.MatchAll(EcoNpm, "lodash", "4.17.21")
 	}
 }

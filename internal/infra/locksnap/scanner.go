@@ -1,10 +1,11 @@
 package locksnap
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 )
@@ -71,13 +72,13 @@ func (s *Scanner) ScanProject(projectDir string) ([]domain.Dependency, error) {
 }
 
 func sortDeps(deps []domain.Dependency) {
-	sort.Slice(deps, func(i, j int) bool {
-		if deps[i].Ecosystem != deps[j].Ecosystem {
-			return deps[i].Ecosystem < deps[j].Ecosystem
+	slices.SortFunc(deps, func(a, b domain.Dependency) int {
+		if a.Ecosystem != b.Ecosystem {
+			return cmp.Compare(a.Ecosystem, b.Ecosystem)
 		}
-		if deps[i].Name != deps[j].Name {
-			return deps[i].Name < deps[j].Name
+		if a.Name != b.Name {
+			return cmp.Compare(a.Name, b.Name)
 		}
-		return deps[i].Version < deps[j].Version
+		return cmp.Compare(a.Version, b.Version)
 	})
 }

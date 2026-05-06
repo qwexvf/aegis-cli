@@ -18,6 +18,8 @@
 package heuristics
 
 import (
+	"slices"
+
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
@@ -63,12 +65,7 @@ func Run(eco domain.Ecosystem, name string, manifestRaw []byte, src usecase.Pack
 }
 
 func hasCapability(caps []domain.Capability, want domain.Capability) bool {
-	for _, c := range caps {
-		if c == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(caps, want)
 }
 
 // RunMaintainerSignal is the second entry point — separated from

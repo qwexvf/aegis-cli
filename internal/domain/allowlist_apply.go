@@ -84,11 +84,11 @@ func capabilityForFlag(f RiskFlag) (Capability, bool) {
 // reference the constant rather than duplicating the string, so the
 // producer and the parser cannot drift apart.
 func parseCapabilityFromDetail(detail string) (Capability, bool) {
-	idx := strings.Index(detail, capabilityAddedDetailPrefix)
-	if idx < 0 {
+	_, after, ok := strings.Cut(detail, capabilityAddedDetailPrefix)
+	if !ok {
 		return 0, false
 	}
-	name := strings.TrimSpace(detail[idx+len(capabilityAddedDetailPrefix):])
+	name := strings.TrimSpace(after)
 	if c, ok := capabilityNameLookup[name]; ok {
 		return c, true
 	}

@@ -40,7 +40,7 @@ var topPackages = map[domain.Ecosystem]map[string]bool{
 
 func parseTopList(raw string) map[string]bool {
 	out := make(map[string]bool, 200)
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -124,7 +124,7 @@ func levenshtein(a, b string) int {
 			if a[i-1] == b[j-1] {
 				cost = 0
 			}
-			curr[j] = min3(
+			curr[j] = min(
 				prev[j]+1,      // deletion
 				curr[j-1]+1,    // insertion
 				prev[j-1]+cost, // substitution
@@ -133,17 +133,6 @@ func levenshtein(a, b string) int {
 		prev, curr = curr, prev
 	}
 	return prev[lb]
-}
-
-func min3(a, b, c int) int {
-	m := a
-	if b < m {
-		m = b
-	}
-	if c < m {
-		m = c
-	}
-	return m
 }
 
 func abs(x int) int {

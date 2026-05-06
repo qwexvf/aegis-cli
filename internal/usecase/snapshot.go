@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -877,7 +877,7 @@ func parseMaintainerEmails(manifest []byte) []string {
 	for e := range seen {
 		out = append(out, e)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

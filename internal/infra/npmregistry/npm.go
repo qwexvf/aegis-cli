@@ -4,6 +4,7 @@
 package npmregistry
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -186,10 +187,7 @@ func (c *Client) FetchMaintainerSignal(ctx context.Context, pkg, version string)
 // scoped packages which don't have public download stats) returns 0
 // with a nil error.
 func (c *Client) fetchWeeklyDownloads(ctx context.Context, pkg string) (int64, error) {
-	downloadsURL := c.downloadsURL
-	if downloadsURL == "" {
-		downloadsURL = DefaultDownloadsURL
-	}
+	downloadsURL := cmp.Or(c.downloadsURL, DefaultDownloadsURL)
 	// The downloads endpoint uses URL path encoding for scoped
 	// packages — same %2F convention as the registry.
 	encoded := url.PathEscape(pkg)

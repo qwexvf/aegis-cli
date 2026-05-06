@@ -395,10 +395,7 @@ const VerdictThresholdBlock = 100
 // dangerous new version OR a sudden behavioral drift either one trips
 // the verdict.
 func Verdict(risk, drift RiskAssessment) VerdictKind {
-	combined := risk.Score
-	if drift.Score > combined {
-		combined = drift.Score
-	}
+	combined := max(drift.Score, risk.Score)
 	switch {
 	case combined >= VerdictThresholdBlock:
 		return VerdictBlock

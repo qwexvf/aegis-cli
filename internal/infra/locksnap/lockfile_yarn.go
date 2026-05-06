@@ -76,8 +76,8 @@ func parseYarnLock(raw []byte, direct map[string]bool) ([]domain.Dependency, err
 			continue
 		}
 		l := strings.TrimSpace(line)
-		if strings.HasPrefix(l, "version ") {
-			ver := strings.Trim(strings.TrimPrefix(l, "version "), " \"")
+		if after, ok := strings.CutPrefix(l, "version "); ok {
+			ver := strings.Trim(after, " \"")
 			flushBlock(ver)
 		}
 	}
@@ -104,8 +104,8 @@ func firstYarnHeaderName(header string) string {
 	// scope marker; look for the SECOND. Otherwise look for the first.
 	if strings.HasPrefix(first, "@") {
 		rest := first[1:]
-		if idx := strings.Index(rest, "@"); idx >= 0 {
-			return "@" + rest[:idx]
+		if before, _, ok := strings.Cut(rest, "@"); ok {
+			return "@" + before
 		}
 		return first
 	}
