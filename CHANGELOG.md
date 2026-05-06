@@ -6,6 +6,38 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-05-06
+
+Ruby AST scanner, real-package fixture testing, and a pluggable vulnerability-lookup interface.
+
+### Added
+- **Ruby AST scanner** (`internal/infra/astscan/rbscan/`) — tree-sitter-ruby integration. Detects the same capability set as the JS and Python scanners across RubyGems deps:
+  - `shell-spawn`: `system` / `exec` / `spawn` / `fork`, `Kernel.system`, `Process.spawn`, `IO.popen`, `Open3.{popen,capture,pipeline}`, `PTY.{spawn,getpty}`, backticks, `%x{...}`
+  - `dynamic-eval`: `eval` / `instance_eval` / `class_eval` / `module_eval`, `send` / `public_send` / `__send__`
+  - `base64-decode`: `Base64.{decode64,urlsafe_decode64,strict_decode64}`
+  - `net-egress`: `Net::HTTP.*`, `URI.{open,parse,read}`, open-uri, HTTParty / RestClient / Faraday / Excon, raw sockets (`TCPSocket` / `UDPSocket` / `Socket` / `UNIXSocket`)
+  - `env-read`: `ENV['NAME']`, `ENV.fetch('NAME')` (literal-key only, with credential-shaped-name filter)
+  - `fs-write-outside-root`: `File.open('w'/'a')`, `File.{write,binwrite}`, `IO.write`, `FileUtils.{cp,mv,install,...}`
+  - `raw-ip-literal`: `http(s)://NNN.NNN.NNN.NNN` string literals
+- **`aegis analyze <spec> --local <dir>`** — skip the registry fetcher and read package source from the on-disk directory at `<dir>`. Enables fixture-based testing and pre-publish self-checks. Spec is still required as a label.
+- **`internal/usecase/analyze_local.go`** — directory walker that builds a `PackageSource` like the registry fetcher would. Skips `.git` / `node_modules` / `vendor` / `__pycache__` / `target` / `dist` / `build`. Picks the canonical manifest per ecosystem (handles RubyGems' arbitrary `*.gemspec` filename).
+- **`examples/incidents/`** — real-shape fixtures for 10 historical supply-chain incidents (4 RubyGems, 3 PyPI, 3 npm). Each subdirectory mirrors the directory layout of the published-then-yanked malicious package, with the malware payload reduced to its minimum-shape so detectors trigger but the bytes are inert.
+- **`tests/e2e/incidents.sh`** — end-to-end harness: runs `aegis analyze --local --json` against every fixture and asserts the expected capabilities. `make test-e2e` is now part of `make precommit`. CI runs it after build-matrix so the published binary is exercised end-to-end on every push.
+- **Heuristics in `Analyze.Run`** — the AST scanner pass is now followed by the same heuristic detector set Snapshot.Enrich uses (URL scan, install-hook regex, typosquat, binary dropper, obfuscation patterns). `aegis analyze` and `aegis snapshot enrich` now produce the same capability set on identical input. Disable via `AEGIS_NO_HEURISTICS=1`.
+- **`infra/aegisapi.Client.Lookup()`** — implements `usecase.VulnLookup` against `POST /api/v1/vuln/lookup`. Wire format documented inline. Lets the CLI consume an Aegis-managed feed (curated OSV + GHSA + npm advisories + custom curation) once the server endpoint ships.
+- **`infra/vulnlookup.Fallback`** — composition helper: try Primary first, fall through to Secondary on error. 5 unit tests cover the failure modes.
+- **`AEGIS_VULN_SOURCE` env override** — `osv` / `aegis` / `none` to pin the lookup source explicitly. Default behaviour: when `AEGIS_API_KEY` is set, the Aegis feed is preferred with OSV as fallback; without a key, OSV is used directly (unchanged from v0.9.0).
+- **`make precommit` / `make fmt-check` / pre-commit hook** — local CI parity. `scripts/git-hooks/pre-commit` checks staged `.go` files for gofmt issues; `make install-hooks` wires it up. Stops the gofmt-late-discovery loop.
+
+### Changed
+- `astscan.isAnalyzable` now routes `.rb` and `.gemspec` files through the Ruby scanner.
+- Composition root refactored: a `tryRegister` helper replaces the per-scanner `if err == nil { register } else { warn }` shape (which had `err == nil` as the happy path — a Go anti-pattern). Adding the next non-JS scanner is one line.
+- `analyze` command accepts `npm`, `pypi`, `rubygems`, `crates`, `go` ecosystem prefixes (was npm-only). The fetcher path still requires npm; the other ecosystems are usable via `--local`.
+- `VulnLookup` interface contract documented with the three implementation paths (OSV, aegisapi, vulnlookup composition helpers).
+
+### Tests
+- 738 pass with race detector across 27 packages (+10 from 0.9.0). 10 e2e incident fixtures all pass.
+
 ## [0.9.0] — 2026-05-06
 
 Detection-gap roadmap fully closed. Every historical incident in the rogues' gallery (`internal/infra/heuristics/incidents_test.go`) now PASSes — 8 t.Skip blocks lifted across PyPI, RubyGems, and crates.io.
