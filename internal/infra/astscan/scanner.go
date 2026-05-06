@@ -231,6 +231,11 @@ func isAnalyzable(eco domain.Ecosystem, path string) bool {
 		// Python source. .pyx (Cython) and .pyi (stubs) skipped —
 		// Cython has its own grammar; stubs are type-only.
 		return strings.HasSuffix(path, ".py")
+	case domain.EcoRubyGems:
+		// Ruby source. .gemspec is metadata Ruby that can also
+		// execute at install time, so we walk it too.
+		return strings.HasSuffix(path, ".rb") ||
+			strings.HasSuffix(path, ".gemspec")
 	}
 	return false
 }
