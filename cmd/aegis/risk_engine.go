@@ -13,6 +13,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/astscan/goscan"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan/jsscan"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan/pyscan"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan/rbscan"
@@ -50,6 +51,7 @@ func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiC
 	tryRegister("Python", domain.EcoPyPI, func() (astscan.LanguageScanner, error) { return pyscan.New() })
 	tryRegister("Ruby", domain.EcoRubyGems, func() (astscan.LanguageScanner, error) { return rbscan.New() })
 	tryRegister("Rust", domain.EcoCrates, func() (astscan.LanguageScanner, error) { return rsscan.New() })
+	tryRegister("Go", domain.EcoGo, func() (astscan.LanguageScanner, error) { return goscan.New() })
 
 	fetcher := jspkgsource.New(jspkgsource.WithHTTPClient(httpClient))
 	snapshot.WithRiskEngine(

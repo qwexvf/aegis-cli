@@ -240,6 +240,24 @@ func isAnalyzable(eco domain.Ecosystem, path string) bool {
 		// Rust source. build.rs runs at install time and is THE
 		// crates.io install-hook surface — explicitly included.
 		return strings.HasSuffix(path, ".rs")
+	case domain.EcoGo:
+		// Go source. Skip _test.go, *_generated.go, and anything
+		// under testdata/ — those are dev-only and never run at
+		// import time. Skip generated protobuf / wire stubs too
+		// (high-volume false positives).
+		if !strings.HasSuffix(path, ".go") {
+			return false
+		}
+		if strings.HasSuffix(path, "_test.go") {
+			return false
+		}
+		if strings.HasSuffix(path, ".pb.go") {
+			return false
+		}
+		if strings.Contains(path, "/testdata/") || strings.HasPrefix(path, "testdata/") {
+			return false
+		}
+		return true
 	}
 	return false
 }
