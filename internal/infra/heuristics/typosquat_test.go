@@ -21,10 +21,22 @@ func TestDetectTyposquat(t *testing.T) {
 		{"scoped attacker @atk/lodash flags too (bare-name match)", domain.EcoNpm, "@atk/lodash", 0}, // exact name 'lodash' is in top list, so the bare match excludes it
 		{"distance-1 of lodash, scoped → flag", domain.EcoNpm, "@atk/lodahs", domain.CapTyposquatRisk},
 
+		// --- pypi positives (Plan E) ---
+		{"colourama (PyPI) → flag (typo of colorama)", domain.EcoPyPI, "colourama", domain.CapTyposquatRisk},
+		{"requestz (PyPI) → flag (typo of requests)", domain.EcoPyPI, "requestz", domain.CapTyposquatRisk},
+		{"djano (PyPI) → flag (typo of django)", domain.EcoPyPI, "djano", domain.CapTyposquatRisk},
+
+		// --- crates positives (Plan F) ---
+		{"rustdecimal (crates) → flag (typo of rust_decimal)", domain.EcoCrates, "rustdecimal", domain.CapTyposquatRisk},
+		{"serdee (crates) → flag (typo of serde)", domain.EcoCrates, "serdee", domain.CapTyposquatRisk},
+		{"toikio (crates) → flag (typo of tokio)", domain.EcoCrates, "toikio", domain.CapTyposquatRisk},
+
 		// --- negative cases ---
-		{"itself a top package — no flag", domain.EcoNpm, "lodash", 0},
+		{"itself a top package (npm) — no flag", domain.EcoNpm, "lodash", 0},
+		{"itself a top package (pypi) — no flag", domain.EcoPyPI, "colorama", 0},
+		{"itself a top package (crates) — no flag", domain.EcoCrates, "rust_decimal", 0},
 		{"completely unrelated name — no flag", domain.EcoNpm, "totally-unique-package-name-xyz123", 0},
-		{"non-npm — heuristic doesn't apply yet", domain.EcoPyPI, "lodahs", 0},
+		{"unknown ecosystem (Go) — no flag", domain.EcoGo, "anything-here", 0},
 		{"empty name — no flag", domain.EcoNpm, "", 0},
 	}
 	for _, tc := range tests {

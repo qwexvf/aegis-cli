@@ -21,8 +21,22 @@ import (
 //go:embed top_npm_packages.txt
 var topNpmPackagesRaw string
 
-// topNpmPackages is the parsed set, cached at package init.
-var topNpmPackages = parseTopList(topNpmPackagesRaw)
+//go:embed top_pypi_packages.txt
+var topPyPIPackagesRaw string
+
+//go:embed top_crates_packages.txt
+var topCratesPackagesRaw string
+
+// topPackages is the per-ecosystem set of "real" names a typosquat
+// candidate is compared against. Adding a new ecosystem is a one-line
+// change here plus a top_<ecosystem>_packages.txt file. Ecosystems
+// without an entry get DetectTyposquat == 0 (no signal — better silent
+// than false-positive).
+var topPackages = map[domain.Ecosystem]map[string]bool{
+	domain.EcoNpm:    parseTopList(topNpmPackagesRaw),
+	domain.EcoPyPI:   parseTopList(topPyPIPackagesRaw),
+	domain.EcoCrates: parseTopList(topCratesPackagesRaw),
+}
 
 func parseTopList(raw string) map[string]bool {
 	out := make(map[string]bool, 200)
@@ -37,15 +51,14 @@ func parseTopList(raw string) map[string]bool {
 }
 
 // DetectTyposquat flags packages whose name is within Levenshtein
-// distance 2 of a top-1000 npm package — but ISN'T itself in that
-// list. Catches `electron-stable` (vs `electron`), `lodahs` (vs
-// `lodash`), `expresss` (vs `express`), `cross-env-shell` (vs
-// `cross-env`).
+// distance 2 of a top package in the same ecosystem — but ISN'T
+// itself in that list. Catches `electron-stable` (vs `electron`),
+// `lodahs` (vs `lodash`), `colourama` (vs `colorama`), `rustdecimal`
+// (vs `rust_decimal`).
 //
 // Returns 0 (no signal) when:
 //
-//   - not npm (other ecosystems get the same heuristic in their own
-//     follow-up PR with their own top-list)
+//   - the ecosystem has no top-list yet (silent — better than FP)
 //   - name is itself a top package (no point flagging React as a typo
 //     of itself)
 //   - distance to the nearest top package is ≥ 3 (false-positive
@@ -55,11 +68,12 @@ func parseTopList(raw string) map[string]bool {
 // to Block on its own — heuristics combine with other signals via
 // the existing risk scorer.
 func DetectTyposquat(eco domain.Ecosystem, name string) domain.Capability {
-	if eco != domain.EcoNpm {
-		return 0
-	}
 	if name == "" {
 		return 0
+	}
+	list, ok := topPackages[eco]
+	if !ok {
+		return 0 // no list for this ecosystem — silent
 	}
 	// Strip scope prefix: @foo/bar → bar. Scoped packages can't typo
 	// non-scoped ones at the registry level, but the bare name still
@@ -70,10 +84,10 @@ func DetectTyposquat(eco domain.Ecosystem, name string) domain.Capability {
 			bare = bare[idx+1:]
 		}
 	}
-	if topNpmPackages[bare] {
+	if list[bare] {
 		return 0 // it IS a top package — not a squat candidate
 	}
-	for top := range topNpmPackages {
+	for top := range list {
 		// Cheap pre-filter: lengths must be within 2 to be at
 		// Levenshtein ≤ 2. Saves the full DP table on most pairs.
 		if abs(len(bare)-len(top)) > 2 {
