@@ -69,7 +69,7 @@ jobs:
           done
 
       - name: e2e — analyze every fixture in examples/incidents/
-        run: AEGIS=./bin/aegis bash tests/e2e/incidents.sh
+        run: AEGIS=./bin/aegis AEGIS_SKIP_BUILD=1 bash tests/e2e/incidents.sh
 
   goreleaser-check:
     name: goreleaser check
