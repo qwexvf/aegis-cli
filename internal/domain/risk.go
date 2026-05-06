@@ -501,17 +501,25 @@ func splitN(s string, sep byte, n int) []string {
 	return out
 }
 
-// parseInt — strconv.Atoi without the strconv dep.
+// parseInt — strconv.Atoi without the strconv dep. Caps the result at
+// 1e9 to keep version-component arithmetic clear of int overflow on
+// pathological input ("9999999999..."). Real-world maj.min.patch fits
+// in 4 digits and the comparison is monotonic, so the cap doesn't
+// affect normal version ordering.
 func parseInt(s string) (int, bool) {
 	if s == "" {
 		return 0, false
 	}
+	const max = 1_000_000_000
 	n := 0
 	for _, r := range s {
 		if r < '0' || r > '9' {
 			return 0, false
 		}
 		n = n*10 + int(r-'0')
+		if n >= max {
+			return max, true
+		}
 	}
 	return n, true
 }
