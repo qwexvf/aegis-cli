@@ -36,7 +36,7 @@ func DetectSourcePatterns(src usecase.PackageSource) []domain.Capability {
 		suspURL     bool
 	}
 	for filename, body := range src.Files {
-		if !isJSSource(filename) {
+		if !isAnalyzableSource(filename) {
 			continue
 		}
 		// Cap per-file scan size — minified mega-bundles are a
@@ -47,11 +47,15 @@ func DetectSourcePatterns(src usecase.PackageSource) []domain.Capability {
 		if len(body) > scanCap {
 			body = body[:scanCap]
 		}
-		if !found.obfuscation && obfuscatedPayloadPattern.Match(body) {
-			found.obfuscation = true
-		}
+		// URL scan is language-agnostic — runs over any analyzable
+		// source. The obfuscation regex below is JS-shaped and stays
+		// scoped to JS files; per-language obfuscation patterns live
+		// in their own detectors.
 		if !found.suspURL && containsSuspiciousURL(body) {
 			found.suspURL = true
+		}
+		if !found.obfuscation && isJSSource(filename) && obfuscatedPayloadPattern.Match(body) {
+			found.obfuscation = true
 		}
 		if found.obfuscation && found.suspURL {
 			break // both fired; no need to scan further
@@ -168,6 +172,21 @@ func containsIDNHomoglyph(url string) bool {
 func isJSSource(filename string) bool {
 	switch strings.ToLower(path.Ext(filename)) {
 	case ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".cts", ".mts":
+		return true
+	}
+	return false
+}
+
+// isAnalyzableSource is the broader gate for language-agnostic scans
+// (URL blocklist, IDN homoglyph). Covers every language the gate sees
+// today; per-language obfuscation detectors gate on their own narrower
+// helpers (isJSSource, isRubySource, isPythonSource).
+func isAnalyzableSource(filename string) bool {
+	if isJSSource(filename) {
+		return true
+	}
+	switch strings.ToLower(path.Ext(filename)) {
+	case ".py", ".pyi", ".pyx", ".rb", ".gemspec", ".rs", ".go":
 		return true
 	}
 	return false

@@ -153,6 +153,69 @@ func TestDetectSourcePatterns_OnlyJSFiles(t *testing.T) {
 	}
 }
 
+// URL scan runs over .py / .rb (and other analyzable sources), not
+// only JS — Plan A in detection-gaps-roadmap. The obfuscation regex
+// stays JS-shaped, so .py and .rb files won't accidentally fire it.
+func TestDetectSourcePatterns_URLScanIsLanguageAgnostic(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		body     string
+		wantHas  domain.Capability
+	}{
+		{
+			name:     "python with pastebin URL",
+			filename: "setup.py",
+			body:     `payload = "https://pastebin.com/raw/AAAAA"`,
+			wantHas:  domain.CapSuspiciousURL,
+		},
+		{
+			name:     "ruby with discord webhook",
+			filename: "lib/foo.rb",
+			body:     `WEBHOOK = "https://discord.com/api/webhooks/123/abc"`,
+			wantHas:  domain.CapSuspiciousURL,
+		},
+		{
+			name:     "rust with telegram bot URL",
+			filename: "build.rs",
+			body:     `let url = "https://api.telegram.org/bot999/sendMessage";`,
+			wantHas:  domain.CapSuspiciousURL,
+		},
+		{
+			name:     "python without suspicious URL",
+			filename: "setup.py",
+			body:     `requires = ["requests >= 2.0"]`,
+			wantHas:  0,
+		},
+		{
+			name:     "python eval(atob(...)) does NOT fire JS-shaped obfuscation",
+			filename: "evil.py",
+			body:     `eval(atob("Y29uc29sZS5sb2c="))`,
+			wantHas:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			caps := DetectSourcePatterns(usecase.PackageSource{
+				Files: map[string][]byte{tt.filename: []byte(tt.body)},
+			})
+			has := false
+			for _, c := range caps {
+				if c == tt.wantHas {
+					has = true
+				}
+			}
+			if tt.wantHas != 0 && !has {
+				t.Errorf("want %v, got %v", tt.wantHas, caps)
+			}
+			if tt.wantHas == 0 && len(caps) != 0 {
+				t.Errorf("want no caps, got %v", caps)
+			}
+		})
+	}
+}
+
 // Sanity: catches the pattern even in minified content (one long line).
 func TestDetectSourcePatterns_Minified(t *testing.T) {
 	js := strings.Repeat("var x=1;", 1000) + `eval(atob("YWJj"))` + strings.Repeat("var y=2;", 1000)
