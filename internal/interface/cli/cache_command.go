@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"text/tabwriter"
 	"time"
@@ -20,7 +21,8 @@ func cacheCommand(c *diskcache.Cache) *cobra.Command {
 }
 
 func cacheListCommand(c *diskcache.Cache) *cobra.Command {
-	return &cobra.Command{
+	var jsonOut bool
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List cached decisions",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -29,6 +31,26 @@ func cacheListCommand(c *diskcache.Cache) *cobra.Command {
 				return err
 			}
 			out := cmd.OutOrStdout()
+			if jsonOut {
+				type entry struct {
+					Key       string `json:"key"`
+					Decision  string `json:"decision"`
+					Severity  string `json:"severity"`
+					ExpiresAt string `json:"expires_at"`
+				}
+				rows := make([]entry, 0, len(entries))
+				for _, e := range entries {
+					rows = append(rows, entry{
+						Key:       e.Key,
+						Decision:  string(e.Kind),
+						Severity:  string(e.Severity),
+						ExpiresAt: e.ExpiresAt.Format(time.RFC3339),
+					})
+				}
+				enc := json.NewEncoder(out)
+				enc.SetIndent("", "  ")
+				return enc.Encode(rows)
+			}
 			if len(entries) == 0 {
 				fmt.Fprintln(out, "(empty)")
 				return nil
@@ -42,6 +64,8 @@ func cacheListCommand(c *diskcache.Cache) *cobra.Command {
 			return tw.Flush()
 		},
 	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
+	return cmd
 }
 
 func cacheClearCommand(c *diskcache.Cache) *cobra.Command {

@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/qwexvf/aegis-cli/internal/usecase"
@@ -67,7 +69,7 @@ func snapshotSaveCommand(uc *usecase.Snapshot) *cobra.Command {
 }
 
 func snapshotShowCommand(uc *usecase.Snapshot) *cobra.Command {
-	var all bool
+	var all, jsonOut bool
 	c := &cobra.Command{
 		Use:   "show",
 		Short: "Print the saved snapshot. By default only direct deps are shown.",
@@ -76,10 +78,32 @@ func snapshotShowCommand(uc *usecase.Snapshot) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if jsonOut {
+				snap, ok, err := uc.Load(cwd)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return fmt.Errorf("no snapshot saved — run 'aegis snapshot save' first")
+				}
+				if !all {
+					filtered := snap.Deps[:0]
+					for _, d := range snap.Deps {
+						if d.Direct {
+							filtered = append(filtered, d)
+						}
+					}
+					snap.Deps = filtered
+				}
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(snap)
+			}
 			return uc.Show(cwd, !all)
 		},
 	}
 	c.Flags().BoolVar(&all, "all", false, "show transitive deps as well")
+	c.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	return c
 }
 

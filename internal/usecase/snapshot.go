@@ -230,6 +230,13 @@ func (s *Snapshot) Save(projectDir string) error {
 	return nil
 }
 
+// Load returns the saved snapshot (or ok=false if none). Used by
+// callers that want to render the snapshot themselves (e.g. `show
+// --json`) instead of going through the presenter.
+func (s *Snapshot) Load(projectDir string) (domain.Snapshot, bool, error) {
+	return s.store.Load(projectDir)
+}
+
 // Show loads the saved snapshot and renders it.
 func (s *Snapshot) Show(projectDir string, directOnly bool) error {
 	snap, ok, err := s.store.Load(projectDir)
