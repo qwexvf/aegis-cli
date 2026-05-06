@@ -48,13 +48,15 @@ func DetectSourcePatterns(src usecase.PackageSource) []domain.Capability {
 			body = body[:scanCap]
 		}
 		// URL scan is language-agnostic — runs over any analyzable
-		// source. The obfuscation regex below is JS-shaped and stays
-		// scoped to JS files; per-language obfuscation patterns live
-		// in their own detectors.
+		// source. Obfuscation regexes are language-shaped and gated
+		// by per-language helpers below.
 		if !found.suspURL && containsSuspiciousURL(body) {
 			found.suspURL = true
 		}
 		if !found.obfuscation && isJSSource(filename) && obfuscatedPayloadPattern.Match(body) {
+			found.obfuscation = true
+		}
+		if !found.obfuscation && isRubySource(filename) && rubyObfuscatedPayloadPattern.Match(body) {
 			found.obfuscation = true
 		}
 		if found.obfuscation && found.suspURL {
@@ -176,6 +178,39 @@ func isJSSource(filename string) bool {
 	}
 	return false
 }
+
+// isRubySource returns true for files the Ruby obfuscation regex
+// should run over. Covers `.rb` (the canonical extension) and
+// `.gemspec` (gem metadata that can also exec at install time).
+func isRubySource(filename string) bool {
+	switch strings.ToLower(path.Ext(filename)) {
+	case ".rb", ".gemspec":
+		return true
+	}
+	return false
+}
+
+// rubyObfuscatedPayloadPattern matches the canonical Ruby
+// "fetch-then-execute" idioms. Shape mirrors the JS version but uses
+// Ruby's stdlib HTTP / open-uri callees:
+//
+//	eval(Net::HTTP.get(URI("...")))
+//	eval(Net::HTTP.post(...))
+//	eval(open("https://..."))
+//	eval(URI.open("..."))
+//	eval(URI.read("..."))
+//
+// The require-side variant (`require(remote)`) is uncommon in Ruby —
+// the real-world incidents (rest-client_2019, strong_password_2019)
+// all used `eval`. Keeping the regex tight to that shape avoids
+// false positives on benign HTTP fetches that aren't passed to eval.
+var rubyObfuscatedPayloadPattern = regexp.MustCompile(
+	`\beval\s*\(\s*` +
+		`(?:` +
+		`Net::HTTP\.(?:get|post)\s*\(|` +
+		`open\s*\(\s*['"]https?:|` +
+		`URI\.(?:open|read)\s*\(` +
+		`)`)
 
 // isAnalyzableSource is the broader gate for language-agnostic scans
 // (URL blocklist, IDN homoglyph). Covers every language the gate sees
