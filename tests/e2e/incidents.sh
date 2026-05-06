@@ -50,6 +50,9 @@ CASES=(
     "crates|xrvrv|1.0.0|shell-spawn,install-hook-suspicious,suspicious-url"
     "crates|rustdecimal|1.23.1|net-egress,suspicious-url,typosquat-risk"
     "crates|big_decimal|0.1.5|binary-dropper,typosquat-risk"
+
+    # Go modules — init()-time exfil generic shape
+    "go|boltdb-go|1.0.0|shell-spawn,net-egress,suspicious-url"
 )
 
 pass=0

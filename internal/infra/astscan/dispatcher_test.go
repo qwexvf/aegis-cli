@@ -207,6 +207,40 @@ func TestDispatcher_FiltersFilesByExtension_Rust(t *testing.T) {
 	}
 }
 
+func TestDispatcher_FiltersFilesByExtension_Go(t *testing.T) {
+	g := &fakeLanguageScanner{}
+	d := NewDispatcher()
+	d.Register(domain.EcoGo, g)
+
+	src := usecase.PackageSource{Files: map[string][]byte{
+		"main.go":            []byte("a"), // analyzed
+		"internal/foo/x.go":  []byte("a"), // analyzed
+		"main_test.go":       []byte("a"), // skipped (test file)
+		"foo.pb.go":          []byte("a"), // skipped (generated)
+		"testdata/sample.go": []byte("a"), // skipped (testdata)
+		"go.mod":             []byte("a"), // skipped (manifest)
+		"go.sum":             []byte("a"), // skipped
+		"README.md":          []byte("a"), // skipped
+	}}
+	if _, err := d.Analyze(context.Background(), domain.EcoGo, src); err != nil {
+		t.Fatal(err)
+	}
+	visited := map[string]bool{}
+	for _, p := range g.visitedPaths {
+		visited[p] = true
+	}
+	for _, want := range []string{"main.go", "internal/foo/x.go"} {
+		if !visited[want] {
+			t.Errorf("expected scanner to see %q, didn't", want)
+		}
+	}
+	for _, skip := range []string{"main_test.go", "foo.pb.go", "testdata/sample.go", "go.mod", "go.sum", "README.md"} {
+		if visited[skip] {
+			t.Errorf("scanner visited %q but should have skipped", skip)
+		}
+	}
+}
+
 func TestFindings_AddCapabilityDedups(t *testing.T) {
 	f := NewFindings()
 	f.AddCapability(domain.CapShellSpawn)
