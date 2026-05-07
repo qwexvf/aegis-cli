@@ -294,6 +294,14 @@ func (s *Snapshot) Enrich(ctx context.Context, projectDir string) error {
 	processed, succeeded := s.runEnrichWorkers(ctx, snap.Deps, pending)
 	s.presenter.OnEnrichEnd()
 
+	// Reachability scan: walk user-source files and mark each Dep as
+	// Used / Unused / Unknown. Best-effort — a failed scan keeps the
+	// existing (or zero) Reachability values, so risk scoring stays
+	// conservative.
+	if err := AnalyzeUsage(ctx, projectDir, &snap); err != nil && ctx.Err() == nil {
+		s.presenter.OnSnapshotInfo(fmt.Sprintf("reachability scan: %v", err))
+	}
+
 	// After the AST workers drain, batch-query the public
 	// vulnerability feed (OSV.dev) for every dep and stamp the
 	// matching advisories back onto the snapshot. One round-trip
