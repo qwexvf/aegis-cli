@@ -328,7 +328,7 @@ func (s EnrichStage) String() string {
 // no-ops it and synthesizes counts from slot events.
 type SnapshotPresenter interface {
 	OnSnapshotSaved(path string, depCount int)
-	OnSnapshotShow(s domain.Snapshot, directOnly bool)
+	OnSnapshotShow(s domain.Snapshot, directOnly, usedOnly bool)
 	OnSnapshotDiff(report DiffReport)
 	OnSnapshotEnrichProgress(done, total int, name string)
 	OnSnapshotEmpty(reason string)

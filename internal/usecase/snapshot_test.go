@@ -84,7 +84,7 @@ func (p *snapshotCapturingPresenter) OnSnapshotSaved(string, int) {
 	defer p.mu.Unlock()
 	p.saved++
 }
-func (p *snapshotCapturingPresenter) OnSnapshotShow(s domain.Snapshot, _ bool) {
+func (p *snapshotCapturingPresenter) OnSnapshotShow(s domain.Snapshot, _, _ bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.shown = append(p.shown, s)
@@ -194,7 +194,7 @@ func TestSnapshot_ShowLoadsSnapshot(t *testing.T) {
 	pres := &snapshotCapturingPresenter{}
 	uc := NewSnapshot(store, &fakeScanner{}, pres, "test")
 
-	if err := uc.Show("/proj", false); err != nil {
+	if err := uc.Show("/proj", false, false); err != nil {
 		t.Fatal(err)
 	}
 	if len(pres.shown) != 1 {
@@ -206,7 +206,7 @@ func TestSnapshot_ShowMissingSnapshot(t *testing.T) {
 	pres := &snapshotCapturingPresenter{}
 	uc := NewSnapshot(newFakeStore(), &fakeScanner{}, pres, "test")
 
-	uc.Show("/proj", false)
+	uc.Show("/proj", false, false)
 	if len(pres.empties) != 1 {
 		t.Errorf("expected empty message, got %v", pres.empties)
 	}

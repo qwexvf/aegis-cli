@@ -302,7 +302,8 @@ func (c *CI) scoreSnapshot(snap domain.Snapshot, failOn domain.VerdictKind) CIRe
 	}
 	for _, d := range snap.Deps {
 		risk := domain.RiskScore(d.Fingerprint).
-			ApplyAllowlist(d.Ecosystem, d.Name, d.Version, c.snapshot.allowlist)
+			ApplyAllowlist(d.Ecosystem, d.Name, d.Version, c.snapshot.allowlist).
+			DowngradeUnused(d.Reachability, unusedSuppressEnabled())
 		// Single-version score (no drift, no prior fingerprint to
 		// diff against — CI audits the current state, not changes).
 		astVerdict := domain.Verdict(risk, domain.RiskAssessment{})

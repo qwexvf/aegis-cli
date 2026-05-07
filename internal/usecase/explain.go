@@ -154,7 +154,8 @@ func (e *Explain) findInSnapshot(req ExplainRequest) (domain.Dependency, bool) {
 // snapshot stores the fingerprint, not the per-capture rows).
 func (e *Explain) scoreFromSnapshot(dep domain.Dependency) ExplainResult {
 	risk := domain.RiskScore(dep.Fingerprint).
-		ApplyAllowlist(dep.Ecosystem, dep.Name, dep.Version, e.allowlist)
+		ApplyAllowlist(dep.Ecosystem, dep.Name, dep.Version, e.allowlist).
+		DowngradeUnused(dep.Reachability, unusedSuppressEnabled())
 	verdict := domain.Verdict(risk, domain.RiskAssessment{})
 	return ExplainResult{
 		Source:      "snapshot",
