@@ -15,6 +15,19 @@ name: release-please
 # All version state lives in .release-please-manifest.json and
 # release-please-config.json — release-please owns those files; humans
 # only edit them to seed the initial version or change the policy.
+#
+# Why a PAT, not GITHUB_TOKEN: tags and releases created with
+# GITHUB_TOKEN do NOT trigger downstream `push` or `release` workflows
+# (anti-loop policy in Actions). That left release.yml — the
+# goreleaser pipeline — silently skipped on every release-please cut.
+# The fix is to give release-please a token tied to a real user, so
+# the tag push looks like a human action and downstream workflows fire.
+#
+# Required setup (one-time):
+#   1. Generate a fine-grained PAT scoped to this repo with:
+#        - Contents:      read + write
+#        - Pull requests: read + write
+#   2. Add it as a repo secret named RELEASE_PLEASE_PAT.
 
 on:
   push:
@@ -30,5 +43,6 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         with:
+          token: ${{ secrets.RELEASE_PLEASE_PAT }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
