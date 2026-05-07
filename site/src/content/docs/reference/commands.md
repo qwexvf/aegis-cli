@@ -108,13 +108,17 @@ Within an ecosystem, only the first match is parsed (a project typically commits
 Print the saved snapshot. By default only direct deps are shown (transitive deps are in the file but hidden from the table by default).
 
 ```sh
-aegis snapshot show                   # direct only
-aegis snapshot show --all             # include transitive
+aegis snapshot show                        # direct only
+aegis snapshot show --all                  # include transitive
+aegis snapshot show --all --used-only      # hide deps not referenced by project source
+aegis snapshot show --json                 # full JSON output including reach + symbols
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--all` | off | Include transitive dependencies in the rendered table. |
+| `--used-only` | off | Hide deps whose reachability is `unused` — in the lockfile but not imported by project source. Requires a prior `snapshot enrich` run. Filtered count shown in footer. |
+| `--json` | off | Emit the full snapshot as a JSON array. Includes all fields including `reach` and `symbols`. |
 
 Output columns:
 
@@ -124,7 +128,7 @@ Output columns:
 | `NAME` | Package name |
 | `VERSION` | Resolved version |
 | `DIRECT` | `✓` when listed in the project manifest (vs transitive) |
-| `CAPS` | AST + heuristic capability count. Empty if not enriched yet; `—` if enriched with no findings |
+| `CAPS` | AST + heuristic capability count. Empty if not enriched yet; `—` if enriched with no findings. Appends `[unused]` when reachability scan found no import of this dep in project source. |
 | `ADVISORIES` | OSV.dev vulnerability count + max severity, color-coded. Empty if not looked up; `—` if looked up with no matches |
 
 ---

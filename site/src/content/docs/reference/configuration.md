@@ -69,6 +69,15 @@ The override is the operator's "I know what I'm doing" escape hatch. Both env va
 |---|---|---|
 | `AEGIS_NO_HEURISTICS` | (unset) | When set to anything non-empty, disables the malware heuristic pass. Useful when A/B testing heuristic vs AST-only scoring or to silence false positives during initial rollout. |
 
+### Reachability
+
+`aegis snapshot enrich` walks your project's source files and marks each dep as `used`, `unused`, or `unknown` depending on whether any import statement references it.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AEGIS_UNUSED_SUPPRESS` | (unset) | When set to anything non-empty, non-install capability findings on `unused` deps are suppressed from the risk score. Install-phase capabilities (`postinstall`, `install-hook-suspicious`) are **never** suppressed — they execute regardless of imports. Enable after reviewing `[unused]` markers in `snapshot show`. |
+| `AEGIS_TARBALL_ALLOWED_HOSTS` | (unset) | Comma-separated list of additional hostnames the npm tarball fetcher may download from, beyond the configured registry's own hostname. Required when a private registry serves tarballs from a separate CDN. Example: `cdn.mycompany.com,assets.internal`. |
+
 ### Registry
 
 | Variable | Default | Purpose |
@@ -115,6 +124,7 @@ If your CI system isn't on this list, set `CI=true` or `AEGIS_CI=1` explicitly.
 | `~/.aegis/cache/sources/<eco>/<name>/<version>/` | `snapshot enrich`, `analyze` | Extracted package source for AST scanning. Cleared by `aegis cache clear --all`. |
 | `~/.aegis/cache/fingerprints/` | `snapshot enrich`, `ci` | Per-(name, version) AST fingerprint cache. Warm cache is the entire reason `ci` reruns are fast. Cleared by `aegis cache clear --fingerprints`. |
 | `~/.aegis/cache/advisories/` | `snapshot enrich`, `ci` | Per-advisory body cache (`<id>.json`) from OSV.dev. Cleared by `aegis cache clear --all`. |
+| `~/.aegis/cache/usage/<lang>/<sha[:2]>/<sha[2:]>.json` | `snapshot enrich` | Per-source-file import and symbol cache keyed by sha256(body). Re-enrich after a one-file edit re-parses only the changed file. Cleared by `aegis cache clear --all`. |
 | `~/.aegis/cache/org-allowlist.yaml` | `aegis allowlist sync` | Org-wide allowlist overlay fetched from the API. Layered between user and project rules. |
 | `~/.aegis/allowlist.yaml` | `aegis allowlist add --scope=user` | User-level allowlist. Personal — gitignore it. |
 | `~/.aegis/audit.jsonl` | every install gate / override / sync | NDJSON audit log: one line per outcome with timestamp, decision, reason, actor. Append-only. |
