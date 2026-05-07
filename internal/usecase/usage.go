@@ -76,11 +76,35 @@ func AnalyzeUsage(ctx context.Context, projectDir string, snap *domain.Snapshot)
 			// No source observed for this ecosystem — keep Unknown.
 			continue
 		}
-		if usedKeys[d.Ecosystem][d.Name] {
+		if isDepUsed(d.Ecosystem, d.Name, usedKeys[d.Ecosystem]) {
 			d.Reachability = domain.ReachabilityUsed
 		} else {
 			d.Reachability = domain.ReachabilityUnused
 		}
 	}
 	return nil
+}
+
+// isDepUsed checks whether any imported key resolves to depName, with
+// per-ecosystem matching rules. Go imports are package paths under a
+// module root (e.g. `github.com/x/y/bindings/go`); the lockfile key is
+// the module root (`github.com/x/y`). Other ecosystems already
+// normalize to the lockfile key on the depusage side, so exact match
+// is correct for them.
+func isDepUsed(eco domain.Ecosystem, depName string, used map[string]bool) bool {
+	if len(used) == 0 {
+		return false
+	}
+	if used[depName] {
+		return true
+	}
+	if eco == domain.EcoGo {
+		prefix := depName + "/"
+		for k := range used {
+			if len(k) > len(prefix) && k[:len(prefix)] == prefix {
+				return true
+			}
+		}
+	}
+	return false
 }
