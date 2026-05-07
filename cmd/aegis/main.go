@@ -114,10 +114,14 @@ func main() {
 	// endpoint stays unauthenticated; only /reports requires it.
 	// Empty key still produces a 401 from the API, which the CLI
 	// surfaces verbatim — that's the right UX.
-	apiClient := aegisapi.New(
+	apiClient, err := aegisapi.New(
 		aegisapi.WithAPIKey(os.Getenv("AEGIS_API_KEY")),
 		aegisapi.WithHTTPClient(httpClient),
 	)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "aegis:", err)
+		os.Exit(1)
+	}
 	cache := diskcache.New()
 	audit := ndjsonaudit.New().WithProvenance(clii.Version, invocationID, cwd)
 	confirm := ttyprompt.New()

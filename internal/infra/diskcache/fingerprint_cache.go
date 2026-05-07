@@ -126,14 +126,14 @@ func (c *FingerprintCache) Get(eco domain.Ecosystem, name, version string) (doma
 // Put implements usecase.FingerprintCache.
 func (c *FingerprintCache) Put(eco domain.Ecosystem, name, version string, fp domain.Fingerprint) error {
 	path := c.path(eco, name, version)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	body, err := json.MarshalIndent(fpToDTO(fp), "", "  ")
 	if err != nil {
 		return fmt.Errorf("fingerprint encode: %w", err)
 	}
-	return atomicwrite.WriteFile(path, body, 0o644)
+	return atomicwrite.WriteFile(path, body, 0o600)
 }
 
 // Path returns the on-disk file path for a given key. Useful for

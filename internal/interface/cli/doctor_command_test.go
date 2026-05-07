@@ -38,7 +38,10 @@ func TestCheckAPI_ReachableServerPasses(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("AEGIS_API_URL", srv.URL)
-	api := aegisapi.New()
+	api, err := aegisapi.New()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	r := checkAPI(context.Background(), api)
 	if r.Status != doctorPass {
@@ -52,7 +55,10 @@ func TestCheckAPI_ServerErrorWarns(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("AEGIS_API_URL", srv.URL)
-	api := aegisapi.New()
+	api, err := aegisapi.New()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	r := checkAPI(context.Background(), api)
 	if r.Status != doctorWarn {
@@ -62,7 +68,10 @@ func TestCheckAPI_ServerErrorWarns(t *testing.T) {
 
 func TestCheckAPI_NetworkErrorFails(t *testing.T) {
 	t.Setenv("AEGIS_API_URL", "http://127.0.0.1:9") // discard port — connection refused
-	api := aegisapi.New()
+	api, err := aegisapi.New()
+	if err != nil {
+		t.Fatal(err)
+	}
 	r := checkAPI(context.Background(), api)
 	if r.Status != doctorFail {
 		t.Errorf("unreachable should FAIL, got %v (detail: %s)", r.Status, r.Detail)

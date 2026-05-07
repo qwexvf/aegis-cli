@@ -158,6 +158,42 @@ func TestFetcher_TarballNon200Errors(t *testing.T) {
 	}
 }
 
+// TestFetcher_RejectsForeignHostInTarballURL covers the SSRF guard:
+// a registry that returns a tarball URL pointing at a host outside
+// the configured-registry allowlist must be refused without a network
+// dial.
+func TestFetcher_RejectsForeignHostInTarballURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"versions":{"1.0.0":{"dist":{"tarball":"http://169.254.169.254/latest/meta-data/"}}}}`))
+	}))
+	defer srv.Close()
+	f := New(WithRegistryURL(srv.URL), WithCacheDir(t.TempDir()))
+	_, err := f.Fetch(context.Background(), domain.EcoNpm, "p", "1.0.0")
+	if err == nil || !strings.Contains(err.Error(), "allowlist") {
+		t.Errorf("expected allowlist rejection, got %v", err)
+	}
+}
+
+// TestFetcher_RejectsRedirectToForeignHost covers the redirect-hop
+// re-validator: even if the initial tarball URL is in-allowlist, a
+// 302 to an internal address must be blocked.
+func TestFetcher_RejectsRedirectToForeignHost(t *testing.T) {
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	mux.HandleFunc("/p", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"versions":{"1.0.0":{"dist":{"tarball":"` + srv.URL + `/redirect.tgz"}}}}`))
+	})
+	mux.HandleFunc("/redirect.tgz", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://10.0.0.1/internal.tgz", http.StatusFound)
+	})
+	f := New(WithRegistryURL(srv.URL), WithCacheDir(t.TempDir()))
+	_, err := f.Fetch(context.Background(), domain.EcoNpm, "p", "1.0.0")
+	if err == nil || !strings.Contains(err.Error(), "allowlist") {
+		t.Errorf("expected redirect host rejection, got %v", err)
+	}
+}
+
 func TestFetcher_MissingNameOrVersionRejected(t *testing.T) {
 	f := New(WithRegistryURL("http://unused"), WithCacheDir(t.TempDir()))
 	if _, err := f.Fetch(context.Background(), domain.EcoNpm, "", "1.0.0"); err == nil {

@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +51,7 @@ type Fetcher struct {
 	cacheDir     string
 	maxFileBytes int64
 	retry        httpx.RetryPolicy
+	allowedHosts map[string]struct{} // tarball SSRF allowlist (lowercased)
 }
 
 // Option configures a Fetcher.
@@ -103,7 +105,55 @@ func New(opts ...Option) *Fetcher {
 	for _, opt := range opts {
 		opt(f)
 	}
+	f.allowedHosts = buildAllowedHosts(f.registryURL)
 	return f
+}
+
+// buildAllowedHosts seeds the tarball SSRF allowlist with the registry
+// host plus any operator-supplied hosts from AEGIS_TARBALL_ALLOWED_HOSTS
+// (comma-separated). Hosts are stored lowercased without ports.
+func buildAllowedHosts(registryURL string) map[string]struct{} {
+	out := map[string]struct{}{}
+	if u, err := url.Parse(registryURL); err == nil {
+		if h := strings.ToLower(u.Hostname()); h != "" {
+			out[h] = struct{}{}
+		}
+	}
+	for h := range strings.SplitSeq(os.Getenv("AEGIS_TARBALL_ALLOWED_HOSTS"), ",") {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h != "" {
+			out[h] = struct{}{}
+		}
+	}
+	return out
+}
+
+// validateTarballURL enforces a host allowlist + scheme guard for
+// tarball downloads. Defends against a compromised or hostile-pointed
+// registry returning a `dist.tarball` URL aimed at cloud IMDS, Consul,
+// or other internal services on CI runners.
+//
+// The allowlist is the gate: only the configured registry host (plus
+// any AEGIS_TARBALL_ALLOWED_HOSTS) is reachable, so a foreign hostname
+// (or IP literal) returned by a hostile registry can't slip past — even
+// a 302 to 169.254.169.254 is blocked by the redirect re-validator in
+// downloadTarball.
+func (f *Fetcher) validateTarballURL(rawURL string) (*url.URL, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("tarball URL parse: %w", err)
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return nil, fmt.Errorf("tarball URL scheme %q not allowed", u.Scheme)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return nil, errors.New("tarball URL missing host")
+	}
+	if _, ok := f.allowedHosts[host]; !ok {
+		return nil, fmt.Errorf("tarball host %q not in registry allowlist", host)
+	}
+	return u, nil
 }
 
 // Fetch implements usecase.PackageSourceFetcher.
@@ -159,11 +209,11 @@ func (f *Fetcher) tarballURL(ctx context.Context, name, version string) (string,
 	req.Header.Set("Accept", "application/vnd.npm.install-v1+json")
 	resp, err := httpx.Do(ctx, f.http, req, f.retry)
 	if err != nil {
-		return "", fmt.Errorf("metadata GET %s: %w", url, err)
+		return "", fmt.Errorf("metadata GET %s: %w", redactURL(url), err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("metadata %s: HTTP %d", url, resp.StatusCode)
+		return "", fmt.Errorf("metadata %s: HTTP %d", redactURL(url), resp.StatusCode)
 	}
 	var meta struct {
 		Versions map[string]struct {
@@ -174,7 +224,7 @@ func (f *Fetcher) tarballURL(ctx context.Context, name, version string) (string,
 	}
 	body, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
 	if err != nil {
-		return "", fmt.Errorf("read metadata %s: %w", url, err)
+		return "", fmt.Errorf("read metadata %s: %w", redactURL(url), err)
 	}
 	if err := json.Unmarshal(body, &meta); err != nil {
 		return "", fmt.Errorf("decode metadata: %w", err)
@@ -190,24 +240,55 @@ func (f *Fetcher) tarballURL(ctx context.Context, name, version string) (string,
 // httpx.MaxTarballBytes so a hostile or compromised registry can't
 // OOM the CLI by serving a multi-GB response. Real npm tarballs are
 // <100MB; the cap is generous headroom.
-func (f *Fetcher) downloadTarball(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+//
+// Re-validates the URL on every redirect hop so a registry that
+// 302s to an internal address still gets blocked.
+func (f *Fetcher) downloadTarball(ctx context.Context, rawURL string) ([]byte, error) {
+	if _, err := f.validateTarballURL(rawURL); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := httpx.Do(ctx, f.http, req, f.retry)
+	// Per-call client copy: same transport, same headers — but with a
+	// CheckRedirect that re-runs the SSRF guard. Mutating f.http would
+	// affect every other caller of the shared client.
+	client := *f.http
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("tarball: too many redirects")
+		}
+		if _, err := f.validateTarballURL(req.URL.String()); err != nil {
+			return err
+		}
+		return nil
+	}
+	resp, err := httpx.Do(ctx, &client, req, f.retry)
 	if err != nil {
-		return nil, fmt.Errorf("tarball GET %s: %w", url, err)
+		return nil, fmt.Errorf("tarball GET %s: %w", redactURL(rawURL), err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tarball %s: HTTP %d", url, resp.StatusCode)
+		return nil, fmt.Errorf("tarball %s: HTTP %d", redactURL(rawURL), resp.StatusCode)
 	}
 	body, err := httpx.ReadCapped(resp.Body, httpx.MaxTarballBytes)
 	if err != nil {
-		return nil, fmt.Errorf("tarball %s: %w", url, err)
+		return nil, fmt.Errorf("tarball %s: %w", redactURL(rawURL), err)
 	}
 	return body, nil
+}
+
+// redactURL strips path/query so logs don't leak the full URL — only
+// the scheme + host survive. Used in error messages so a misconfigured
+// registry or a hostile redirect target doesn't end up verbatim in CI
+// logs.
+func redactURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return "(redacted)"
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 // escapeName URL-escapes scoped package names: `@scope/name` becomes
@@ -255,6 +336,13 @@ func extractTarball(raw []byte, maxFileBytes int64) (usecase.PackageSource, erro
 			if idx := strings.Index(path, "/"); idx >= 0 {
 				path = path[idx+1:]
 			}
+		}
+		// Defense in depth: reject anything the on-disk save would
+		// reject anyway, so the in-memory map can't carry traversal
+		// keys (`..`, `/abs`) that downstream consumers might use as
+		// paths.
+		if !isSafeRel(path) {
+			continue
 		}
 		body, err := io.ReadAll(io.LimitReader(tr, maxFileBytes+1))
 		if err != nil {

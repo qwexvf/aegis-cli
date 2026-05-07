@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -59,10 +60,17 @@ func WithRetryPolicy(p httpx.RetryPolicy) Option {
 // New builds a Client with sensible defaults. Reads AEGIS_API_URL from
 // the environment if set, otherwise uses DefaultURL. Options layer
 // on top.
-func New(opts ...Option) *Client {
+//
+// Refuses plain http:// for non-loopback hosts: the X-API-Key header
+// would otherwise travel in cleartext if an operator pointed the env
+// var at a remote http endpoint.
+func New(opts ...Option) (*Client, error) {
 	base := os.Getenv("AEGIS_API_URL")
 	if base == "" {
 		base = DefaultURL
+	}
+	if err := validateBaseURL(base); err != nil {
+		return nil, err
 	}
 	c := &Client{
 		baseURL: strings.TrimRight(base, "/"),
@@ -72,7 +80,39 @@ func New(opts ...Option) *Client {
 	for _, opt := range opts {
 		opt(c)
 	}
-	return c
+	return c, nil
+}
+
+// validateBaseURL refuses plain-http base URLs unless the host is a
+// loopback literal. Hostnames that resolve to loopback (e.g. "localhost")
+// are also accepted; any other hostname over plain http is rejected.
+func validateBaseURL(base string) error {
+	u, err := url.Parse(base)
+	if err != nil {
+		return fmt.Errorf("aegis api: invalid AEGIS_API_URL %q: %w", base, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("aegis api: AEGIS_API_URL must be http(s), got %q", u.Scheme)
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	host := u.Hostname()
+	if isLoopbackHost(host) {
+		return nil
+	}
+	return fmt.Errorf("aegis api: refusing http:// for non-loopback host %q (use https://)", host)
+}
+
+func isLoopbackHost(host string) bool {
+	switch host {
+	case "localhost", "":
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 // BaseURL returns the configured API base. Used by `aegis doctor`

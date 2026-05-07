@@ -3,7 +3,9 @@ package jspkgsource
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -14,6 +16,10 @@ import (
 // loadCached returns a previously-extracted package source from
 // f.cacheDir if present. Atomicity: a sentinel file ".ok" is written
 // last; we treat its absence as "incomplete cache, ignore".
+//
+// Uses os.Root so symlinks planted by another local user inside the
+// cache dir can't redirect reads outside it (gosec G122 / TOCTOU
+// against the WalkDir → ReadFile gap).
 func (f *Fetcher) loadCached(ctx context.Context, name, version string) (usecase.PackageSource, bool, error) {
 	dir := f.cachePath(name, version)
 	if _, err := os.Stat(filepath.Join(dir, ".ok")); err != nil {
@@ -23,8 +29,18 @@ func (f *Fetcher) loadCached(ctx context.Context, name, version string) (usecase
 		return usecase.PackageSource{}, false, err
 	}
 
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return usecase.PackageSource{}, false, nil
+		}
+		return usecase.PackageSource{}, false, err
+	}
+	defer func() { _ = root.Close() }()
+	fsys := root.FS()
+
 	src := usecase.PackageSource{Files: map[string][]byte{}}
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	err = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -34,22 +50,17 @@ func (f *Fetcher) loadCached(ctx context.Context, name, version string) (usecase
 		if d.IsDir() {
 			return nil
 		}
-		base := filepath.Base(path)
+		base := path.Base(p)
 		if base == ".ok" || base == ".tarball-sha256" {
 			return nil
 		}
-		body, err := os.ReadFile(path)
+		body, err := fs.ReadFile(fsys, p)
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
-		}
-		// Cross-OS safety: use forward slashes inside PackageSource.
-		rel = filepath.ToSlash(rel)
-		src.Files[rel] = body
-		if rel == "package.json" {
+		// Cross-OS safety: fs paths are already forward-slashed.
+		src.Files[p] = body
+		if p == "package.json" {
 			src.Manifest = body
 		}
 		return nil
@@ -59,7 +70,7 @@ func (f *Fetcher) loadCached(ctx context.Context, name, version string) (usecase
 	}
 	// Best-effort: a side file holds the tarball sha so warm cache hits
 	// still carry provenance. Old caches predate this and simply lack it.
-	if sum, err := os.ReadFile(filepath.Join(dir, ".tarball-sha256")); err == nil {
+	if sum, err := fs.ReadFile(fsys, ".tarball-sha256"); err == nil {
 		src.TarballSha256 = strings.TrimSpace(string(sum))
 	}
 	return src, true, nil
@@ -68,9 +79,13 @@ func (f *Fetcher) loadCached(ctx context.Context, name, version string) (usecase
 // saveCache writes the extracted source to disk. Best-effort: any I/O
 // failure leaves the cache in an inconsistent state, signaled by the
 // absence of the .ok sentinel.
+//
+// Permissions are 0o700/0o600 throughout — the cache leaks which
+// packages/versions a user audited, which on multi-user hosts is
+// information disclosure even when the package contents are public.
 func (f *Fetcher) saveCache(name, version string, src usecase.PackageSource) error {
 	dir := f.cachePath(name, version)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	for path, body := range src.Files {
@@ -83,18 +98,18 @@ func (f *Fetcher) saveCache(name, version string, src usecase.PackageSource) err
 		if rel, err := filepath.Rel(dir, full); err != nil || strings.HasPrefix(rel, "..") {
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
 			return err
 		}
-		if err := atomicwrite.WriteFile(full, body, 0o644); err != nil {
+		if err := atomicwrite.WriteFile(full, body, 0o600); err != nil {
 			return err
 		}
 	}
 	if src.TarballSha256 != "" {
-		_ = atomicwrite.WriteFile(filepath.Join(dir, ".tarball-sha256"), []byte(src.TarballSha256), 0o644)
+		_ = atomicwrite.WriteFile(filepath.Join(dir, ".tarball-sha256"), []byte(src.TarballSha256), 0o600)
 	}
 	// Sentinel last so the cache only "appears valid" if writes succeeded.
-	return atomicwrite.WriteFile(filepath.Join(dir, ".ok"), []byte(""), 0o644)
+	return atomicwrite.WriteFile(filepath.Join(dir, ".ok"), []byte(""), 0o600)
 }
 
 // isSafeRel rejects any path that, after cleaning, escapes the
