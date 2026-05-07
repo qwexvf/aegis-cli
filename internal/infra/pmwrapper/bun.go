@@ -1,6 +1,10 @@
 package pmwrapper
 
-import "github.com/qwexvf/aegis-cli/internal/domain"
+import (
+	"context"
+
+	"github.com/qwexvf/aegis-cli/internal/domain"
+)
 
 // Bun wraps the `bun` CLI. bun reads the npm registry and supports the
 // same scoped-name@version spec syntax, so the parser is shared. Only
@@ -45,6 +49,6 @@ func bunTakesValue(flag string) bool {
 	return false
 }
 
-func (Bun) Exec(args []string) error {
-	return execPassthrough("bun", args)
+func (Bun) Exec(ctx context.Context, args []string) error {
+	return execPassthrough(ctx, "bun", args)
 }

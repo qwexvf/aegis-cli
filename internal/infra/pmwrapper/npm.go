@@ -1,6 +1,7 @@
 package pmwrapper
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -55,18 +56,20 @@ func npmTakesValue(flag string) bool {
 	return false
 }
 
-func (Npm) Exec(args []string) error {
-	return execPassthrough("npm", args)
+func (Npm) Exec(ctx context.Context, args []string) error {
+	return execPassthrough(ctx, "npm", args)
 }
 
 // execPassthrough is shared by every PM Exec. It looks up the binary,
-// connects stdio, and propagates the child's exit code.
-func execPassthrough(bin string, args []string) error {
+// connects stdio, and propagates the child's exit code. The ctx
+// propagates Ctrl+C / SIGTERM into the child process via os.Kill so a
+// long-running `npm install` aborts cleanly when the user cancels.
+func execPassthrough(ctx context.Context, bin string, args []string) error {
 	path, err := exec.LookPath(bin)
 	if err != nil {
 		return fmt.Errorf("%s not found in PATH: %w", bin, err)
 	}
-	cmd := exec.Command(path, args...)
+	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
