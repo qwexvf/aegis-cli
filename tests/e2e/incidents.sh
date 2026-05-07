@@ -40,11 +40,15 @@ CASES=(
     "pypi|torchtriton|1.0.1|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
     "pypi|colourama|0.1.6|typosquat-risk,shell-spawn,net-egress"
     "pypi|ultralytics|8.3.41|binary-dropper"
+    "pypi|ctx|0.2.2|net-egress,suspicious-url"
+    "pypi|jeIlyfish|0.7.1|dynamic-eval,base64-decode,net-egress"
 
     # npm
     "npm|event-stream|3.3.6|install-hook-suspicious,obfuscated-payload,suspicious-url,dynamic-eval"
     "npm|ua-parser-js|0.7.29|install-hook-suspicious,binary-dropper"
     "npm|coa|2.0.3|install-hook-suspicious"
+    "npm|rc|1.2.9|install-hook-suspicious"
+    "npm|@solana/web3.js|1.95.5|dynamic-eval,base64-decode,net-egress,obfuscated-payload,suspicious-url"
 
     # crates.io
     "crates|xrvrv|1.0.0|shell-spawn,install-hook-suspicious,suspicious-url"
@@ -53,9 +57,11 @@ CASES=(
 
     # Go modules — init()-time exfil generic shape
     "go|boltdb-go|1.0.0|shell-spawn,net-egress,suspicious-url"
+    "go|dep-confusion-pkg|1.0.0|shell-spawn,dynamic-eval,net-egress,fs-write-outside-root,suspicious-url"
 
-    # Maven — Log4Shell shape (CVE-2021-44228)
+    # Maven — Log4Shell shape (CVE-2021-44228) + Spring4Shell (CVE-2022-22965)
     "maven|log4j-core|2.14.1|dynamic-eval,net-egress"
+    "maven|spring-core|5.3.17|dynamic-eval,net-egress,fs-write-outside-root"
 
     # Packagist (PHP) — Composer install-time webshell shape
     "packagist|totally-not-a-shell|1.0.0|dynamic-eval,base64-decode,net-egress,suspicious-url"
