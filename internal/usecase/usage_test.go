@@ -66,6 +66,38 @@ func TestAnalyzeUsage_NoSourceMeansAllUnknown(t *testing.T) {
 	}
 }
 
+func TestAnalyzeUsage_GoModuleRootPrefixMatch(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "main.go"), `package main
+import "github.com/spf13/cobra"
+import "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
+func main() {}
+`)
+
+	snap := &domain.Snapshot{
+		Deps: []domain.Dependency{
+			// Lockfile key == import path: exact match.
+			{Ecosystem: domain.EcoGo, Name: "github.com/spf13/cobra", Version: "v1.0.0"},
+			// Lockfile key is the MODULE ROOT; user imports a sub-package.
+			{Ecosystem: domain.EcoGo, Name: "github.com/tree-sitter/tree-sitter-c-sharp", Version: "v0.23.5"},
+			// Truly unused.
+			{Ecosystem: domain.EcoGo, Name: "github.com/sirupsen/logrus", Version: "v1.0.0"},
+		},
+	}
+	if err := AnalyzeUsage(context.Background(), root, snap); err != nil {
+		t.Fatal(err)
+	}
+	if snap.Deps[0].Reachability != domain.ReachabilityUsed {
+		t.Errorf("cobra: want Used, got %v", snap.Deps[0].Reachability)
+	}
+	if snap.Deps[1].Reachability != domain.ReachabilityUsed {
+		t.Errorf("c-sharp module root: want Used (prefix match), got %v", snap.Deps[1].Reachability)
+	}
+	if snap.Deps[2].Reachability != domain.ReachabilityUnused {
+		t.Errorf("logrus: want Unused, got %v", snap.Deps[2].Reachability)
+	}
+}
+
 func TestAnalyzeUsage_NilSnapshotIsNoop(t *testing.T) {
 	if err := AnalyzeUsage(context.Background(), t.TempDir(), nil); err != nil {
 		t.Errorf("nil snap should be noop, got err: %v", err)
