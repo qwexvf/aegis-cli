@@ -29,6 +29,7 @@ const (
 	EcoMaven     Ecosystem = "maven"
 	EcoRubyGems  Ecosystem = "rubygems"
 	EcoPackagist Ecosystem = "packagist"
+	EcoNuGet     Ecosystem = "nuget"
 )
 
 // PackageSpec is one parsed install target. Version is the literal

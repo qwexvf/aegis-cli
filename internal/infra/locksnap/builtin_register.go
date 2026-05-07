@@ -47,4 +47,9 @@ func init() {
 
 	// PHP / Composer — composer.lock is the post-resolution snapshot.
 	Register(newFuncParser("composer.lock", domain.EcoPackagist, parseComposerLock))
+
+	// .NET / NuGet — packages.lock.json (opt-in via MSBuild
+	// <RestorePackagesWithLockFile>true). One file per project; the
+	// scanner picks up the first match at the project root.
+	Register(newFuncParser("packages.lock.json", domain.EcoNuGet, parsePackagesLockJson))
 }

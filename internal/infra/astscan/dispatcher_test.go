@@ -304,6 +304,39 @@ func TestDispatcher_FiltersFilesByExtension_PHP(t *testing.T) {
 	}
 }
 
+func TestDispatcher_FiltersFilesByExtension_CSharp(t *testing.T) {
+	cs := &fakeLanguageScanner{}
+	d := NewDispatcher()
+	d.Register(domain.EcoNuGet, cs)
+
+	src := usecase.PackageSource{Files: map[string][]byte{
+		"src/Foo.cs":           []byte("a"), // analyzed
+		"src/Bar.csx":          []byte("a"), // analyzed (script)
+		"Tests/FooTests.cs":    []byte("a"), // skipped (Tests/)
+		"src/Foo.Tests/Bar.cs": []byte("a"), // skipped (.Tests/ project)
+		"Foo.csproj":           []byte("a"), // skipped (manifest)
+		"packages.lock.json":   []byte("a"), // skipped
+		"README.md":            []byte("a"), // skipped
+	}}
+	if _, err := d.Analyze(context.Background(), domain.EcoNuGet, src); err != nil {
+		t.Fatal(err)
+	}
+	visited := map[string]bool{}
+	for _, p := range cs.visitedPaths {
+		visited[p] = true
+	}
+	for _, want := range []string{"src/Foo.cs", "src/Bar.csx"} {
+		if !visited[want] {
+			t.Errorf("expected scanner to see %q, didn't", want)
+		}
+	}
+	for _, skip := range []string{"Tests/FooTests.cs", "src/Foo.Tests/Bar.cs", "Foo.csproj", "packages.lock.json", "README.md"} {
+		if visited[skip] {
+			t.Errorf("scanner visited %q but should have skipped", skip)
+		}
+	}
+}
+
 func TestFindings_AddCapabilityDedups(t *testing.T) {
 	f := NewFindings()
 	f.AddCapability(domain.CapShellSpawn)

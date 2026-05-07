@@ -59,6 +59,9 @@ CASES=(
 
     # Packagist (PHP) — Composer install-time webshell shape
     "packagist|totally-not-a-shell|1.0.0|dynamic-eval,base64-decode,net-egress,suspicious-url"
+
+    # NuGet (.NET) — module-initializer-time RAT shape
+    "nuget|Rougeit|1.0.0|shell-spawn,dynamic-eval,base64-decode,net-egress,fs-write-outside-root,suspicious-url"
 )
 
 pass=0

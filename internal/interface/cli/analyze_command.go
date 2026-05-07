@@ -132,7 +132,7 @@ func parsePkgSpec(s string) (domain.Ecosystem, string, string, error) {
 // switch.
 func isKnownEcosystem(s string) bool {
 	switch s {
-	case "npm", "pypi", "rubygems", "crates", "go", "maven", "packagist":
+	case "npm", "pypi", "rubygems", "crates", "go", "maven", "packagist", "nuget":
 		return true
 	}
 	return false
