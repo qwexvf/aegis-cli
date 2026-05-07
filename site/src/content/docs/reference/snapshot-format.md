@@ -47,7 +47,17 @@ Sample (decompressed):
         "analyzed": true,
         "capabilities": ["shell-spawn", "dynamic-eval"],
         "source_size_bytes": 1319622
-      }
+      },
+      "reach": "used",        // "used" | "unused" — populated by snapshot enrich
+      "symbols": ["merge"]    // bound names in project source that call this dep
+    },
+    {
+      "ecosystem": "npm",
+      "name": "axios",
+      "version": "1.6.0",
+      "direct": true,
+      "fp": { "analyzed": true, "capabilities": ["net-egress"] },
+      "reach": "unused"       // in lockfile, not imported by any project source file
     }
   ]
 }
@@ -172,6 +182,36 @@ Each parser:
 Adding pip / cargo / gem etc. is one new lockfile parser plus the
 detection priority in `scanner.go`. See `docs/cli-architecture.md`
 § Adding a new ecosystem.
+
+## Reachability
+
+After `snapshot enrich`, each dep carries a `reach` field that records whether project source actually imports it:
+
+| Value | Meaning |
+|---|---|
+| `"used"` | At least one import in your source references this dep. |
+| `"unused"` | Source walk ran; no import found. Likely a transitive or an outdated direct dep. |
+| omitted | Unknown — enrich hasn't run the import scan yet, or the language isn't supported for this ecosystem. Treated as `used` (conservative). |
+
+The companion `symbols` field lists the specific bound names your code calls from the dep (e.g. `["merge"]` when only `lodash.merge` is used). This enables future per-symbol CVE suppression.
+
+**In the UI:**
+
+```sh
+aegis snapshot show --all              # [unused] annotation in CAPS column
+aegis snapshot show --all --used-only  # hide unused rows; footer shows count
+```
+
+**Risk downgrade (opt-in):**
+
+```sh
+AEGIS_UNUSED_SUPPRESS=1 aegis ci --fail-on=block
+```
+
+Install-phase capabilities are never downgraded regardless of reachability.
+
+**Languages with symbol tracking:** JavaScript/TypeScript, Python, Go, Java, PHP.
+Rust, Ruby, C# populate `reach` but leave `symbols` empty — their import forms don't bind specific local names.
 
 ## Fingerprint shape
 
