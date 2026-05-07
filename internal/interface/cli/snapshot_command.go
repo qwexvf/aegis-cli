@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
 )
@@ -69,7 +70,7 @@ func snapshotSaveCommand(uc *usecase.Snapshot) *cobra.Command {
 }
 
 func snapshotShowCommand(uc *usecase.Snapshot) *cobra.Command {
-	var all, jsonOut bool
+	var all, jsonOut, usedOnly bool
 	c := &cobra.Command{
 		Use:   "show",
 		Short: "Print the saved snapshot. By default only direct deps are shown.",
@@ -86,12 +87,16 @@ func snapshotShowCommand(uc *usecase.Snapshot) *cobra.Command {
 				if !ok {
 					return fmt.Errorf("no snapshot saved — run 'aegis snapshot save' first")
 				}
-				if !all {
+				if !all || usedOnly {
 					filtered := snap.Deps[:0]
 					for _, d := range snap.Deps {
-						if d.Direct {
-							filtered = append(filtered, d)
+						if !all && !d.Direct {
+							continue
 						}
+						if usedOnly && d.Reachability == domain.ReachabilityUnused {
+							continue
+						}
+						filtered = append(filtered, d)
 					}
 					snap.Deps = filtered
 				}
@@ -99,10 +104,11 @@ func snapshotShowCommand(uc *usecase.Snapshot) *cobra.Command {
 				enc.SetIndent("", "  ")
 				return enc.Encode(snap)
 			}
-			return uc.Show(cwd, !all)
+			return uc.Show(cwd, !all, usedOnly)
 		},
 	}
 	c.Flags().BoolVar(&all, "all", false, "show transitive deps as well")
+	c.Flags().BoolVar(&usedOnly, "used-only", false, "hide deps marked unreachable from project source")
 	c.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	return c
 }

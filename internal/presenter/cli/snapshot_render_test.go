@@ -36,7 +36,7 @@ func TestSnapshotPresenter_Show(t *testing.T) {
 			{Ecosystem: domain.EcoNpm, Name: "lodash", Version: "4.17.21", Direct: true},
 			{Ecosystem: domain.EcoNpm, Name: "ms", Version: "2.1.3"},
 		},
-	}, false)
+	}, false, false)
 	out := buf.String()
 	for _, want := range []string{"snapshot: demo", "lodash", "4.17.21", "ms"} {
 		if !strings.Contains(out, want) {
@@ -52,7 +52,7 @@ func TestSnapshotPresenter_ShowDirectOnlyFiltersTransitives(t *testing.T) {
 			{Name: "lodash", Version: "4.17.21", Direct: true, Ecosystem: domain.EcoNpm},
 			{Name: "ms", Version: "2.1.3", Ecosystem: domain.EcoNpm},
 		},
-	}, true)
+	}, true, false)
 	out := buf.String()
 	if !strings.Contains(out, "lodash") {
 		t.Errorf("direct dep missing:\n%s", out)
@@ -61,6 +61,51 @@ func TestSnapshotPresenter_ShowDirectOnlyFiltersTransitives(t *testing.T) {
 		t.Errorf("transitive dep should be filtered:\n%s", out)
 	}
 	if !strings.Contains(out, "shown 1 direct deps") {
+		t.Errorf("missing footer:\n%s", out)
+	}
+}
+
+func TestSnapshotPresenter_ShowMarksUnused(t *testing.T) {
+	sp, buf := snapshotPresenterTest(t)
+	sp.OnSnapshotShow(domain.Snapshot{
+		Deps: []domain.Dependency{
+			{
+				Ecosystem:    domain.EcoNpm,
+				Name:         "lodash",
+				Version:      "4.17.21",
+				Direct:       true,
+				Reachability: domain.ReachabilityUnused,
+				Fingerprint:  &domain.Fingerprint{Analyzed: true},
+			},
+		},
+	}, false, false)
+	if !strings.Contains(buf.String(), "[unused]") {
+		t.Errorf("expected [unused] marker in CAPS column:\n%s", buf.String())
+	}
+}
+
+func TestSnapshotPresenter_ShowUsedOnlyHidesUnused(t *testing.T) {
+	sp, buf := snapshotPresenterTest(t)
+	sp.OnSnapshotShow(domain.Snapshot{
+		Deps: []domain.Dependency{
+			{
+				Ecosystem: domain.EcoNpm, Name: "lodash", Version: "4.17.21",
+				Direct: true, Reachability: domain.ReachabilityUsed,
+			},
+			{
+				Ecosystem: domain.EcoNpm, Name: "axios", Version: "1.6.0",
+				Direct: true, Reachability: domain.ReachabilityUnused,
+			},
+		},
+	}, false, true)
+	out := buf.String()
+	if !strings.Contains(out, "lodash") {
+		t.Errorf("used dep should render:\n%s", out)
+	}
+	if strings.Contains(out, "axios") {
+		t.Errorf("unused dep should be hidden under --used-only:\n%s", out)
+	}
+	if !strings.Contains(out, "hid 1 unused deps") {
 		t.Errorf("missing footer:\n%s", out)
 	}
 }

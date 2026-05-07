@@ -175,8 +175,13 @@ func (a *Analyze) Run(ctx context.Context, req AnalyzeRequest) (AnalyzeResult, e
 		}
 	}
 
+	// analyze runs on a single requested (eco, name, version) without a
+	// project context, so reachability is always Unknown — DowngradeUnused
+	// is a no-op here. Kept in the chain for symmetry with the other
+	// scoring sites.
 	risk := domain.RiskScore(&fp).
-		ApplyAllowlist(req.Ecosystem, req.Name, req.Version, a.allowlist)
+		ApplyAllowlist(req.Ecosystem, req.Name, req.Version, a.allowlist).
+		DowngradeUnused(domain.ReachabilityUnknown, unusedSuppressEnabled())
 	// Drift is empty here — single-version analyze has no prior
 	// fingerprint to compare against. Verdict therefore reflects only
 	// the absolute risk of the requested version.

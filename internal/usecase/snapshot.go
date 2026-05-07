@@ -238,7 +238,12 @@ func (s *Snapshot) Load(projectDir string) (domain.Snapshot, bool, error) {
 }
 
 // Show loads the saved snapshot and renders it.
-func (s *Snapshot) Show(projectDir string, directOnly bool) error {
+//
+// directOnly hides transitives. usedOnly hides deps marked
+// ReachabilityUnused — useful for cutting noise after enrich has run
+// the import-graph scan. Unknown rows always render (we can't tell
+// whether they're reachable, so suppressing them would lie).
+func (s *Snapshot) Show(projectDir string, directOnly, usedOnly bool) error {
 	snap, ok, err := s.store.Load(projectDir)
 	if err != nil {
 		s.presenter.OnSnapshotError(err)
@@ -248,7 +253,7 @@ func (s *Snapshot) Show(projectDir string, directOnly bool) error {
 		s.presenter.OnSnapshotEmpty("no snapshot saved — run 'aegis snapshot save' first")
 		return nil
 	}
-	s.presenter.OnSnapshotShow(snap, directOnly)
+	s.presenter.OnSnapshotShow(snap, directOnly, usedOnly)
 	return nil
 }
 
@@ -528,7 +533,8 @@ func (s *Snapshot) buildReportFromSnapshots(a, b domain.Snapshot) DiffReport {
 		dep := d
 		entry := DiffEntry{Kind: DiffAdded, New: &dep}
 		entry.Risk = domain.RiskScore(dep.Fingerprint).
-			ApplyAllowlist(dep.Ecosystem, dep.Name, dep.Version, s.allowlist)
+			ApplyAllowlist(dep.Ecosystem, dep.Name, dep.Version, s.allowlist).
+			DowngradeUnused(dep.Reachability, unusedSuppressEnabled())
 		entry.Verdict = domain.Verdict(entry.Risk, entry.Drift)
 		updateReportFlags(&report, entry.Verdict)
 		report.Entries = append(report.Entries, entry)
@@ -545,7 +551,8 @@ func (s *Snapshot) buildReportFromSnapshots(a, b domain.Snapshot) DiffReport {
 		oldDep, newDep := u.Old, u.New
 		entry := DiffEntry{Kind: DiffUpgraded, Old: &oldDep, New: &newDep}
 		entry.Risk = domain.RiskScore(newDep.Fingerprint).
-			ApplyAllowlist(newDep.Ecosystem, newDep.Name, newDep.Version, s.allowlist)
+			ApplyAllowlist(newDep.Ecosystem, newDep.Name, newDep.Version, s.allowlist).
+			DowngradeUnused(newDep.Reachability, unusedSuppressEnabled())
 		entry.Drift = domain.DriftScore(oldDep.Fingerprint, newDep.Fingerprint).
 			ApplyAllowlist(newDep.Ecosystem, newDep.Name, newDep.Version, s.allowlist)
 
@@ -758,7 +765,8 @@ func (s *Snapshot) submitOne(ctx context.Context, dep domain.Dependency, reporte
 	}
 
 	risk := domain.RiskScore(&fp).
-		ApplyAllowlist(dep.Ecosystem, dep.Name, dep.Version, s.allowlist)
+		ApplyAllowlist(dep.Ecosystem, dep.Name, dep.Version, s.allowlist).
+		DowngradeUnused(dep.Reachability, unusedSuppressEnabled())
 
 	// Provenance: tarball hash from the fetcher's PackageSource (if
 	// it filled the field), maintainer emails parsed from the

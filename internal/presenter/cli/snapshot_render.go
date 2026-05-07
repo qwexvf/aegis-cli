@@ -27,7 +27,7 @@ func (sp *SnapshotPresenter) OnSnapshotSaved(path string, depCount int) {
 }
 
 // OnSnapshotShow renders the snapshot as a table.
-func (sp *SnapshotPresenter) OnSnapshotShow(s domain.Snapshot, directOnly bool) {
+func (sp *SnapshotPresenter) OnSnapshotShow(s domain.Snapshot, directOnly, usedOnly bool) {
 	header := fmt.Sprintf("%s[aegis]%s snapshot: %s, %d deps, schema v%d, saved %s",
 		sp.p.dim(), sp.p.reset(),
 		s.Project, len(s.Deps), s.SchemaVersion,
@@ -37,8 +37,13 @@ func (sp *SnapshotPresenter) OnSnapshotShow(s domain.Snapshot, directOnly bool) 
 	tw := tabwriter.NewWriter(sp.p.w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "  ECO\tNAME\tVERSION\tDIRECT\tCAPS\tADVISORIES")
 	shown := 0
+	hiddenUnused := 0
 	for _, d := range s.Deps {
 		if directOnly && !d.Direct {
+			continue
+		}
+		if usedOnly && d.Reachability == domain.ReachabilityUnused {
+			hiddenUnused++
 			continue
 		}
 		flag := ""
@@ -61,21 +66,34 @@ func (sp *SnapshotPresenter) OnSnapshotShow(s domain.Snapshot, directOnly bool) 
 		fmt.Fprintf(sp.p.w, "%s[aegis]%s shown %d direct deps (--all to include transitives)\n",
 			sp.p.dim(), sp.p.reset(), shown)
 	}
+	if usedOnly && hiddenUnused > 0 {
+		fmt.Fprintf(sp.p.w, "%s[aegis]%s hid %d unused deps (drop --used-only to show)\n",
+			sp.p.dim(), sp.p.reset(), hiddenUnused)
+	}
 }
 
 // snapshotCapsCell renders the CAPS column for one dep. Empty when
 // the dep hasn't been enriched yet (Fingerprint == nil). When
 // enriched but with no findings, returns "—" so the user can
-// distinguish "scanned, clean" from "not yet scanned".
+// distinguish "scanned, clean" from "not yet scanned". Appends
+// "[unused]" when the reachability scan saw no project source
+// importing the dep.
 func snapshotCapsCell(d domain.Dependency) string {
+	base := ""
 	if d.Fingerprint == nil || !d.Fingerprint.Analyzed {
-		return ""
+		base = ""
+	} else if n := len(d.Fingerprint.Capabilities); n == 0 {
+		base = "—"
+	} else {
+		base = strconv.Itoa(n)
 	}
-	n := len(d.Fingerprint.Capabilities)
-	if n == 0 {
-		return "—"
+	if d.Reachability == domain.ReachabilityUnused {
+		if base == "" {
+			return "[unused]"
+		}
+		return base + " [unused]"
 	}
-	return strconv.Itoa(n)
+	return base
 }
 
 // snapshotAdvisoryCell renders the ADVISORIES column for one dep:
