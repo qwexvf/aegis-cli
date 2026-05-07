@@ -4,6 +4,13 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.13.0](https://github.com/qwexvf/aegis-cli/compare/v0.12.1...v0.13.0) (2026-05-07)
+
+
+### Added
+
+* thread ctx through long-running file walks + child processes ([bb09043](https://github.com/qwexvf/aegis-cli/commit/bb09043119c41a529080129b19d9f2ea5a9e9315))
+
 ## [0.12.1](https://github.com/qwexvf/aegis-cli/compare/v0.12.0...v0.12.1) (2026-05-06)
 
 
