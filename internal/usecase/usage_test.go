@@ -98,6 +98,49 @@ func main() {}
 	}
 }
 
+func TestAnalyzeUsage_PopulatesUsedSymbolsForUsedDeps(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "src", "main.js"), `
+import { merge, debounce } from 'lodash';
+import _ from 'lodash';
+merge({}, {});
+debounce(fn, 200);
+_.template('hi');
+`)
+
+	snap := &domain.Snapshot{
+		Deps: []domain.Dependency{
+			{Ecosystem: domain.EcoNpm, Name: "lodash", Version: "4.17.21"},
+			{Ecosystem: domain.EcoNpm, Name: "axios", Version: "1.6.0"},
+		},
+	}
+	if err := AnalyzeUsage(context.Background(), root, snap); err != nil {
+		t.Fatal(err)
+	}
+
+	// lodash is Used; UsedSymbols should be the merged sorted set.
+	if snap.Deps[0].Reachability != domain.ReachabilityUsed {
+		t.Fatalf("lodash should be Used, got %v", snap.Deps[0].Reachability)
+	}
+	want := []string{"debounce", "merge", "template"}
+	if len(snap.Deps[0].UsedSymbols) != len(want) {
+		t.Fatalf("UsedSymbols len = %d, want %d (%v)",
+			len(snap.Deps[0].UsedSymbols), len(want), snap.Deps[0].UsedSymbols)
+	}
+	for i, s := range want {
+		if snap.Deps[0].UsedSymbols[i] != s {
+			t.Errorf("UsedSymbols[%d] = %q, want %q", i, snap.Deps[0].UsedSymbols[i], s)
+		}
+	}
+	// axios is Unused; UsedSymbols must be cleared.
+	if snap.Deps[1].Reachability != domain.ReachabilityUnused {
+		t.Errorf("axios should be Unused, got %v", snap.Deps[1].Reachability)
+	}
+	if snap.Deps[1].UsedSymbols != nil {
+		t.Errorf("Unused dep should have nil UsedSymbols, got %v", snap.Deps[1].UsedSymbols)
+	}
+}
+
 func TestAnalyzeUsage_NilSnapshotIsNoop(t *testing.T) {
 	if err := AnalyzeUsage(context.Background(), t.TempDir(), nil); err != nil {
 		t.Errorf("nil snap should be noop, got err: %v", err)

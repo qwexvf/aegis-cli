@@ -12,6 +12,8 @@ package usecase
 
 import (
 	"context"
+	"slices"
+	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan/depusagebridge"
@@ -38,6 +40,11 @@ func AnalyzeUsage(ctx context.Context, projectDir string, snap *domain.Snapshot)
 	// in the matching language imports that key.
 	usedKeys := map[domain.Ecosystem]map[string]bool{}
 
+	// usedSymbols[ecosystem][depKey] is the set of bound names the
+	// user's code referenced from that dep. Empty for ecosystems
+	// whose languages don't support the symbol pass (Rust, Ruby, C#).
+	usedSymbols := map[domain.Ecosystem]map[string]map[string]struct{}{}
+
 	// scannedEcos tracks which ecosystems we actually walked source for.
 	// A dep in an ecosystem we never observed source for stays
 	// ReachabilityUnknown — anything else flips to Used / Unused.
@@ -50,7 +57,10 @@ func AnalyzeUsage(ctx context.Context, projectDir string, snap *domain.Snapshot)
 		}
 		scannedEcos[eco] = true
 
-		res, err := depusage.Extract(lang, body, depusage.Options{IncludeImports: true})
+		res, err := depusage.Extract(lang, body, depusage.Options{
+			IncludeImports: true,
+			IncludeSymbols: true,
+		})
 		if err != nil {
 			return
 		}
@@ -65,6 +75,25 @@ func AnalyzeUsage(ctx context.Context, projectDir string, snap *domain.Snapshot)
 			}
 			bucket[imp.DepKey] = true
 		}
+		// Aggregate used symbols by (ecosystem, depKey). Library may
+		// emit nil for languages without symbol support; that's a
+		// silent skip.
+		ecoSyms, ok := usedSymbols[eco]
+		if !ok {
+			ecoSyms = map[string]map[string]struct{}{}
+			usedSymbols[eco] = ecoSyms
+		}
+		for _, u := range res.UsedSymbols {
+			if u.DepKey == "" || u.Symbol == "" {
+				continue
+			}
+			set, ok := ecoSyms[u.DepKey]
+			if !ok {
+				set = map[string]struct{}{}
+				ecoSyms[u.DepKey] = set
+			}
+			set[u.Symbol] = struct{}{}
+		}
 	})
 	if walkErr != nil {
 		return walkErr
@@ -78,11 +107,39 @@ func AnalyzeUsage(ctx context.Context, projectDir string, snap *domain.Snapshot)
 		}
 		if isDepUsed(d.Ecosystem, d.Name, usedKeys[d.Ecosystem]) {
 			d.Reachability = domain.ReachabilityUsed
+			d.UsedSymbols = collectSymbolsFor(d.Ecosystem, d.Name, usedSymbols[d.Ecosystem])
 		} else {
 			d.Reachability = domain.ReachabilityUnused
+			d.UsedSymbols = nil
 		}
 	}
 	return nil
+}
+
+// collectSymbolsFor returns the sorted set of symbols observed for
+// depName, including symbols recorded under sub-paths when the
+// ecosystem allows prefix matches (Go).
+func collectSymbolsFor(eco domain.Ecosystem, depName string, syms map[string]map[string]struct{}) []string {
+	if len(syms) == 0 {
+		return nil
+	}
+	merged := map[string]struct{}{}
+	for k, set := range syms {
+		if k == depName || (eco == domain.EcoGo && strings.HasPrefix(k, depName+"/")) {
+			for s := range set {
+				merged[s] = struct{}{}
+			}
+		}
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(merged))
+	for s := range merged {
+		out = append(out, s)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // isDepUsed checks whether any imported key resolves to depName, with
