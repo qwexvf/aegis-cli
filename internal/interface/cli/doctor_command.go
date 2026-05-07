@@ -151,14 +151,14 @@ func checkConfigDirWritable() doctorResult {
 		}
 		dir = filepath.Join(home, ".aegis")
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return doctorResult{
 			Name: "config-dir", Status: doctorFail,
 			Detail: fmt.Sprintf("cannot create %s: %v", dir, err),
 		}
 	}
 	probe := filepath.Join(dir, ".doctor-probe")
-	if err := os.WriteFile(probe, []byte("ok"), 0o644); err != nil {
+	if err := os.WriteFile(probe, []byte("ok"), 0o600); err != nil {
 		return doctorResult{
 			Name: "config-dir", Status: doctorFail,
 			Detail: fmt.Sprintf("not writable: %v", err),

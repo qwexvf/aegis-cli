@@ -35,9 +35,12 @@ func TestSubmitReport_AttachesAPIKeyWhenConfigured(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("AEGIS_API_URL", srv.URL)
-	c := New(WithAPIKey("supersecret"))
+	c, err := New(WithAPIKey("supersecret"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := c.SubmitReport(context.Background(), usecase.PackageReportRequest{
+	_, err = c.SubmitReport(context.Background(), usecase.PackageReportRequest{
 		ReporterID: "00000000-0000-0000-0000-000000000000",
 		Ecosystem:  "npm",
 		Name:       "x",
@@ -57,9 +60,12 @@ func TestSubmitReport_OmitsAPIKeyWhenUnset(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("AEGIS_API_URL", srv.URL)
-	c := New() // no WithAPIKey option
+	c, err := New() // no WithAPIKey option
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := c.SubmitReport(context.Background(), usecase.PackageReportRequest{
+	_, err = c.SubmitReport(context.Background(), usecase.PackageReportRequest{
 		ReporterID: "00000000-0000-0000-0000-000000000000",
 		Ecosystem:  "npm",
 		Name:       "x",
@@ -92,8 +98,11 @@ func TestSubmitReport_OmitsAPIKeyWhenEmptyOption(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("AEGIS_API_URL", srv.URL)
-	c := New(WithAPIKey(""))
-	_, err := c.SubmitReport(context.Background(), usecase.PackageReportRequest{
+	c, err := New(WithAPIKey(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.SubmitReport(context.Background(), usecase.PackageReportRequest{
 		ReporterID: "00000000-0000-0000-0000-000000000000",
 		Ecosystem:  "npm",
 		Name:       "x",
@@ -115,8 +124,11 @@ func TestSubmitReport_PropagatesNon2xxAsError(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("AEGIS_API_URL", srv.URL)
-	c := New()
-	_, err := c.SubmitReport(context.Background(), usecase.PackageReportRequest{
+	c, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.SubmitReport(context.Background(), usecase.PackageReportRequest{
 		ReporterID: "00000000-0000-0000-0000-000000000000",
 		Ecosystem:  "npm",
 		Name:       "x",

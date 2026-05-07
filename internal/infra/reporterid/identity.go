@@ -26,12 +26,16 @@ type Identity struct {
 
 // New returns an Identity. The location can be overridden by
 // AEGIS_CONFIG_DIR (used in tests / per-user installs).
+//
+// When neither AEGIS_CONFIG_DIR nor a usable home dir is available the
+// path is left empty; ID() then returns a clear error rather than
+// scribbling a reporter.id into the current working directory.
 func New() *Identity {
 	dir := os.Getenv("AEGIS_CONFIG_DIR")
 	if dir == "" {
 		home, err := os.UserHomeDir()
-		if err != nil {
-			home = "."
+		if err != nil || home == "" {
+			return &Identity{}
 		}
 		dir = filepath.Join(home, ".aegis")
 	}
@@ -46,6 +50,9 @@ func (i *Identity) ID() (string, error) {
 	if i.cached != "" {
 		return i.cached, nil
 	}
+	if i.path == "" {
+		return "", fmt.Errorf("reporterid: no config dir resolvable (set $AEGIS_CONFIG_DIR or $HOME)")
+	}
 	if data, err := os.ReadFile(i.path); err == nil {
 		s := strings.TrimSpace(string(data))
 		if s != "" {
@@ -57,7 +64,7 @@ func (i *Identity) ID() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(i.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(i.path), 0o700); err != nil {
 		return "", fmt.Errorf("mkdir %s: %w", filepath.Dir(i.path), err)
 	}
 	if err := os.WriteFile(i.path, []byte(id+"\n"), 0o600); err != nil {

@@ -49,6 +49,10 @@ func runGenKey(out io.Writer) error {
 	sum := sha256.Sum256([]byte(key))
 	digest := hex.EncodeToString(sum[:])
 
+	fmt.Fprintln(out, "# WARNING: the key below is sensitive — pasting it into")
+	fmt.Fprintln(out, "# `export AEGIS_API_KEY=...` writes it to your shell history.")
+	fmt.Fprintln(out, "# Prefer `read -s AEGIS_API_KEY && export AEGIS_API_KEY` or a secret manager.")
+	fmt.Fprintln(out)
 	fmt.Fprintf(out, "key:    %s\n", key)
 	fmt.Fprintf(out, "sha256: %s\n\n", digest)
 	fmt.Fprintln(out, "To install:")

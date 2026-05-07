@@ -26,8 +26,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -203,10 +205,29 @@ func (c *Client) batchIDs(ctx context.Context, queries []domain.AdvisoryQuery) (
 	for i, r := range parsed.Results {
 		ids[i] = make([]string, 0, len(r.Vulns))
 		for _, v := range r.Vulns {
+			// Defense in depth: OSV is trusted, but the ID flows
+			// into URL paths (osv.dev/vulnerability/<id>) and
+			// /v1/vulns/<id>. Reject anything outside the
+			// documented GHSA-/CVE-/MAL- alphabet.
+			if !isValidOSVID(v.ID) {
+				continue
+			}
 			ids[i] = append(ids[i], v.ID)
 		}
 	}
 	return ids, nil
+}
+
+// validOSVID matches the documented OSV ID alphabet: GHSA-xxxx-xxxx-xxxx,
+// CVE-YYYY-NNNNN, MAL-YYYY-NNNN, plus a few ecosystem-specific
+// prefixes that all use [A-Za-z0-9._:-].
+var validOSVID = regexp.MustCompile(`^[A-Za-z0-9_.\-:]+$`)
+
+func isValidOSVID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	return validOSVID.MatchString(id)
 }
 
 // fetchAdvisories resolves a list of advisory IDs into full
@@ -248,8 +269,11 @@ func (c *Client) fetchOneAdvisory(ctx context.Context, id string) (domain.Adviso
 		return cached, nil
 	}
 
+	if !isValidOSVID(id) {
+		return domain.Advisory{}, fmt.Errorf("osv vuln: invalid id %q", id)
+	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.baseURL+"/v1/vulns/"+id, nil)
+		c.baseURL+"/v1/vulns/"+url.PathEscape(id), nil)
 	if err != nil {
 		return domain.Advisory{}, err
 	}
@@ -306,6 +330,9 @@ func parseOSVVuln(raw []byte) (domain.Advisory, error) {
 	var doc osvDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return domain.Advisory{}, err
+	}
+	if !isValidOSVID(doc.ID) {
+		return domain.Advisory{}, fmt.Errorf("osv vuln: invalid id %q in response", doc.ID)
 	}
 	summary := doc.Summary
 	if summary == "" {
@@ -434,14 +461,14 @@ func (c *Client) saveCachedAdvisory(id string, adv domain.Advisory) {
 	if c.cacheDir == "" {
 		return
 	}
-	if err := os.MkdirAll(c.cacheDir, 0o755); err != nil {
+	if err := os.MkdirAll(c.cacheDir, 0o700); err != nil {
 		return // best-effort
 	}
 	raw, err := json.Marshal(adv)
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(c.cacheDir, sanitizeID(id)+".json"), raw, 0o644)
+	_ = os.WriteFile(filepath.Join(c.cacheDir, sanitizeID(id)+".json"), raw, 0o600)
 }
 
 // sanitizeID makes an advisory ID safe to use as a filename — OSV
