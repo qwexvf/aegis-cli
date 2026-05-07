@@ -279,6 +279,19 @@ func isAnalyzable(eco domain.Ecosystem, path string) bool {
 			return false
 		}
 		return true
+	case domain.EcoNuGet:
+		// C# source. .csx (script) is also executable C#. Skip
+		// canonical test paths (xUnit / NUnit / MSTest typically
+		// live under Tests/ or *.Tests project dirs).
+		if !strings.HasSuffix(path, ".cs") && !strings.HasSuffix(path, ".csx") {
+			return false
+		}
+		if strings.Contains(path, "/Tests/") || strings.Contains(path, "/Test/") ||
+			strings.HasPrefix(path, "Tests/") || strings.HasPrefix(path, "Test/") ||
+			strings.Contains(path, ".Tests/") {
+			return false
+		}
+		return true
 	}
 	return false
 }
