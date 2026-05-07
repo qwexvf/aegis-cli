@@ -32,8 +32,9 @@ func DetectSourcePatterns(src usecase.PackageSource) []domain.Capability {
 		return nil
 	}
 	var found struct {
-		obfuscation bool
-		suspURL     bool
+		obfuscation  bool
+		suspURL      bool
+		shellFetcher bool // curl/wget piped to shell found in source
 	}
 	for filename, body := range src.Files {
 		if !isAnalyzableSource(filename) {
@@ -62,8 +63,11 @@ func DetectSourcePatterns(src usecase.PackageSource) []domain.Capability {
 		if !found.obfuscation && isPythonSource(filename) && pythonObfuscatedPayloadPattern.Match(body) {
 			found.obfuscation = true
 		}
-		if found.obfuscation && found.suspURL {
-			break // both fired; no need to scan further
+		if !found.shellFetcher && shellFetcherPattern.Match(body) {
+			found.shellFetcher = true
+		}
+		if found.obfuscation && found.suspURL && found.shellFetcher {
+			break
 		}
 	}
 	var out []domain.Capability
@@ -72,6 +76,9 @@ func DetectSourcePatterns(src usecase.PackageSource) []domain.Capability {
 	}
 	if found.suspURL {
 		out = append(out, domain.CapSuspiciousURL)
+	}
+	if found.shellFetcher {
+		out = append(out, domain.CapInstallHookSuspicious)
 	}
 	return out
 }
@@ -207,6 +214,25 @@ func isRubySource(filename string) bool {
 // the real-world incidents (rest-client_2019, strong_password_2019)
 // all used `eval`. Keeping the regex tight to that shape avoids
 // false positives on benign HTTP fetches that aren't passed to eval.
+// shellFetcherPattern detects `curl … | (ba)?sh` and `wget … | (ba)?sh`
+// appearing as string literals inside source files. This is the canonical
+// "fetch-and-execute" remote-install pattern:
+//
+//	curl -fsSL https://raw.githubusercontent.com/user/repo/main/install.sh | bash
+//	wget -qO- https://example.com/setup.sh | sh
+//
+// Distinct from the install_hook detector (which looks at package.json
+// `scripts`): this fires when a package dynamically constructs and runs
+// such a command from within its JS/Python/Ruby/etc. source.
+//
+// Pattern notes:
+//   - `[^|;\n]{0,300}` — allow flags and URL between curl/wget and the pipe,
+//     bounded to 300 chars to avoid catastrophic backtracking on long strings.
+//   - Shell list: sh, bash, zsh, ksh, dash — all meaningful targets.
+//   - Case-insensitive so `CURL` (rare but seen in obfuscated payloads) fires.
+var shellFetcherPattern = regexp.MustCompile(
+	`(?i)\b(?:curl|wget)\b[^|;\n]{0,300}\|\s*(?:ba|da|z|k)?sh\b`)
+
 var rubyObfuscatedPayloadPattern = regexp.MustCompile(
 	`\beval\s*\(\s*` +
 		`(?:` +
