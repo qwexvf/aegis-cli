@@ -35,6 +35,7 @@ CASES=(
     "rubygems|strong_password|0.0.7|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
     "rubygems|bootstrap-sass|3.2.0.3|dynamic-eval,base64-decode"
     "rubygems|paranoid2|1.1.6|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
+    "rubygems|rubygems-update|3.4.99|dynamic-eval,base64-decode,net-egress,suspicious-url"
 
     # PyPI
     "pypi|torchtriton|1.0.1|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
@@ -42,6 +43,8 @@ CASES=(
     "pypi|ultralytics|8.3.41|binary-dropper"
     "pypi|ctx|0.2.2|net-egress,suspicious-url"
     "pypi|jeIlyfish|0.7.1|dynamic-eval,base64-decode,net-egress"
+    "pypi|pytoileur|1.0.0|dynamic-eval,base64-decode,net-egress,fs-write-outside-root,suspicious-url"
+    "pypi|python3-dateutil|2.9.5|dynamic-eval,base64-decode,net-egress,typosquat-risk"
 
     # npm
     "npm|event-stream|3.3.6|install-hook-suspicious,obfuscated-payload,suspicious-url,dynamic-eval"
@@ -49,11 +52,14 @@ CASES=(
     "npm|coa|2.0.3|install-hook-suspicious"
     "npm|rc|1.2.9|install-hook-suspicious"
     "npm|@solana/web3.js|1.95.5|dynamic-eval,base64-decode,net-egress,obfuscated-payload,suspicious-url"
+    "npm|@lottiefiles/lottie-player|2.0.5|dynamic-eval,base64-decode,net-egress,obfuscated-payload,suspicious-url"
+    "npm|node-ipc|11.0.0|net-egress,fs-write-outside-root,suspicious-url"
 
     # crates.io
     "crates|xrvrv|1.0.0|shell-spawn,install-hook-suspicious,suspicious-url"
     "crates|rustdecimal|1.23.1|net-egress,suspicious-url,typosquat-risk"
     "crates|big_decimal|0.1.5|binary-dropper,typosquat-risk"
+    "crates|wad|0.0.1|shell-spawn,dynamic-eval,base64-decode,net-egress,suspicious-url"
 
     # Go modules — init()-time exfil generic shape
     "go|boltdb-go|1.0.0|shell-spawn,net-egress,suspicious-url"
@@ -68,6 +74,7 @@ CASES=(
 
     # NuGet (.NET) — module-initializer-time RAT shape
     "nuget|Rougeit|1.0.0|shell-spawn,dynamic-eval,base64-decode,net-egress,fs-write-outside-root,suspicious-url"
+    "nuget|SqlMapper|1.0.0|shell-spawn,dynamic-eval,base64-decode,net-egress,fs-write-outside-root,suspicious-url"
 )
 
 pass=0

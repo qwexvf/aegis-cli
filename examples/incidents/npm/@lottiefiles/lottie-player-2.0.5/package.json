@@ -1,0 +1,6 @@
+{
+  "name": "@lottiefiles/lottie-player",
+  "version": "2.0.5",
+  "description": "Web component for the LottieFiles platform.",
+  "main": "lib/lottie-player.js"
+}
