@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/klauspost/compress v1.18.6
-	github.com/qwexvf/depusage v0.0.1
+	github.com/qwexvf/depusage v0.1.0
 	github.com/spf13/cobra v1.10.2
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-c-sharp v0.23.5

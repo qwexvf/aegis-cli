@@ -146,7 +146,8 @@ type dependencyDTO struct {
 	Integrity    string          `json:"integrity,omitempty"`
 	Direct       bool            `json:"direct,omitempty"`
 	Fingerprint  *fingerprintDTO `json:"fp,omitempty"`
-	Reachability string          `json:"reach,omitempty"` // "used"|"unused"|"" (unknown)
+	Reachability string          `json:"reach,omitempty"`   // "used"|"unused"|"" (unknown)
+	UsedSymbols  []string        `json:"symbols,omitempty"` // bound names referenced from this dep
 }
 
 type fingerprintDTO struct {
@@ -180,6 +181,7 @@ func fromDomain(s domain.Snapshot) fileSchema {
 			Integrity:    d.Integrity,
 			Direct:       d.Direct,
 			Reachability: reachabilityToWire(d.Reachability),
+			UsedSymbols:  d.UsedSymbols,
 		}
 		if d.Fingerprint != nil {
 			out.Deps[i].Fingerprint = fpToDTO(*d.Fingerprint)
@@ -249,6 +251,7 @@ func (s fileSchema) toDomain() domain.Snapshot {
 			Integrity:    d.Integrity,
 			Direct:       d.Direct,
 			Reachability: reachabilityFromWire(d.Reachability),
+			UsedSymbols:  d.UsedSymbols,
 		}
 		if d.Fingerprint != nil {
 			fp := dtoToFp(*d.Fingerprint)

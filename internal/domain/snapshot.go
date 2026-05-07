@@ -47,6 +47,16 @@ type Dependency struct {
 	// real information. Old snapshots load with the zero value
 	// ReachabilityUnknown so existing scoring is unchanged.
 	Reachability Reachability `json:",omitempty"`
+	// UsedSymbols lists the imported binding names the user's source
+	// referenced from this dep, when reachability scanning observed
+	// them. Empty when Reachability != Used or when the language
+	// doesn't support used-symbol extraction (Rust, Ruby, C#).
+	//
+	// Consumers can use this to gate per-capability suppression: a
+	// CVE in `lodash.template` shouldn't fire on a project that only
+	// calls `lodash.merge`. The field is informational only — the
+	// reachability layer doesn't try to map symbols → CVEs itself.
+	UsedSymbols []string `json:",omitempty"`
 }
 
 // Reachability classifies whether a dep is referenced by the user's
