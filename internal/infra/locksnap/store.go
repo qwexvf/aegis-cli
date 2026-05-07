@@ -140,12 +140,13 @@ type fileSchema struct {
 }
 
 type dependencyDTO struct {
-	Ecosystem   string          `json:"ecosystem"`
-	Name        string          `json:"name"`
-	Version     string          `json:"version"`
-	Integrity   string          `json:"integrity,omitempty"`
-	Direct      bool            `json:"direct,omitempty"`
-	Fingerprint *fingerprintDTO `json:"fp,omitempty"`
+	Ecosystem    string          `json:"ecosystem"`
+	Name         string          `json:"name"`
+	Version      string          `json:"version"`
+	Integrity    string          `json:"integrity,omitempty"`
+	Direct       bool            `json:"direct,omitempty"`
+	Fingerprint  *fingerprintDTO `json:"fp,omitempty"`
+	Reachability string          `json:"reach,omitempty"` // "used"|"unused"|"" (unknown)
 }
 
 type fingerprintDTO struct {
@@ -173,17 +174,41 @@ func fromDomain(s domain.Snapshot) fileSchema {
 	}
 	for i, d := range s.Deps {
 		out.Deps[i] = dependencyDTO{
-			Ecosystem: string(d.Ecosystem),
-			Name:      d.Name,
-			Version:   d.Version,
-			Integrity: d.Integrity,
-			Direct:    d.Direct,
+			Ecosystem:    string(d.Ecosystem),
+			Name:         d.Name,
+			Version:      d.Version,
+			Integrity:    d.Integrity,
+			Direct:       d.Direct,
+			Reachability: reachabilityToWire(d.Reachability),
 		}
 		if d.Fingerprint != nil {
 			out.Deps[i].Fingerprint = fpToDTO(*d.Fingerprint)
 		}
 	}
 	return out
+}
+
+// reachabilityToWire maps the domain enum to the on-disk string. The
+// zero value (Unknown) maps to "" so older snapshots round-trip
+// without a "reach":"unknown" field.
+func reachabilityToWire(r domain.Reachability) string {
+	switch r {
+	case domain.ReachabilityUsed:
+		return "used"
+	case domain.ReachabilityUnused:
+		return "unused"
+	}
+	return ""
+}
+
+func reachabilityFromWire(s string) domain.Reachability {
+	switch s {
+	case "used":
+		return domain.ReachabilityUsed
+	case "unused":
+		return domain.ReachabilityUnused
+	}
+	return domain.ReachabilityUnknown
 }
 
 func fpToDTO(fp domain.Fingerprint) *fingerprintDTO {
@@ -218,11 +243,12 @@ func (s fileSchema) toDomain() domain.Snapshot {
 	}
 	for i, d := range s.Deps {
 		out.Deps[i] = domain.Dependency{
-			Ecosystem: domain.Ecosystem(d.Ecosystem),
-			Name:      d.Name,
-			Version:   d.Version,
-			Integrity: d.Integrity,
-			Direct:    d.Direct,
+			Ecosystem:    domain.Ecosystem(d.Ecosystem),
+			Name:         d.Name,
+			Version:      d.Version,
+			Integrity:    d.Integrity,
+			Direct:       d.Direct,
+			Reachability: reachabilityFromWire(d.Reachability),
 		}
 		if d.Fingerprint != nil {
 			fp := dtoToFp(*d.Fingerprint)
