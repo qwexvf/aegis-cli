@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
 )
 
 func TestAnalyzeUsage_MarksReachableUnreachable(t *testing.T) {
@@ -138,6 +139,55 @@ _.template('hi');
 	}
 	if snap.Deps[1].UsedSymbols != nil {
 		t.Errorf("Unused dep should have nil UsedSymbols, got %v", snap.Deps[1].UsedSymbols)
+	}
+}
+
+func TestAnalyzeUsage_CacheRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "main.js"), `import { merge } from 'lodash'; merge({}, {});`)
+	cache := diskcache.NewUsageCacheAt(t.TempDir())
+
+	snap := &domain.Snapshot{
+		Deps: []domain.Dependency{
+			{Ecosystem: domain.EcoNpm, Name: "lodash"},
+		},
+	}
+	// First run: populates cache.
+	if err := AnalyzeUsageWithCache(context.Background(), root, snap, cache); err != nil {
+		t.Fatal(err)
+	}
+	if snap.Deps[0].Reachability != domain.ReachabilityUsed {
+		t.Fatalf("first run: lodash should be Used, got %v", snap.Deps[0].Reachability)
+	}
+
+	// Second run on a snapshot with cleared Reachability — must still
+	// classify Used, this time via the cache.
+	snap.Deps[0].Reachability = domain.ReachabilityUnknown
+	snap.Deps[0].UsedSymbols = nil
+	if err := AnalyzeUsageWithCache(context.Background(), root, snap, cache); err != nil {
+		t.Fatal(err)
+	}
+	if snap.Deps[0].Reachability != domain.ReachabilityUsed {
+		t.Fatalf("second run (cache hit): lodash should still be Used, got %v", snap.Deps[0].Reachability)
+	}
+	if len(snap.Deps[0].UsedSymbols) == 0 || snap.Deps[0].UsedSymbols[0] != "merge" {
+		t.Errorf("UsedSymbols not restored from cache: %v", snap.Deps[0].UsedSymbols)
+	}
+}
+
+func TestAnalyzeUsage_NilCacheStillWorks(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "main.js"), `import { merge } from 'lodash'; merge({}, {});`)
+	snap := &domain.Snapshot{
+		Deps: []domain.Dependency{
+			{Ecosystem: domain.EcoNpm, Name: "lodash"},
+		},
+	}
+	if err := AnalyzeUsageWithCache(context.Background(), root, snap, nil); err != nil {
+		t.Fatal(err)
+	}
+	if snap.Deps[0].Reachability != domain.ReachabilityUsed {
+		t.Errorf("nil cache should still classify, got %v", snap.Deps[0].Reachability)
 	}
 }
 

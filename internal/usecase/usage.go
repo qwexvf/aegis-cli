@@ -17,6 +17,7 @@ import (
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan/depusagebridge"
+	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
 	"github.com/qwexvf/depusage"
 )
 
@@ -32,6 +33,13 @@ import (
 // errors are absorbed (a single bad file shouldn't taint the project's
 // reachability verdict).
 func AnalyzeUsage(ctx context.Context, projectDir string, snap *domain.Snapshot) error {
+	return AnalyzeUsageWithCache(ctx, projectDir, snap, diskcache.NewUsageCache())
+}
+
+// AnalyzeUsageWithCache is the cache-injectable form. The default
+// AnalyzeUsage builds a cache rooted at AEGIS_CACHE_DIR/usage; tests
+// pass an explicit temp-dir cache. Pass nil to disable caching.
+func AnalyzeUsageWithCache(ctx context.Context, projectDir string, snap *domain.Snapshot, cache *diskcache.UsageCache) error {
 	if snap == nil || projectDir == "" {
 		return nil
 	}
@@ -57,42 +65,41 @@ func AnalyzeUsage(ctx context.Context, projectDir string, snap *domain.Snapshot)
 		}
 		scannedEcos[eco] = true
 
-		res, err := depusage.Extract(lang, body, depusage.Options{
-			IncludeImports: true,
-			IncludeSymbols: true,
-		})
-		if err != nil {
-			return
-		}
+		entry, hit := lookupOrParse(cache, lang, body)
+
 		bucket, ok := usedKeys[eco]
 		if !ok {
 			bucket = map[string]bool{}
 			usedKeys[eco] = bucket
 		}
-		for _, imp := range res.Imports {
-			if imp.DepKey == "" {
+		for _, depKey := range entry.Imports {
+			if depKey == "" {
 				continue
 			}
-			bucket[imp.DepKey] = true
+			bucket[depKey] = true
 		}
-		// Aggregate used symbols by (ecosystem, depKey). Library may
-		// emit nil for languages without symbol support; that's a
-		// silent skip.
 		ecoSyms, ok := usedSymbols[eco]
 		if !ok {
 			ecoSyms = map[string]map[string]struct{}{}
 			usedSymbols[eco] = ecoSyms
 		}
-		for _, u := range res.UsedSymbols {
-			if u.DepKey == "" || u.Symbol == "" {
+		for depKey, syms := range entry.Symbols {
+			if depKey == "" {
 				continue
 			}
-			set, ok := ecoSyms[u.DepKey]
+			set, ok := ecoSyms[depKey]
 			if !ok {
 				set = map[string]struct{}{}
-				ecoSyms[u.DepKey] = set
+				ecoSyms[depKey] = set
 			}
-			set[u.Symbol] = struct{}{}
+			for _, s := range syms {
+				set[s] = struct{}{}
+			}
+		}
+		// On miss, write the parsed entry back. Hits already returned
+		// the cached value above; we only Put on parse.
+		if !hit && cache != nil {
+			_ = cache.Put(string(lang), diskcache.FileHash(body), entry)
 		}
 	})
 	if walkErr != nil {
@@ -140,6 +147,57 @@ func collectSymbolsFor(eco domain.Ecosystem, depName string, syms map[string]map
 	}
 	slices.Sort(out)
 	return out
+}
+
+// lookupOrParse returns the per-file usage entry, hitting the cache
+// when possible and falling back to a fresh depusage.Extract. Returns
+// (entry, hit) — callers Put on miss to populate the cache.
+//
+// Cache key is the file's sha256: a one-character edit changes the
+// hash, so a single touched file invalidates exactly its own entry.
+// Unrelated files keep their cached results across runs.
+func lookupOrParse(cache *diskcache.UsageCache, lang depusage.Language, body []byte) (diskcache.UsageEntry, bool) {
+	if cache != nil {
+		if cached, ok := cache.Get(string(lang), diskcache.FileHash(body)); ok {
+			return cached, true
+		}
+	}
+	res, err := depusage.Extract(lang, body, depusage.Options{
+		IncludeImports: true,
+		IncludeSymbols: true,
+	})
+	if err != nil {
+		return diskcache.UsageEntry{}, false
+	}
+	entry := diskcache.UsageEntry{
+		Imports: map[string]string{},
+		Symbols: map[string][]string{},
+	}
+	for _, imp := range res.Imports {
+		entry.Imports[imp.Module] = imp.DepKey
+	}
+	// Aggregate symbols per depKey, dedup, sort for determinism.
+	tmp := map[string]map[string]struct{}{}
+	for _, u := range res.UsedSymbols {
+		if u.DepKey == "" || u.Symbol == "" {
+			continue
+		}
+		set, ok := tmp[u.DepKey]
+		if !ok {
+			set = map[string]struct{}{}
+			tmp[u.DepKey] = set
+		}
+		set[u.Symbol] = struct{}{}
+	}
+	for k, set := range tmp {
+		out := make([]string, 0, len(set))
+		for s := range set {
+			out = append(out, s)
+		}
+		slices.Sort(out)
+		entry.Symbols[k] = out
+	}
+	return entry, false
 }
 
 // isDepUsed checks whether any imported key resolves to depName, with
