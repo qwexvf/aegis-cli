@@ -139,7 +139,7 @@ func (a *Analyze) Run(ctx context.Context, req AnalyzeRequest) (AnalyzeResult, e
 	var src PackageSource
 	var err error
 	if req.LocalPath != "" {
-		src, err = readLocalPackageSource(req.LocalPath, req.Ecosystem)
+		src, err = readLocalPackageSource(ctx, req.LocalPath, req.Ecosystem)
 	} else {
 		src, err = a.fetcher.Fetch(ctx, req.Ecosystem, req.Name, req.Version)
 	}

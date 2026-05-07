@@ -1,6 +1,10 @@
 package pmwrapper
 
-import "github.com/qwexvf/aegis-cli/internal/domain"
+import (
+	"context"
+
+	"github.com/qwexvf/aegis-cli/internal/domain"
+)
 
 // Pnpm wraps the `pnpm` CLI. pnpm reads the npm registry; the
 // install-subcommand surface is similar to npm/yarn (`add`, `install`,
@@ -49,6 +53,6 @@ func pnpmTakesValue(flag string) bool {
 	return false
 }
 
-func (Pnpm) Exec(args []string) error {
-	return execPassthrough("pnpm", args)
+func (Pnpm) Exec(ctx context.Context, args []string) error {
+	return execPassthrough(ctx, "pnpm", args)
 }

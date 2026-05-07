@@ -116,7 +116,7 @@ func (f *Fetcher) Fetch(ctx context.Context, eco domain.Ecosystem, name, version
 	}
 
 	// 1. Cache hit?
-	if src, ok, err := f.loadCached(name, version); err == nil && ok {
+	if src, ok, err := f.loadCached(ctx, name, version); err == nil && ok {
 		return src, nil
 	}
 

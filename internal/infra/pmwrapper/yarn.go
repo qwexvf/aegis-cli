@@ -1,6 +1,10 @@
 package pmwrapper
 
-import "github.com/qwexvf/aegis-cli/internal/domain"
+import (
+	"context"
+
+	"github.com/qwexvf/aegis-cli/internal/domain"
+)
 
 // Yarn wraps the `yarn` CLI. It targets both classic (v1) and berry
 // (v2/3/4) since both share the install-subcommand surface (`add`,
@@ -61,6 +65,6 @@ func yarnTakesValue(flag string) bool {
 	return false
 }
 
-func (Yarn) Exec(args []string) error {
-	return execPassthrough("yarn", args)
+func (Yarn) Exec(ctx context.Context, args []string) error {
+	return execPassthrough(ctx, "yarn", args)
 }

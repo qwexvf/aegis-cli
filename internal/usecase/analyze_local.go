@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -27,7 +28,7 @@ import (
 // Symlinks, .git, and node_modules / vendor / __pycache__ trees are
 // skipped — they're never the package's published source and walking
 // them blows up scan time on real-world dev trees.
-func readLocalPackageSource(root string, eco domain.Ecosystem) (PackageSource, error) {
+func readLocalPackageSource(ctx context.Context, root string, eco domain.Ecosystem) (PackageSource, error) {
 	root = filepath.Clean(root)
 	info, err := os.Stat(root)
 	if err != nil {
@@ -43,6 +44,9 @@ func readLocalPackageSource(root string, eco domain.Ecosystem) (PackageSource, e
 	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if ctx.Err() != nil {
+			return filepath.SkipAll
 		}
 		if path == root {
 			return nil

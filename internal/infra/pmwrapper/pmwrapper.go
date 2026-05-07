@@ -9,6 +9,7 @@
 package pmwrapper
 
 import (
+	"context"
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -31,8 +32,10 @@ type PackageManager interface {
 	// token(s) — implementations strip what they need.
 	ParseInstallArgs(argv []string) []SpecToken
 	// Exec delegates to the real package-manager binary with the
-	// original argv.
-	Exec(args []string) error
+	// original argv. The ctx propagates Ctrl+C / SIGTERM into the
+	// child process via os.Kill on cancel — `npm install` mid-flight
+	// stops cleanly instead of orphaning the child.
+	Exec(ctx context.Context, args []string) error
 }
 
 // SpecsToDomain converts argv-parser tokens into typed domain values

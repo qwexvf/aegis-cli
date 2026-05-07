@@ -97,7 +97,7 @@ func runDoctorChecks(ctx context.Context, c doctorContext) []doctorResult {
 		checkRuntime(),
 		checkAPI(ctx, c.api),
 		checkConfigDirWritable(),
-		checkFingerprintCache(),
+		checkFingerprintCache(ctx),
 		checkAllowlist(c.allowlistLoader),
 		checkProjectDir(c.cwd),
 	}
@@ -171,10 +171,10 @@ func checkConfigDirWritable() doctorResult {
 	}
 }
 
-func checkFingerprintCache() doctorResult {
+func checkFingerprintCache(ctx context.Context) doctorResult {
 	fp := diskcache.NewFingerprintCache()
 	dir := fp.Dir()
-	count, bytes, err := walkDir(dir)
+	count, bytes, err := walkDir(ctx, dir)
 	if err != nil {
 		// Missing directory is fine — caches are lazily created.
 		if os.IsNotExist(err) {
@@ -232,13 +232,19 @@ func checkProjectDir(cwd string) doctorResult {
 	}
 }
 
-// walkDir returns (entries, totalBytes, err). Stops on first read error.
-func walkDir(dir string) (int, int64, error) {
+// walkDir returns (entries, totalBytes, err). Stops on first read error
+// or when ctx is cancelled (returns whatever was accumulated so far +
+// nil error for cancellation — doctor reports a partial count rather
+// than a hard failure when the parent timeout fires).
+func walkDir(ctx context.Context, dir string) (int, int64, error) {
 	count := 0
 	var bytes int64
 	err := filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if ctx.Err() != nil {
+			return filepath.SkipAll
 		}
 		if d.IsDir() {
 			return nil

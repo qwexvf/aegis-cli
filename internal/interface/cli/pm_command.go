@@ -39,7 +39,7 @@ func pmCommand(pm pmwrapper.PackageManager, gate *usecase.InstallGate) *cobra.Co
 					}
 				}
 			}
-			return pm.Exec(args)
+			return pm.Exec(cmd.Context(), args)
 		},
 	}
 }

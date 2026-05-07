@@ -1,6 +1,7 @@
 package jspkgsource
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,7 +14,7 @@ import (
 // loadCached returns a previously-extracted package source from
 // f.cacheDir if present. Atomicity: a sentinel file ".ok" is written
 // last; we treat its absence as "incomplete cache, ignore".
-func (f *Fetcher) loadCached(name, version string) (usecase.PackageSource, bool, error) {
+func (f *Fetcher) loadCached(ctx context.Context, name, version string) (usecase.PackageSource, bool, error) {
 	dir := f.cachePath(name, version)
 	if _, err := os.Stat(filepath.Join(dir, ".ok")); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -26,6 +27,9 @@ func (f *Fetcher) loadCached(name, version string) (usecase.PackageSource, bool,
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if ctx.Err() != nil {
+			return filepath.SkipAll
 		}
 		if d.IsDir() {
 			return nil
