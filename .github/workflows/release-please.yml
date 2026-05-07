@@ -16,18 +16,19 @@ name: release-please
 # release-please-config.json — release-please owns those files; humans
 # only edit them to seed the initial version or change the policy.
 #
-# Why a PAT, not GITHUB_TOKEN: tags and releases created with
-# GITHUB_TOKEN do NOT trigger downstream `push` or `release` workflows
-# (anti-loop policy in Actions). That left release.yml — the
-# goreleaser pipeline — silently skipped on every release-please cut.
-# The fix is to give release-please a token tied to a real user, so
-# the tag push looks like a human action and downstream workflows fire.
+# Known limitation (tracked in #28): tags created with GITHUB_TOKEN
+# don't trigger downstream `push` or `release` workflows (Actions
+# anti-loop guard). That means release.yml — the goreleaser pipeline —
+# does NOT fire automatically when this workflow merges a release-PR.
+# The current workaround is the manual re-tag ritual:
 #
-# Required setup (one-time):
-#   1. Generate a fine-grained PAT scoped to this repo with:
-#        - Contents:      read + write
-#        - Pull requests: read + write
-#   2. Add it as a repo secret named RELEASE_PLEASE_PAT.
+#   gh release delete vX.Y.Z --cleanup-tag --yes
+#   git tag vX.Y.Z <sha>
+#   git push origin vX.Y.Z
+#
+# The clean fix is a PAT (or GitHub App token) — see #28 for the
+# wiring. Switch over when release cadence makes the manual step
+# annoying enough to justify the secret.
 
 on:
   push:
@@ -43,6 +44,5 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.RELEASE_PLEASE_PAT }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
