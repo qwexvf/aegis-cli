@@ -42,6 +42,38 @@ type Dependency struct {
 	// distinction matters: nil triggers a lookup on next enrich,
 	// empty slice doesn't.
 	Advisories []Advisory `json:",omitempty"`
+	// Reachability records whether user code imports this dep. Tri-state
+	// because "couldn't tell" (unsupported language, parse error) is
+	// real information. Old snapshots load with the zero value
+	// ReachabilityUnknown so existing scoring is unchanged.
+	Reachability Reachability `json:",omitempty"`
+}
+
+// Reachability classifies whether a dep is referenced by the user's
+// project source.
+type Reachability uint8
+
+const (
+	// ReachabilityUnknown is the default — analysis hasn't run, the
+	// language isn't supported, or parsing failed. Risk scoring
+	// treats this the same as Used (conservative).
+	ReachabilityUnknown Reachability = iota
+	// ReachabilityUsed: at least one user-source file imports this dep.
+	ReachabilityUsed
+	// ReachabilityUnused: project source was scanned and no import
+	// matched. Risk score may be downgraded.
+	ReachabilityUnused
+)
+
+// String returns the lowercase enum name; used by presenters.
+func (r Reachability) String() string {
+	switch r {
+	case ReachabilityUsed:
+		return "used"
+	case ReachabilityUnused:
+		return "unused"
+	}
+	return "unknown"
 }
 
 // Fingerprint summarizes observable behaviors of a (name, version) in

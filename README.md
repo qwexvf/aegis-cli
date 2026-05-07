@@ -4,13 +4,12 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/qwexvf/aegis-cli)](https://goreportcard.com/report/github.com/qwexvf/aegis-cli)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Multi-language supply-chain analysis CLI. Parses lockfiles for
-**JavaScript** (npm / bun / yarn / pnpm), **Python** (pip / poetry /
-pipenv / uv), **Rust** (Cargo), **Go**, and **Ruby** (Bundler),
-cross-references every dep against the public [OSV.dev](https://osv.dev)
-vulnerability database, and (for JavaScript) walks the AST of every
-package source via tree-sitter to surface suspicious capabilities —
-all without any backend or account.
+Multi-language supply-chain analysis CLI. Parses lockfiles across
+**8 ecosystems** (npm, PyPI, RubyGems, crates.io, Go modules, Maven,
+Packagist, NuGet), cross-references every dep against the public
+[OSV.dev](https://osv.dev) vulnerability database, and walks the AST
+of every package source via tree-sitter to surface suspicious
+capabilities — all without any backend or account.
 
 What you get:
 
@@ -18,16 +17,18 @@ What you get:
   every package version is checked against OSV (which aggregates
   GitHub Security Advisories, ecosystem-native feeds, and CVE) on
   each `aegis snapshot enrich`. No API key, no signup, no rate
-  limit gymnastics. Single batch HTTP call covers JS + Python +
-  Rust + Go + Ruby in one shot.
-- **Suspicious capability detection (JavaScript + Python)** —
-  tree-sitter AST scanner surfaces `net-egress`, `child-process`,
-  `dynamic-eval`, `credential-read`, `fs-write-outside-project`,
-  `postinstall-script`, … even on packages with no published
-  advisory yet (the typosquats and just-published malware nobody
-  has reported). Rust / Go / Ruby AST scanners are planned; until
-  they ship, OSV + the behavior heuristics are the signal for
-  those ecosystems.
+  limit gymnastics. Single batch HTTP call covers all 8 ecosystems
+  in one shot. With `AEGIS_API_KEY` set, aegis prefers the
+  curated Aegis feed and falls back to OSV automatically.
+- **AST capability scanning across 8 languages** — tree-sitter
+  AST scanners (`jsscan`, `pyscan`, `rbscan`, `rsscan`, `goscan`,
+  `jvscan`, `phpscan`, `csscan`) walk every package source and
+  surface `shell-spawn`, `net-egress`, `dynamic-eval`,
+  `base64-decode`, `env-read`, `fs-write-outside-root`,
+  `raw-ip-literal` — even on packages with no published advisory
+  yet (the typosquats and just-published malware nobody has
+  reported). Each match carries `file:line:snippet` evidence so
+  reviewers can jump straight to the offending code.
 - **Behavior-based malware heuristics (zero-day window)** — seven
   detectors fire on patterns nobody has indexed yet:
     1. **Suspicious install hooks** — postinstall script does
@@ -47,9 +48,9 @@ What you get:
        inside an npm tarball. Some legit packages ship native
        bins (esbuild, sharp); pair with allowlist for those.
     5. **Typosquat names** — package name within Levenshtein
-       distance 2 of a top-280 npm package (`lodahs`, `expresss`,
-       `electron-stable`, ...). Catches squat-attacks before any
-       advisory exists.
+       distance 2 of a top-list per ecosystem (npm, PyPI,
+       crates.io). Catches `lodahs`, `colourama`, `rustdecimal`,
+       `jeIlyfish` shapes before any advisory exists.
     6. **Maintainer hijack score** — fresh publish (< 7d) + long
        gap from previous version (≥ 180d) + low weekly downloads
        (< 1000). The exact shape of event-stream's compromise.
@@ -67,13 +68,16 @@ What you get:
 
 Supported ecosystems and lockfiles:
 
-| Language    | Lockfiles                                                       | OSV | AST scan | Heuristics |
-|-------------|------------------------------------------------------------------|-----|----------|------------|
-| JavaScript  | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` | ✅  | ✅ jsscan  | ✅ all 7    |
-| Python      | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `requirements.txt`   | ✅  | ✅ pyscan  | ✅ source-pattern + typosquat |
-| Rust        | `Cargo.lock`                                                    | ✅  | planned  | ✅ source-pattern + typosquat |
-| Go          | `go.sum`                                                        | ✅  | planned  | ✅ source-pattern + typosquat |
-| Ruby        | `Gemfile.lock`                                                  | ✅  | planned  | ✅ source-pattern + typosquat |
+| Ecosystem   | Lockfiles                                                            | OSV | AST scan      | Heuristics |
+|-------------|----------------------------------------------------------------------|-----|---------------|------------|
+| **npm**     | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`       | ✅  | ✅ `jsscan`   | ✅ all 7   |
+| **PyPI**    | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `requirements.txt`         | ✅  | ✅ `pyscan`   | ✅ all 7   |
+| **RubyGems**| `Gemfile.lock`                                                        | ✅  | ✅ `rbscan`   | ✅ all 7   |
+| **crates.io**| `Cargo.lock`                                                         | ✅  | ✅ `rsscan`   | ✅ all 7   |
+| **Go**      | `go.sum` / `go.mod`                                                  | ✅  | ✅ `goscan`   | ✅ all 7   |
+| **Maven**   | `pom.xml`, `gradle.lockfile`                                          | ✅  | ✅ `jvscan`   | ✅ all 7   |
+| **Packagist**| `composer.lock`                                                      | ✅  | ✅ `phpscan`  | ✅ all 7   |
+| **NuGet**   | `packages.lock.json`                                                  | ✅  | ✅ `csscan`   | ✅ all 7   |
 
 Polyglot monorepos work out of the box — `aegis snapshot save` finds every recognised lockfile in the project root and merges the deps into a single `aegis.lock` keyed by ecosystem.
 
@@ -157,7 +161,8 @@ out to a team that only uses one package manager.
 ## Local-only quickstart
 
 These work today, with no backend, no API key, no cloud account.
-Drop the binary on your `$PATH` and run them in any Node project.
+Drop the binary on your `$PATH` and run them in any project with a
+recognised lockfile.
 
 ```sh
 # Snapshot the resolved dependency tree from the lockfile
@@ -178,11 +183,34 @@ aegis ci --fail-on=block
 aegis analyze lodash@4.17.21
 aegis analyze --evidence ua-parser-js@0.7.29
 
+# Or scan a local source tree (no registry fetch). Spec is the label
+# for the verdict; --local points at the on-disk source.
+aegis analyze rubygems/rest-client@1.6.13 \
+    --local examples/incidents/rubygems/rest-client-1.6.13/
+
 # Manage local capability suppressions
 aegis allowlist add lodash --capability=dynamic-eval --version='^4' \
     --reason='_.template uses Function() to compile templates'
 aegis allowlist list
+
+# Generate shell completion
+aegis completion bash > /etc/bash_completion.d/aegis      # bash
+aegis completion zsh  > "${fpath[1]}/_aegis"              # zsh
+aegis completion fish > ~/.config/fish/completions/aegis.fish
 ```
+
+## Attack regression suite
+
+`examples/incidents/` ships **30 hand-built fixtures** reproducing the
+canonical historical supply-chain attacks across every supported
+ecosystem (event-stream, Log4Shell, Spring4Shell, ctx, jeIlyfish,
+torchtriton, ultralytics, rest-client, rustdecimal, xrvrv,
+@solana/web3.js, lottie-player, node-ipc, …). Every fixture is
+validated by `tests/e2e/incidents.sh` on every CI run, which doubles
+as a regression record: when a new detector lands, no historical
+attack silently slips through. See
+[`examples/incidents/README.md`](examples/incidents/README.md) for
+the full index.
 
 See `aegis --help` for the full command tree, or the
 [architecture page](https://qwexvf.github.io/aegis-cli/contributing/architecture/)
