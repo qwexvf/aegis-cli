@@ -4,6 +4,44 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.14.0](https://github.com/qwexvf/aegis-cli/compare/v0.13.0...v0.14.0) (2026-05-08)
+
+
+### Added
+
+* **astscan:** c#/.NET AST scanner via tree-sitter-c-sharp + nuget lockfile ([0d1b927](https://github.com/qwexvf/aegis-cli/commit/0d1b9270f786f74501e94159f2c8ec35c6aeb70b))
+* **diskcache:** per-file usage cache + wire into AnalyzeUsage ([e416400](https://github.com/qwexvf/aegis-cli/commit/e416400c92b638a18c68b9caa14abb868ab59fba))
+* **gleam:** add Gleam/Hex ecosystem support ([4e17277](https://github.com/qwexvf/aegis-cli/commit/4e17277d23783f34a773694d2699f1a5108c7045))
+* **snapshot:** [unused] marker, --used-only filter, opt-in risk downgrade ([1201e30](https://github.com/qwexvf/aegis-cli/commit/1201e30739f8dbdc4cce1454e080464c83672e64))
+* **snapshot:** reachability layer via depusage ([#25](https://github.com/qwexvf/aegis-cli/issues/25) phase 1) ([5b0282b](https://github.com/qwexvf/aegis-cli/commit/5b0282bb84953682f8b2b25028886c6aac3da02a))
+* **snapshot:** record UsedSymbols on each Used dep ([3e5b7fa](https://github.com/qwexvf/aegis-cli/commit/3e5b7fa9b8fe5402a113d725a6c73d9345034831))
+
+
+### Fixed
+
+* **gleamscan:** update fork to use relative include in scanner.c ([1dbb33a](https://github.com/qwexvf/aegis-cli/commit/1dbb33a4f1ac2b3e813327361ca6690dba014926))
+* **locksnap:** persist Reachability across snapshot save/load ([829b067](https://github.com/qwexvf/aegis-cli/commit/829b0671256d09ac54df6d6916a3fccf885c96cf))
+* **usage:** prefix-match Go module roots when checking import paths ([3502701](https://github.com/qwexvf/aegis-cli/commit/35027018b60a6b80312746a0b0ad89217720a471))
+
+
+### Docs
+
+* document reachability layer + detection-gap archive ([932fb93](https://github.com/qwexvf/aegis-cli/commit/932fb93a3f513913051328b284b6af4992905459))
+* rewrite README, add VHS demo, fix gleamscan queries ([6f26fab](https://github.com/qwexvf/aegis-cli/commit/6f26fab6c2b67005d6da6926c06397cd4c994ecd))
+
+
+### CI
+
+* **release-please:** revert to GITHUB_TOKEN; document manual re-tag ([5647435](https://github.com/qwexvf/aegis-cli/commit/5647435375381adc16d51575baa186b559887e2f))
+* **release-please:** use a PAT instead of GITHUB_TOKEN ([#28](https://github.com/qwexvf/aegis-cli/issues/28)) ([bf38ec9](https://github.com/qwexvf/aegis-cli/commit/bf38ec9213bcb39a4fb6ba8ffa9aeab75eff0dc8))
+
+
+### Tests
+
+* **e2e:** add 7 more incident fixtures — 30 total across 8 ecosystems ([c24d456](https://github.com/qwexvf/aegis-cli/commit/c24d456d71720cd0a7e1805f2553c980a34af8f2))
+* **e2e:** expand incident fixture suite by 6 — famous + recent attacks ([b773398](https://github.com/qwexvf/aegis-cli/commit/b7733986b6931973a5ee86bf0186ffebf0235222))
+* **e2e:** reachability fixture — cve-in-unused-dep ([c107d96](https://github.com/qwexvf/aegis-cli/commit/c107d96cbc2a59a160cacf74b353ff8a6607b884))
+
 ## [0.13.0](https://github.com/qwexvf/aegis-cli/compare/v0.12.1...v0.13.0) (2026-05-07)
 
 
