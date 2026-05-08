@@ -1,0 +1,9 @@
+[plugin_manager]
+  scope = "local"
+
+[plugins]
+
+[marketplaces]
+  [marketplaces.claude-plugins-official]
+    source = "github"
+    repo = "anthropics/claude-plugins-official"
