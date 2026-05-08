@@ -15,3 +15,50 @@ site/.astro/
 
 # Generated snapshot files
 **/aegis.lock
+
+# AI agent working directories
+.adal/
+.agents/
+.aider-desk/
+.augment/
+.bob/
+.claude/
+.codeartsdoer/
+.codebuddy/
+.codemaker/
+.codestudio/
+.commandcode/
+.continue/
+.cortex/
+.crush/
+.devin/
+.factory/
+.forge/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.rovodev/
+.tabnine/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+
+# Misc project-local config files not for VCS
+apm.toml
+ccpm.toml
+skills-lock.json
+skills/
+site-template/
