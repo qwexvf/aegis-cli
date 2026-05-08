@@ -23,6 +23,8 @@ github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRI
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/qwexvf/depusage v0.1.1 h1:ksgUg/d29zYeHmWuvlY54X182aIxstHJbveingzRgek=
 github.com/qwexvf/depusage v0.1.1/go.mod h1:3mw5cH170H3sYxy4pL99oj0tJRii7dj2WXVOTJ6uIyk=
+github.com/qwexvf/tree-sitter-gleam v1.1.1-0.20260430091822-4e4643c2215c h1:7X7uzhwTxs4jevkcLpvdxEW5Llrv1MF6wSYGbltHMhI=
+github.com/qwexvf/tree-sitter-gleam v1.1.1-0.20260430091822-4e4643c2215c/go.mod h1:WyhN6RCjNNi1oTmrxdcz8UHzHPxIEviz9gUuak9crLI=
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
 github.com/rogpeppe/go-internal v1.12.0 h1:exVL4IDcn6na9z1rAb56Vxr+CgyK3nn3O+epU5NdKM8=
 github.com/rogpeppe/go-internal v1.12.0/go.mod h1:E+RYuTGaKKdloAfM02xzb0FW3Paa99yedzYV+kq4uf4=

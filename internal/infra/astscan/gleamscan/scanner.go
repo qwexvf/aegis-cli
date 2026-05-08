@@ -21,6 +21,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/astscan"
 
+	tsgleam "github.com/gleam-lang/tree-sitter-gleam/bindings/go"
 	ts "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -39,7 +40,7 @@ type Scanner struct {
 
 // New compiles the language and queries.
 func New() (*Scanner, error) {
-	lang := ts.NewLanguage(gleamLanguage())
+	lang := ts.NewLanguage(tsgleam.Language())
 	q, qerr := ts.NewQuery(lang, queriesSource)
 	if qerr != nil {
 		return nil, qerr
