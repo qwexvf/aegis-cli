@@ -139,7 +139,7 @@ func (c *Client) fetchAdvisories(ctx context.Context, system, name, version stri
 		return nil, fmt.Errorf("deps.dev decode: %w", err)
 	}
 
-	var out []domain.Advisory
+	out := make([]domain.Advisory, 0, len(vr.Version.AdvisoryKeys))
 	for _, key := range vr.Version.AdvisoryKeys {
 		adv, err := c.fetchOneAdvisory(ctx, key.ID)
 		if err != nil {

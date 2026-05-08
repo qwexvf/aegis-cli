@@ -38,7 +38,7 @@ func (m MultiSource) Lookup(ctx context.Context, queries []domain.AdvisoryQuery)
 		go func(idx int, s usecase.VulnLookup) {
 			defer wg.Done()
 			data, err := s.Lookup(ctx, queries)
-			results[idx] = result{data, err}
+			results[idx] = result{data: data, err: err}
 		}(i, src)
 	}
 	wg.Wait()

@@ -169,7 +169,7 @@ func (c *Client) fetchForPackage(ctx context.Context, eco domain.Ecosystem, name
 // or empty range are included conservatively.
 func filterByVersion(advs []ghsaAdvisory, version string) []domain.Advisory {
 	v, parseErr := semver.NewVersion(version)
-	var out []domain.Advisory
+	out := make([]domain.Advisory, 0, len(advs))
 	for _, a := range advs {
 		if matchesVersion(a, v, parseErr != nil) {
 			out = append(out, toAdvisory(a))
@@ -196,7 +196,7 @@ func matchesVersion(a ghsaAdvisory, v *semver.Version, unparseable bool) bool {
 }
 
 func toAdvisory(a ghsaAdvisory) domain.Advisory {
-	var aliases []string
+	aliases := []string{}
 	if a.CVEID != "" {
 		aliases = []string{a.CVEID}
 	}
