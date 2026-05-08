@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
-	github.com/gleam-lang/tree-sitter-gleam v0.0.0-00010101000000-000000000000
+	github.com/gleam-lang/tree-sitter-gleam v1.1.0
 	github.com/klauspost/compress v1.18.6
 	github.com/qwexvf/depusage v0.1.1
 	github.com/spf13/cobra v1.10.2
@@ -36,4 +36,4 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
 
-replace github.com/gleam-lang/tree-sitter-gleam => github.com/qwexvf/tree-sitter-gleam v1.1.1-0.20260430091822-4e4643c2215c
+replace github.com/gleam-lang/tree-sitter-gleam => github.com/qwexvf/tree-sitter-gleam v1.1.1-0.20260508110421-02de271870f8
