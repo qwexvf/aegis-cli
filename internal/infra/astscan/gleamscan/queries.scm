@@ -14,11 +14,9 @@
 
 ;; @external(erlang, ...) or @external(javascript, ...) — new syntax
 ;; Any @external bypasses Gleam's type safety; flag as dynamic-eval.
-(function
-  (attribute
-    name: (identifier) @_attr)
-  (#eq? @_attr "external"))
-  @cap.dynamic-eval
+((attribute
+  name: (identifier) @_attr)
+  (#eq? @_attr "external")) @cap.dynamic-eval
 
 ;; external fn — old syntax, removed in v0.30 but still in the wild
 (external_function) @cap.dynamic-eval
@@ -63,6 +61,5 @@
 
 ;; ---- raw IP literal ----------------------------------------------------
 
-(string) @ip_str
-  (#match? @ip_str "https?://[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}")
-  @cap.raw-ip-literal
+((string) @cap.raw-ip-literal
+  (#match? @cap.raw-ip-literal "https?://[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}"))
