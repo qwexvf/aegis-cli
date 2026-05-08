@@ -70,6 +70,9 @@ func (c *Client) Lookup(ctx context.Context, queries []domain.AdvisoryQuery) (ma
 		out[q.Key()] = []domain.Advisory{}
 	}
 	for _, q := range queries {
+		if ctx.Err() != nil {
+			break
+		}
 		sys := depsSystem(q.Ecosystem)
 		if sys == "" {
 			continue // unsupported ecosystem

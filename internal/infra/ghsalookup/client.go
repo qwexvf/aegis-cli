@@ -92,6 +92,9 @@ func (c *Client) Lookup(ctx context.Context, queries []domain.AdvisoryQuery) (ma
 	}
 
 	for key, qs := range byPkg {
+		if ctx.Err() != nil {
+			break
+		}
 		eco := domain.Ecosystem(key.eco)
 		advisories, err := c.fetchForPackage(ctx, eco, key.name)
 		if err != nil {
