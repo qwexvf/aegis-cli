@@ -17,11 +17,14 @@ import (
 
 	clii "github.com/qwexvf/aegis-cli/internal/interface/cli"
 
+	"github.com/qwexvf/aegis-cli/internal/config"
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
 	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
+	"github.com/qwexvf/aegis-cli/internal/infra/depsdotdev"
 	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis-cli/internal/infra/envprobe"
+	"github.com/qwexvf/aegis-cli/internal/infra/ghsalookup"
 	"github.com/qwexvf/aegis-cli/internal/infra/hookfs"
 	"github.com/qwexvf/aegis-cli/internal/infra/httpx"
 	"github.com/qwexvf/aegis-cli/internal/infra/locksnap"
@@ -150,45 +153,92 @@ func main() {
 		cli.NewEnrichLivePresenter(cli.NewSnapshotPresenter(presenter)),
 		clii.Version)
 
-	// Vulnerability lookup. The default backend is OSV.dev (Google) —
-	// public, free, no auth. When AEGIS_API_KEY is set we prefer the
-	// Aegis API's curated feed and fall back to OSV on error, so a
-	// transient outage on either side never blocks Enrich. The
-	// AEGIS_VULN_SOURCE env var pins the choice explicitly:
+	// Vulnerability lookup. Providers are configured via
+	// ~/.aegis/config.yaml (vuln.sources). When no config file exists
+	// the legacy env-var heuristic applies for backwards compatibility:
+	//   AEGIS_VULN_SOURCE=osv|aegis|none
+	//   AEGIS_NO_VULN_LOOKUP=1  disables lookup entirely
 	//
-	//   AEGIS_VULN_SOURCE=osv     OSV only (no Aegis call even with key)
-	//   AEGIS_VULN_SOURCE=aegis   Aegis only (no OSV fallback)
-	//   AEGIS_VULN_SOURCE=none    Disable lookup (== AEGIS_NO_VULN_LOOKUP=1)
-	//
-	// Cache lives under <cache>/advisories/ so re-enrich runs don't
-	// re-fetch advisory bodies the user has already seen.
-	source := os.Getenv("AEGIS_VULN_SOURCE")
-	if os.Getenv("AEGIS_NO_VULN_LOOKUP") == "" && source != "none" {
-		var osvLookup, aegisLookup usecase.VulnLookup
-		if source != "aegis" {
-			osvOpts := []osv.Option{osv.WithHTTPClient(httpClient)}
-			if u := os.Getenv("AEGIS_OSV_URL"); u != "" {
-				osvOpts = append(osvOpts, osv.WithBaseURL(u))
-			}
-			if dir := diskcache.AdvisoryDir(); dir != "" {
-				osvOpts = append(osvOpts, osv.WithCacheDir(dir))
-			}
-			osvLookup = osv.New(osvOpts...)
+	// When config.yaml defines sources, all enabled providers are
+	// queried concurrently and results merged (MultiSource). Env vars
+	// still override per-provider credentials (GITHUB_TOKEN, AEGIS_API_KEY,
+	// AEGIS_OSV_URL).
+	if os.Getenv("AEGIS_NO_VULN_LOOKUP") == "" {
+		cfg, cfgErr := config.Load()
+		if cfgErr != nil {
+			slog.Warn("config load failed, falling back to env-var heuristic", "err", cfgErr)
 		}
-		if source != "osv" && os.Getenv("AEGIS_API_KEY") != "" {
-			aegisLookup = apiClient
-		}
-		switch {
-		case aegisLookup != nil && osvLookup != nil:
-			snapshot.WithVulnLookup(vulnlookup.Fallback{
-				Primary:   aegisLookup,
-				Secondary: osvLookup,
-				Logger:    func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) },
-			})
-		case aegisLookup != nil:
-			snapshot.WithVulnLookup(aegisLookup)
-		case osvLookup != nil:
-			snapshot.WithVulnLookup(osvLookup)
+
+		if len(cfg.Vuln.Sources) > 0 {
+			// Config-file mode: build a provider per source entry.
+			var sources []usecase.VulnLookup
+			for _, src := range cfg.Vuln.Sources {
+				switch src.Name {
+				case "osv":
+					opts := []osv.Option{osv.WithHTTPClient(httpClient)}
+					if src.URL != "" {
+						opts = append(opts, osv.WithBaseURL(src.URL))
+					}
+					if dir := diskcache.AdvisoryDir(); dir != "" {
+						opts = append(opts, osv.WithCacheDir(dir))
+					}
+					sources = append(sources, osv.New(opts...))
+				case "github":
+					opts := []ghsalookup.Option{ghsalookup.WithHTTPClient(httpClient)}
+					if src.Token != "" {
+						opts = append(opts, ghsalookup.WithToken(src.Token))
+					}
+					sources = append(sources, ghsalookup.New(opts...))
+				case "deps.dev":
+					opts := []depsdotdev.Option{depsdotdev.WithHTTPClient(httpClient)}
+					if src.URL != "" {
+						opts = append(opts, depsdotdev.WithBaseURL(src.URL))
+					}
+					sources = append(sources, depsdotdev.New(opts...))
+				case "aegis":
+					if src.APIKey != "" || os.Getenv("AEGIS_API_KEY") != "" {
+						sources = append(sources, apiClient)
+					}
+				default:
+					slog.Warn("unknown vuln source in config, skipping", "name", src.Name)
+				}
+			}
+			if len(sources) == 1 {
+				snapshot.WithVulnLookup(sources[0])
+			} else if len(sources) > 1 {
+				snapshot.WithVulnLookup(vulnlookup.MultiSource{Sources: sources})
+			}
+		} else {
+			// Legacy env-var mode for backwards compatibility.
+			source := os.Getenv("AEGIS_VULN_SOURCE")
+			if source != "none" {
+				var osvLookup, aegisLookup usecase.VulnLookup
+				if source != "aegis" {
+					osvOpts := []osv.Option{osv.WithHTTPClient(httpClient)}
+					if u := os.Getenv("AEGIS_OSV_URL"); u != "" {
+						osvOpts = append(osvOpts, osv.WithBaseURL(u))
+					}
+					if dir := diskcache.AdvisoryDir(); dir != "" {
+						osvOpts = append(osvOpts, osv.WithCacheDir(dir))
+					}
+					osvLookup = osv.New(osvOpts...)
+				}
+				if source != "osv" && os.Getenv("AEGIS_API_KEY") != "" {
+					aegisLookup = apiClient
+				}
+				switch {
+				case aegisLookup != nil && osvLookup != nil:
+					snapshot.WithVulnLookup(vulnlookup.Fallback{
+						Primary:   aegisLookup,
+						Secondary: osvLookup,
+						Logger:    func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) },
+					})
+				case aegisLookup != nil:
+					snapshot.WithVulnLookup(aegisLookup)
+				case osvLookup != nil:
+					snapshot.WithVulnLookup(osvLookup)
+				}
+			}
 		}
 	}
 
