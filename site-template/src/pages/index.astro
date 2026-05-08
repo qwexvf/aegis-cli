@@ -1,0 +1,111 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
+
+const capabilities = [
+  {
+    num: "01",
+    title: "First feature",
+    body: "Short description of what this thing does and why it matters.",
+  },
+  {
+    num: "02",
+    title: "Second feature",
+    body: "Short description of what this thing does and why it matters.",
+  },
+  {
+    num: "03",
+    title: "Third feature",
+    body: "Short description of what this thing does and why it matters.",
+  },
+  {
+    num: "04",
+    title: "Fourth feature",
+    body: "Short description of what this thing does and why it matters.",
+  },
+];
+
+const next = [
+  { href: "getting-started/", label: "Getting started", desc: "install and first run" },
+  { href: "guides/example/", label: "Guides", desc: "walkthroughs for common workflows" },
+  { href: "reference/example/", label: "Reference", desc: "API / command reference" },
+  { href: "contributing/example/", label: "Contributing", desc: "how to contribute" },
+];
+---
+
+<BaseLayout
+  title="Project — tagline"
+  description="Short project description for SEO."
+>
+  <div class="mx-auto max-w-[80rem] px-6 pb-24">
+    <section class="pt-16 md:pt-24">
+      <div class="mb-8 max-w-full overflow-hidden font-mono text-xs tracking-wider text-[var(--color-fg-faint)]">
+        ┌─ PROJECT / DOCS ────────────────────────────────────────────
+      </div>
+
+      <h1 class="font-display text-5xl font-bold leading-[0.95] tracking-tight text-[var(--color-fg-strong)] md:text-7xl">
+        Project
+      </h1>
+
+      <div class="mt-6 h-0.5 w-16 bg-[var(--color-signal)]"></div>
+
+      <p class="mt-6 max-w-[55ch] font-mono text-base text-[var(--color-fg)]">
+        <span class="font-semibold text-[var(--color-signal)]">{">"}</span>{" "}
+        One-sentence pitch. What this is and who it's for.
+      </p>
+
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a
+          href={base + "getting-started/"}
+          class="inline-flex items-center rounded-sm border border-[var(--color-fg-strong)] bg-[var(--color-fg-strong)] px-5 py-2.5 font-mono text-sm font-medium text-[var(--color-bg)] transition-colors hover:border-[var(--color-signal)] hover:bg-[var(--color-signal)]"
+        >
+          Get started
+        </a>
+        <a
+          href="https://github.com/your-org/your-repo"
+          class="inline-flex items-center rounded-sm border border-[var(--color-rule-strong)] bg-transparent px-5 py-2.5 font-mono text-sm font-medium text-[var(--color-fg)] transition-colors hover:border-[var(--color-signal)] hover:text-[var(--color-signal)]"
+        >
+          View on GitHub →
+        </a>
+      </div>
+    </section>
+
+    <section class="mt-24 max-w-4xl">
+      <div class="mb-5 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-[var(--color-fg-faint)]">
+        Capabilities
+      </div>
+      <dl class="border-t border-[var(--color-rule)]">
+        {capabilities.map((c) => (
+          <div class="grid gap-x-8 gap-y-2 border-b border-[var(--color-rule)] py-6 md:grid-cols-[22rem_1fr]">
+            <dt class="flex items-baseline gap-4">
+              <span class="font-mono text-sm font-semibold text-[var(--color-signal)]">{c.num}</span>
+              <span class="font-display text-base font-semibold leading-tight text-[var(--color-fg-strong)]">{c.title}</span>
+            </dt>
+            <dd class="text-sm leading-relaxed text-[var(--color-fg)]">{c.body}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+
+    <section class="mt-20 max-w-4xl">
+      <div class="mb-5 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-[var(--color-fg-faint)]">
+        Next
+      </div>
+      <ul class="border-t border-[var(--color-rule)]">
+        {next.map((n) => (
+          <li class="grid grid-cols-1 gap-x-8 gap-y-1 border-b border-[var(--color-rule)] py-3 md:grid-cols-[16rem_1fr]">
+            <a
+              href={base + n.href}
+              class="group inline-flex items-baseline font-display text-base font-semibold text-[var(--color-fg-strong)] transition-colors hover:text-[var(--color-signal)]"
+            >
+              <span class="mr-2 font-mono font-normal text-[var(--color-signal)]">→</span>
+              {n.label}
+            </a>
+            <span class="self-center text-sm text-[var(--color-fg-mute)]">{n.desc}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  </div>
+</BaseLayout>
