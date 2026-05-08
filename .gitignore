@@ -12,3 +12,6 @@ docs/content/
 site/node_modules/
 site/dist/
 site/.astro/
+
+# Generated snapshot files
+**/aegis.lock
