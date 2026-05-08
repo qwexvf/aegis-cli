@@ -52,4 +52,8 @@ func init() {
 	// <RestorePackagesWithLockFile>true). One file per project; the
 	// scanner picks up the first match at the project root.
 	Register(newFuncParser("packages.lock.json", domain.EcoNuGet, parsePackagesLockJson))
+
+	// Gleam — manifest.toml is the post-resolution lockfile written by
+	// `gleam deps download`. All packages are sourced from hex.pm.
+	Register(newFuncParser("manifest.toml", domain.EcoGleam, parseGleamManifest))
 }
