@@ -257,6 +257,15 @@ func main() {
 		// ecosystems get a zero-value signal so the heuristic
 		// degrades gracefully there.
 		snapshot.WithMaintainerSignalFetcher(resolver)
+
+		// Tarball-drift heuristic compares the published npm tarball
+		// to the upstream git tag's file tree. Opt-in via
+		// AEGIS_DRIFT=1 for now — it adds one GitHub API call per
+		// dep, so on a 5000-dep scan it'd burn the anonymous quota
+		// fast. Pair with GITHUB_TOKEN for the 5000/hr cap.
+		if os.Getenv("AEGIS_DRIFT") != "" {
+			snapshot.WithRepoTreeFetcher(newRepoTreeAdapter())
+		}
 	}
 	analyzePresenter := cli.NewAnalyzePresenter(presenter)
 	analyze := usecase.NewAnalyze(analyzePresenter)

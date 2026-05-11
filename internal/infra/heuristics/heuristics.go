@@ -75,3 +75,14 @@ func hasCapability(caps []domain.Capability, want domain.Capability) bool {
 func RunMaintainerSignal(sig domain.MaintainerSignal) domain.Capability {
 	return DetectMaintainerHijackRisk(sig)
 }
+
+// RunTarballDrift is the third entry point — separated for the same
+// reason as RunMaintainerSignal (different input shape and optional
+// I/O). Snapshot.Enrich calls it after fetching the upstream repo
+// tree for the dep's version tag via RepoTreeFetcher. repoFiles=nil
+// means the fetch was skipped or failed; the detector treats that as
+// "no signal", not "no drift".
+func RunTarballDrift(manifestRaw []byte, src usecase.PackageSource, repoFiles []string, repoSubdir string) domain.Capability {
+	c, _ := DetectTarballDriftFromSources(manifestRaw, src, repoFiles, repoSubdir)
+	return c
+}
