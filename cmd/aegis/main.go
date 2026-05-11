@@ -13,6 +13,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof" // dev-only profile endpoint, gated on AEGIS_PPROF
 	"os"
 
 	clii "github.com/qwexvf/aegis-cli/internal/interface/cli"
@@ -93,6 +95,17 @@ func shouldPrettyLog() bool {
 }
 
 func main() {
+	// Optional pprof HTTP endpoint — set AEGIS_PPROF=:6060 to enable.
+	// clii.Execute calls os.Exit so file-based cpuprofile flush is
+	// awkward; the HTTP endpoint sidesteps that and lets us capture
+	// mid-scan with `curl :6060/debug/pprof/profile?seconds=60`.
+	if addr := os.Getenv("AEGIS_PPROF"); addr != "" {
+		go func() {
+			// nolint:gosec // dev-only profile endpoint
+			_ = http.ListenAndServe(addr, nil)
+		}()
+	}
+
 	// One per-process invocation ID + shared HTTP client. Every
 	// outbound call (Aegis API, npm registry, tarball downloads)
 	// shares the connection pool and stamps User-Agent + X-Request-ID
