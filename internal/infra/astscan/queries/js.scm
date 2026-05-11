@@ -10,11 +10,14 @@
 ;   string text we expose separately on Fingerprint.
 
 ;; ---- shell spawn -------------------------------------------------------
-;; child_process.exec / execSync / spawn / spawnSync / fork / execFile
+;; child_process.execSync / execFile / execFileSync / spawn / spawnSync / fork
+;; Bare ".exec" is intentionally excluded — RegExp.prototype.exec
+;; collides with this pattern and dominates real-world matches in
+;; regex-heavy libs. The other names listed have no RegExp collision.
 (call_expression
   function: (member_expression
     property: (property_identifier) @method
-    (#match? @method "^(exec|execSync|execFile|execFileSync|spawn|spawnSync|fork)$"))) @cap.shell-spawn
+    (#match? @method "^(execSync|execFile|execFileSync|spawn|spawnSync|fork)$"))) @cap.shell-spawn
 
 ;; ---- dynamic eval ------------------------------------------------------
 ;; eval(...)

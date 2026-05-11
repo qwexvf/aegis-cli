@@ -10,13 +10,17 @@ import (
 
 // parsePnpmLock reads pnpm-lock.yaml. Rather than pulling in a YAML
 // dependency, we hand-parse the small subset of the format we need:
-// the `packages:` section is keyed by entries like
+// the `packages:` section is keyed by entries that look like
 //
-//	/@scope/name@1.2.3:
-//	/name@1.2.3:
+//	v9+ (current):  '@scope/name@1.2.3':
+//	v9+ unscoped:   'name@1.2.3':
+//	v6-v8 legacy:   /@scope/name@1.2.3:
+//	v6-v8 legacy:   /name@1.2.3:
+//	pre-v6 legacy:  /name/1.2.3:
 //
-// (older pnpm used `/name/1.2.3:`). We don't try to parse the whole
-// document — we only sniff lines that start with two spaces and "/".
+// We don't try to parse the whole document — we sniff lines at exactly
+// 2-space indent (entry depth) ending in ':'. Sub-fields like
+// `    resolution:` sit at 4-space indent so they're naturally filtered.
 //
 // Direct deps come from package.json (passed in via `direct`).
 func parsePnpmLock(raw []byte, direct map[string]bool) ([]domain.Dependency, error) {
@@ -42,13 +46,18 @@ func parsePnpmLock(raw []byte, direct map[string]bool) ([]domain.Dependency, err
 		if !strings.HasPrefix(line, " ") && strings.HasSuffix(strings.TrimSpace(line), ":") && line != "packages:" {
 			break
 		}
-		// Within `packages:` each entry starts with two spaces and `/`.
-		trimmed := strings.TrimLeft(line, " ")
-		if !strings.HasPrefix(trimmed, "/") {
+		// Entry lines sit at exactly 2-space indent. Sub-fields
+		// (resolution:, engines:, peerDependencies:) are 4+, blank
+		// lines are 0 — both filtered out.
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent != 2 {
 			continue
 		}
-		// Drop the trailing colon and the surrounding quotes if any.
-		entry := strings.TrimSuffix(strings.TrimSpace(trimmed), ":")
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasSuffix(trimmed, ":") {
+			continue
+		}
+		entry := strings.TrimSuffix(trimmed, ":")
 		entry = strings.Trim(entry, "'\"")
 		entry = strings.TrimPrefix(entry, "/")
 
