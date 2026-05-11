@@ -100,3 +100,22 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: scan for known vulnerabilities
         run: govulncheck ./...
+
+  ci:
+    name: ci
+    if: always()
+    needs:
+      - test
+      - lint
+      - build-matrix
+      - goreleaser-check
+      - govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: aggregate
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "one or more required jobs failed"
+            exit 1
+          fi
+          echo "all required jobs passed"
