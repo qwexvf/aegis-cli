@@ -34,7 +34,6 @@ Useful targets (see `Makefile`):
 | `make build`               | debug build (default)                          |
 | `make build-release`       | stripped release build                         |
 | `make build-core`          | release build without the AST scanner          |
-| `make build-each-pm`       | per-PM single-tool builds (npm/bun/yarn/pnpm)  |
 | `make test` / `test-race`  | unit tests, optionally with the race detector  |
 | `make size`                | side-by-side binary size comparison            |
 
@@ -86,7 +85,8 @@ A new PM (e.g. `nx`, `npmjs/cli`) needs:
 1. One file in `internal/infra/pmwrapper/<name>.go` implementing
    `PackageManager`.
 2. Registration in `cmd/aegis/pm_<name>.go` guarded by
-   `//go:build !no<name>` so the per-PM build tags work.
+   `//go:build !no<name>` so `go install -tags=no<name>` produces a
+   slimmer binary without that pm.
 3. A line in `cmd/aegis/pm_registry.go` ordering it in the help output.
 4. Tests in `internal/infra/pmwrapper/<name>_test.go`.
 
