@@ -27,7 +27,7 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
-    timeout-minutes: 30   # cross-cgo + cosign + SLSA attest typically 6-8 min
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -37,25 +37,6 @@ jobs:
         with:
           go-version: "1.26"
           cache: true
-
-      # zig provides the cross-cgo C toolchain (linux/darwin/windows × amd64/arm64)
-      # so a single ubuntu runner can produce every cgo build flavour.
-      # mlugg/setup-zig is the actively-maintained fork of
-      # goto-bus-stop/setup-zig — uses mirror fallback so zig CDN
-      # outages don't block releases. use-cache: true reuses the zig
-      # binary across runs (saves ~3 min on warm cache, avoids the
-      # CDN entirely).
-      - uses: mlugg/setup-zig@v2.2.1
-        with:
-          version: 0.15.1
-          use-cache: true
-
-      # Sanity-check zig is on PATH before goreleaser runs. The per-build
-      # CC=`zig cc -target ...` overrides in .goreleaser.yaml depend on
-      # this; if zig isn't reachable, cgo cross-builds silently fall back
-      # to no-cgo and tree-sitter bindings get excluded by build
-      # constraints (caught us on v0.15.0).
-      - run: zig version
 
       - uses: sigstore/cosign-installer@v3
 
