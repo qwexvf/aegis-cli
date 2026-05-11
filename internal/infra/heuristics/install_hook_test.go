@@ -126,6 +126,42 @@ func TestDetectSuspiciousInstallHook(t *testing.T) {
 			want: 0,
 		},
 		{
+			name: "node --eval CI-skip guard then husky (real-world: @colordx/core)",
+			manifest: `{
+				"scripts": {
+					"prepare": "node --eval \"if (process.env.CI) process.exit(0)\" && husky || true"
+				}
+			}`,
+			want: 0,
+		},
+		{
+			name: "node -e short benign one-liner",
+			manifest: `{
+				"scripts": {
+					"prepare": "node -e \"process.exit(0)\""
+				}
+			}`,
+			want: 0,
+		},
+		{
+			name: "node -e with require still flagged",
+			manifest: `{
+				"scripts": {
+					"postinstall": "node -e \"require('https').get('https://x.com/p')\""
+				}
+			}`,
+			want: domain.CapInstallHookSuspicious,
+		},
+		{
+			name: "node -e with very long opaque body still flagged",
+			manifest: `{
+				"scripts": {
+					"postinstall": "node -e \"abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOP\""
+				}
+			}`,
+			want: domain.CapInstallHookSuspicious,
+		},
+		{
 			name: "mention of curl in test script doesn't count (test isn't install-time)",
 			manifest: `{
 				"scripts": {
