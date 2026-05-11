@@ -75,6 +75,17 @@ const (
 	// fixes that introduce a network call to fetch updated rules,
 	// for example).
 	WeightPatchVersionDrift = 35
+	// WeightMaintainerChanged — publisher of this version differs from
+	// the publisher of the previous version. event-stream's
+	// compromise (right9ctrl took over from dominictarr) is the
+	// canonical example; coa, rc, ua-parser-js all matched the same
+	// shape. Weight is high enough that this signal alone pushes
+	// to Block — a publisher change on an established package is
+	// rare and review-worthy. Pair with the existing
+	// CapMaintainerHijackRisk (which scores the SHAPE — long gap
+	// plus low downloads plus fresh publish) for a stacked signal
+	// when both fire.
+	WeightMaintainerChanged = 55
 	// WeightTarballDrift — published tarball contains source files
 	// that don't exist in the upstream git tag and aren't covered by
 	// the build-output whitelist. This is the highest-confidence
@@ -209,6 +220,10 @@ func RiskScore(fp *Fingerprint) RiskAssessment {
 			add(c.String(),
 				"published tarball contains source files not present in the upstream git tag",
 				WeightTarballDrift)
+		case CapMaintainerChanged:
+			add(c.String(),
+				"publisher of this version differs from publisher of previous version (maintainer-handover compromise shape)",
+				WeightMaintainerChanged)
 		}
 	}
 

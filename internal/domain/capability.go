@@ -115,6 +115,16 @@ const (
 	// Computed during snapshot diff against a baseline.
 	CapPatchVersionDrift
 
+	// CapMaintainerChanged — the npm user who published THIS version
+	// is different from the user who published the previous version.
+	// This is the canonical maintainer-handover compromise shape:
+	// event-stream@3.3.6 was published by `right9ctrl` after the
+	// original maintainer `dominictarr` handed off the package.
+	// Distinct from CapMaintainerHijackRisk (which scores the
+	// SHAPE — long gap + low downloads + fresh publish); this fires
+	// on a concrete OWNERSHIP CHANGE between consecutive releases.
+	CapMaintainerChanged
+
 	// CapTarballDrift — the published npm tarball contains source
 	// files that don't exist in the upstream git tag for the same
 	// version, and aren't covered by the standard build-output
@@ -162,6 +172,8 @@ func (c Capability) String() string {
 		return "patch-version-drift"
 	case CapTarballDrift:
 		return "tarball-source-drift"
+	case CapMaintainerChanged:
+		return "maintainer-changed"
 	}
 	return "unknown"
 }
@@ -204,6 +216,8 @@ func (c Capability) Description() string {
 		return "this patch version gained capabilities the previous one didn't — semver violation"
 	case CapTarballDrift:
 		return "published tarball contains source files not present in the upstream git tag (payload smuggled past github review)"
+	case CapMaintainerChanged:
+		return "publisher of this version differs from publisher of previous version (maintainer-handover compromise shape)"
 	}
 	return "no description available"
 }
@@ -228,6 +242,7 @@ func AllCapabilities() []Capability {
 		CapMaintainerHijackRisk,
 		CapPatchVersionDrift,
 		CapTarballDrift,
+		CapMaintainerChanged,
 	}
 }
 
