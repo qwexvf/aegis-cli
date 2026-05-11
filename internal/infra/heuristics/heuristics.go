@@ -71,9 +71,17 @@ func hasCapability(caps []domain.Capability, want domain.Capability) bool {
 // RunMaintainerSignal is the second entry point — separated from
 // Run because the input shape is different (registry metadata vs
 // package source). Snapshot.Enrich calls it after fetching
-// MaintainerSignal via the dedicated port.
-func RunMaintainerSignal(sig domain.MaintainerSignal) domain.Capability {
-	return DetectMaintainerHijackRisk(sig)
+// MaintainerSignal via the dedicated port. Returns the slice of
+// capabilities that fired: hijack-shape, publisher-change, or both.
+func RunMaintainerSignal(sig domain.MaintainerSignal) []domain.Capability {
+	var caps []domain.Capability
+	if c := DetectMaintainerHijackRisk(sig); c != 0 {
+		caps = append(caps, c)
+	}
+	if c := DetectMaintainerChanged(sig); c != 0 {
+		caps = append(caps, c)
+	}
+	return caps
 }
 
 // RunTarballDrift is the third entry point — separated for the same

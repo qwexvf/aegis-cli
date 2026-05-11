@@ -23,7 +23,7 @@ func (heuristicsAdapter) Run(eco domain.Ecosystem, name string, manifestRaw []by
 // RunMaintainerSignal is the second entry point — separated from
 // Run because the input shape is different (registry metadata vs
 // package source).
-func (heuristicsAdapter) RunMaintainerSignal(sig domain.MaintainerSignal) domain.Capability {
+func (heuristicsAdapter) RunMaintainerSignal(sig domain.MaintainerSignal) []domain.Capability {
 	return heuristics.RunMaintainerSignal(sig)
 }
 
