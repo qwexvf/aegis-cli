@@ -52,7 +52,7 @@ Advisory unless you request otherwise.
 
 In scope:
 
-- The `aegis` binary and any per-PM variant (`aegis-npm`, `aegis-bun`, `aegis-yarn`, `aegis-pnpm`, `aegis-core`)
+- The `aegis` binary and the `aegis-core` (no-AST-scanner) variant
 - Lockfile parsers (npm/bun/yarn/pnpm) — including malicious-input handling
 - The JS AST risk engine (tree-sitter integration)
 - Allowlist parsing and the layered builtin/user/project precedence

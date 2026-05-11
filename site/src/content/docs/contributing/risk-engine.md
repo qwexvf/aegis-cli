@@ -48,8 +48,15 @@ scanners map their syntax onto the same Capabilities.
 | `CapFSWriteOutsideRoot` | `fs.writeFile` | `open(_, 'w')` | `File.write` |
 | `CapRawIPLiteral` | `"https://1.2.3.4/..."` | (same — string match) | (same) |
 | `CapInstallHookExec` | `scripts.postinstall` | `setup.py` | `extconf.rb` |
+| `CapTarballDrift` | tarball file list ≠ source-tag tree (npm only today) | — | — |
+| `CapMaintainerChanged` | `_npmUser` differs from previous version | — | — |
 
-Adding a new Capability is one constant in `domain/capability.go`,
+`CapTarballDrift` and `CapMaintainerChanged` are *provenance* signals
+(detected from registry metadata + GitHub tree) rather than AST
+findings, so they have no `queries.scm` line. See
+`internal/infra/heuristics/{tarball_drift,maintainer}.go`.
+
+Adding a new AST-derived Capability is one constant in `domain/capability.go`,
 one weight in `domain/risk.go`, and one query line in each
 language's `queries.scm`.
 
