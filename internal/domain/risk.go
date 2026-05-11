@@ -75,6 +75,16 @@ const (
 	// fixes that introduce a network call to fetch updated rules,
 	// for example).
 	WeightPatchVersionDrift = 35
+	// WeightTarballDrift — published tarball contains source files
+	// that don't exist in the upstream git tag and aren't covered by
+	// the build-output whitelist. This is the highest-confidence
+	// "review-evading payload" signal we can produce from public
+	// data alone — every known npm package-publish compromise of the
+	// last 5 years has had this shape. Weight is high enough to
+	// cross the Block threshold without other contributors; pair
+	// with allowlist for known build-flow quirks (e.g. packages that
+	// regenerate large protobuf bundles at publish time).
+	WeightTarballDrift = 60
 )
 
 // credentialEnvVarRoots is the list of env var name prefixes that, when
@@ -195,6 +205,10 @@ func RiskScore(fp *Fingerprint) RiskAssessment {
 			add(c.String(),
 				"patch-version bump gained new capabilities (semver violation)",
 				WeightPatchVersionDrift)
+		case CapTarballDrift:
+			add(c.String(),
+				"published tarball contains source files not present in the upstream git tag",
+				WeightTarballDrift)
 		}
 	}
 
