@@ -4,6 +4,43 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.15.0](https://github.com/qwexvf/aegis-cli/compare/v0.14.0...v0.15.0) (2026-05-11)
+
+
+### Added
+
+* maintainer-transfer detector via npm _npmUser ([#46](https://github.com/qwexvf/aegis-cli/issues/46)) ([a5bbc96](https://github.com/qwexvf/aegis-cli/commit/a5bbc96d66ebf2f22d80421157c7d49cd8fe4037))
+* tarball-source-drift detector (opt-in via AEGIS_DRIFT=1) ([#45](https://github.com/qwexvf/aegis-cli/issues/45)) ([e56cbe6](https://github.com/qwexvf/aegis-cli/commit/e56cbe602c1201e0735cfaee7353d75895517401))
+
+
+### Fixed
+
+* scanner noise + pnpm v9 lockfile parser ([#44](https://github.com/qwexvf/aegis-cli/issues/44)) ([79a3730](https://github.com/qwexvf/aegis-cli/commit/79a37307e3cdb5b2bebc0d296a339e60e1a587c8))
+* skip drift on truncated github tree ([#48](https://github.com/qwexvf/aegis-cli/issues/48)) ([a58274e](https://github.com/qwexvf/aegis-cli/commit/a58274e0343a7f7998895f2b6903c32881a20047))
+
+
+### Changed
+
+* restrict tarball-drift to direct deps by default ([#47](https://github.com/qwexvf/aegis-cli/issues/47)) ([63db10e](https://github.com/qwexvf/aegis-cli/commit/63db10e9aa3dd05fb49d4bbfae12a3327edf7fe2))
+
+
+### Build
+
+* **deps:** bump actions/configure-pages from 5 to 6 ([#37](https://github.com/qwexvf/aegis-cli/issues/37)) ([5d24aa2](https://github.com/qwexvf/aegis-cli/commit/5d24aa2e8b2bf98ed60d7a87f5ea37a636d05574))
+* **deps:** bump actions/setup-node from 4 to 6 ([#40](https://github.com/qwexvf/aegis-cli/issues/40)) ([f179cf0](https://github.com/qwexvf/aegis-cli/commit/f179cf0397c5a7fa53205ac44e4ff132c659b16f))
+* **deps:** bump actions/upload-pages-artifact from 3 to 5 ([#39](https://github.com/qwexvf/aegis-cli/issues/39)) ([39a57b1](https://github.com/qwexvf/aegis-cli/commit/39a57b1510ebf3f5396a9f430b4f2861c4065391))
+* **deps:** bump googleapis/release-please-action from 4 to 5 ([#41](https://github.com/qwexvf/aegis-cli/issues/41)) ([52ca641](https://github.com/qwexvf/aegis-cli/commit/52ca6412ae25f78ab919be1fb892433c3d87b9cf))
+* **deps:** bump lodash from 4.17.20 to 4.18.1 in /examples/demo ([#36](https://github.com/qwexvf/aegis-cli/issues/36)) ([3fa07f0](https://github.com/qwexvf/aegis-cli/commit/3fa07f0bf3c7842f21b2892d850cc11dc4703871))
+* **deps:** bump lodash in /examples/reachability/cve-in-unused-dep ([#31](https://github.com/qwexvf/aegis-cli/issues/31)) ([a734103](https://github.com/qwexvf/aegis-cli/commit/a73410347b0e720b33f976e3c51d2ed8a0cc03e2))
+* **deps:** bump minimist from 1.2.5 to 1.2.6 in /examples/demo ([#34](https://github.com/qwexvf/aegis-cli/issues/34)) ([fceb14c](https://github.com/qwexvf/aegis-cli/commit/fceb14c07a4b5b36f7dd29febd7c0ae3521e2cb1))
+* **deps:** bump mlugg/setup-zig from 1 to 2 ([#38](https://github.com/qwexvf/aegis-cli/issues/38)) ([2db285e](https://github.com/qwexvf/aegis-cli/commit/2db285ea649cb60a1cab2f49c2c09ec4dc01efd5))
+* **deps:** bump zod in /examples/reachability/cve-in-unused-dep ([#32](https://github.com/qwexvf/aegis-cli/issues/32)) ([b8a49b3](https://github.com/qwexvf/aegis-cli/commit/b8a49b34e2604961e6c894f1758b6581d715d961))
+
+
+### CI
+
+* add aggregate ci job for branch protection ([#42](https://github.com/qwexvf/aegis-cli/issues/42)) ([3a82705](https://github.com/qwexvf/aegis-cli/commit/3a8270564ef43da4eff16c766380df210aefeaac))
+
 ## [0.14.0](https://github.com/qwexvf/aegis-cli/compare/v0.13.0...v0.14.0) (2026-05-08)
 
 
