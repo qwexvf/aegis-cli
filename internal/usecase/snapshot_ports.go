@@ -213,6 +213,33 @@ type MalwareHeuristics interface {
 	// it after FetchMaintainerSignal returns. Returns 0 when no
 	// signal fires.
 	RunMaintainerSignal(sig domain.MaintainerSignal) domain.Capability
+
+	// RunTarballDrift is the third entry point: detects "review-
+	// evading payload" — files in the published tarball that don't
+	// exist in the upstream git tag and aren't covered by the
+	// standard build-output whitelist. repoFiles=nil means the
+	// caller couldn't resolve the upstream repo/tag; the detector
+	// returns 0 ("no signal") in that case.
+	RunTarballDrift(manifestRaw []byte, src PackageSource, repoFiles []string, repoSubdir string) domain.Capability
+}
+
+// RepoTreeFetcher is the port for the upstream repo file-list fetcher
+// the tarball-drift detector needs. Snapshot.Enrich uses it once per
+// (eco, name, version) tuple, after the AST scan; the adapter is
+// responsible for resolving the repo URL out of package.json, picking
+// the right tag, caching, and rate-limiting.
+//
+// Returns the repo file list (paths relative to repo root, forward
+// slashes) and an optional monorepo subdirectory (e.g.
+// "packages/core") that the diff layer strips before comparing
+// against the tarball path set.
+//
+// (nil, "", err) for any failure is treated by the use case as
+// "no signal" — never a verdict-pushing error. Implementations
+// should fold rate-limit / 404 / unsupported-host into the same
+// shape so the rest of the scan continues.
+type RepoTreeFetcher interface {
+	FetchRepoTree(ctx context.Context, eco domain.Ecosystem, name, version string, manifestRaw []byte) (files []string, subdir string, err error)
 }
 
 // VulnLookup turns a list of (ecosystem, name, version) tuples into a

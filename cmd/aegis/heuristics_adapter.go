@@ -26,3 +26,10 @@ func (heuristicsAdapter) Run(eco domain.Ecosystem, name string, manifestRaw []by
 func (heuristicsAdapter) RunMaintainerSignal(sig domain.MaintainerSignal) domain.Capability {
 	return heuristics.RunMaintainerSignal(sig)
 }
+
+// RunTarballDrift is the third entry point. repoFiles=nil short-
+// circuits to "no signal" so callers without a RepoTreeFetcher get
+// the same behaviour as offline-mode runs.
+func (heuristicsAdapter) RunTarballDrift(manifestRaw []byte, src usecase.PackageSource, repoFiles []string, repoSubdir string) domain.Capability {
+	return heuristics.RunTarballDrift(manifestRaw, src, repoFiles, repoSubdir)
+}
