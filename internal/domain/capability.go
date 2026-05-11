@@ -114,6 +114,16 @@ const (
 	// "something changed that wasn't supposed to" signal.
 	// Computed during snapshot diff against a baseline.
 	CapPatchVersionDrift
+
+	// CapTarballDrift — the published npm tarball contains source
+	// files that don't exist in the upstream git tag for the same
+	// version, and aren't covered by the standard build-output
+	// whitelist (dist/, lib/, build/, cjs/, mjs/, esm/, out/, umd/,
+	// or anything listed in package.json `files`). This is the canonical
+	// shape of "extra payload smuggled into the npm publish that
+	// reviewers of the GitHub repo will never see". Skipped silently
+	// when no upstream repo is resolvable.
+	CapTarballDrift
 )
 
 // String returns the canonical name. Used for serialization, logs,
@@ -150,6 +160,8 @@ func (c Capability) String() string {
 		return "maintainer-hijack-risk"
 	case CapPatchVersionDrift:
 		return "patch-version-drift"
+	case CapTarballDrift:
+		return "tarball-source-drift"
 	}
 	return "unknown"
 }
@@ -190,6 +202,8 @@ func (c Capability) Description() string {
 		return "fresh publish + long gap from previous version + low downloads — classic maintainer-handover pattern"
 	case CapPatchVersionDrift:
 		return "this patch version gained capabilities the previous one didn't — semver violation"
+	case CapTarballDrift:
+		return "published tarball contains source files not present in the upstream git tag (payload smuggled past github review)"
 	}
 	return "no description available"
 }
@@ -213,6 +227,7 @@ func AllCapabilities() []Capability {
 		CapTyposquatRisk,
 		CapMaintainerHijackRisk,
 		CapPatchVersionDrift,
+		CapTarballDrift,
 	}
 }
 

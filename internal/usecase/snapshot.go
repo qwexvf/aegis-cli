@@ -84,6 +84,12 @@ type Snapshot struct {
 	// other heuristics still run.
 	maintainerSignal MaintainerSignalFetcher
 
+	// Optional upstream-repo file-list fetcher used by the tarball-
+	// drift heuristic. One additional round-trip per dep (cached
+	// across the same Enrich run). nil disables drift detection;
+	// other heuristics still run.
+	repoTree RepoTreeFetcher
+
 	// allowlist is applied post-RiskScore/DriftScore in Diff so
 	// known-benign capabilities (lodash dynamic-eval, build tools'
 	// shell-spawn) don't manufacture false-positive verdicts.
@@ -172,6 +178,19 @@ func (s *Snapshot) WithMalwareHeuristics(h MalwareHeuristics) *Snapshot {
 // they don't need registry data.
 func (s *Snapshot) WithMaintainerSignalFetcher(f MaintainerSignalFetcher) *Snapshot {
 	s.maintainerSignal = f
+	return s
+}
+
+// WithRepoTreeFetcher attaches the upstream-repo file-list fetcher
+// used by the tarball-drift heuristic. When set together with
+// WithMalwareHeuristics, every per-dep enrich pass adds one network
+// round-trip to GitHub to resolve the version tag + fetch the repo
+// tree, then runs RunTarballDrift over the (tarball, repo) file
+// pair.
+//
+// nil disables drift detection; other heuristics still run.
+func (s *Snapshot) WithRepoTreeFetcher(r RepoTreeFetcher) *Snapshot {
+	s.repoTree = r
 	return s
 }
 
@@ -474,6 +493,20 @@ func (s *Snapshot) analyzeOneSlot(ctx context.Context, dep domain.Dependency, sl
 		if s.maintainerSignal != nil {
 			if sig, err := s.maintainerSignal.FetchMaintainerSignal(ctx, dep.Ecosystem, dep.Name, dep.Version); err == nil {
 				if c := s.heuristics.RunMaintainerSignal(sig); c != 0 {
+					fp.Capabilities = fp.Capabilities.Union(domain.NewCapabilitySet(c))
+				}
+			}
+		}
+
+		// Tarball-drift heuristic — compares tarball file list to
+		// the upstream git tag's file tree. Same shape as the
+		// maintainer signal: optional port, failure-silent, one
+		// extra round-trip (GitHub API). When the fetcher returns
+		// no files (unresolved repo/tag, rate-limited, unsupported
+		// host), the detector returns 0 ("no signal") and we skip.
+		if s.repoTree != nil {
+			if repoFiles, subdir, err := s.repoTree.FetchRepoTree(ctx, dep.Ecosystem, dep.Name, dep.Version, src.Manifest); err == nil && len(repoFiles) > 0 {
+				if c := s.heuristics.RunTarballDrift(src.Manifest, src, repoFiles, subdir); c != 0 {
 					fp.Capabilities = fp.Capabilities.Union(domain.NewCapabilitySet(c))
 				}
 			}
