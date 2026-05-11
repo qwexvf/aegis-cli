@@ -54,15 +54,14 @@ jobs:
         with:
           go-version: "1.26"
           cache: true
-      - name: make build-release build-core build-each-pm
+      - name: build aegis + aegis-core
         run: |
           make build-release
           make build-core
-          make build-npm build-bun build-yarn build-pnpm
       - name: smoke — every binary prints --version
         run: |
           set -euo pipefail
-          for b in aegis aegis-core aegis-npm aegis-bun aegis-yarn aegis-pnpm; do
+          for b in aegis aegis-core; do
             echo "::group::$b version"
             ./bin/"$b" version
             echo "::endgroup::"

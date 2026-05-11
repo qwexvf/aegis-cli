@@ -45,10 +45,11 @@ go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
 aegis version
 ```
 
-Per-package-manager binaries (`aegis-npm`, `aegis-bun`, `aegis-yarn`,
-`aegis-pnpm`) are built from the same source via `make build-<pm>`. They
-do not shrink the binary — Go DCE already strips unused PM wrappers — they
-exist for distribution clarity.
+To trim the binary to a single package manager (saves ~19 KB):
+
+```sh
+go install -tags=nobun,noyarn,nopnpm github.com/qwexvf/aegis-cli/cmd/aegis@latest   # npm only
+```
 
 ## First snapshot
 

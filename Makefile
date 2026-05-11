@@ -29,52 +29,18 @@ build-core:                     ## release build w/o AST scanner (no tree-sitter
 .PHONY: build-all
 build-all: build-release build-core   ## both flavors, side by side
 
-# --- per-PM single-tool builds ----------------------------------------
-#
-# Tags `nonpm`, `nobun`, `noyarn`, `nopnpm` exclude the corresponding
-# pm wrapper. Each saves ~5 KB; the value is UX (cleaner --help) +
-# distribution (per-team binaries), not size. AST scanner stays on
-# (every JS pm uses it); combine with `nojsscan` for gate-only.
-
-PM_OFFTAGS_NPM  := nobun,noyarn,nopnpm
-PM_OFFTAGS_BUN  := nonpm,noyarn,nopnpm
-PM_OFFTAGS_YARN := nonpm,nobun,nopnpm
-PM_OFFTAGS_PNPM := nonpm,nobun,noyarn
-
-.PHONY: build-npm
-build-npm:                      ## release build registering only `aegis npm`
-	go build -tags='$(PM_OFFTAGS_NPM)' -ldflags='$(RELEASE_LDFLAGS)' \
-		-o $(BIN_DIR)/$(BINARY)-npm $(PKG)
-
-.PHONY: build-bun
-build-bun:                      ## release build registering only `aegis bun`
-	go build -tags='$(PM_OFFTAGS_BUN)' -ldflags='$(RELEASE_LDFLAGS)' \
-		-o $(BIN_DIR)/$(BINARY)-bun $(PKG)
-
-.PHONY: build-yarn
-build-yarn:                     ## release build registering only `aegis yarn`
-	go build -tags='$(PM_OFFTAGS_YARN)' -ldflags='$(RELEASE_LDFLAGS)' \
-		-o $(BIN_DIR)/$(BINARY)-yarn $(PKG)
-
-.PHONY: build-pnpm
-build-pnpm:                     ## release build registering only `aegis pnpm`
-	go build -tags='$(PM_OFFTAGS_PNPM)' -ldflags='$(RELEASE_LDFLAGS)' \
-		-o $(BIN_DIR)/$(BINARY)-pnpm $(PKG)
-
-.PHONY: build-each-pm
-build-each-pm: build-npm build-bun build-yarn build-pnpm   ## all per-PM flavors
+# pm build tags (`nonpm`, `nobun`, `noyarn`, `nopnpm`) exclude the
+# corresponding pm wrapper. Empirically each saves ~19 KB out of 27 MB,
+# so we don't ship per-pm release binaries — but the tags stay around
+# for users who want a smaller `go install` build via `-tags=...`.
 
 .PHONY: size
-size: build build-release build-core build-each-pm   ## binary sizes side-by-side
+size: build build-release build-core   ## binary sizes side-by-side
 	@echo
 	@echo "Binary size comparison:"
 	@ls -lh \
 		$(BIN_DIR)/$(BINARY) \
 		$(BIN_DIR)/$(BINARY)-core \
-		$(BIN_DIR)/$(BINARY)-npm \
-		$(BIN_DIR)/$(BINARY)-bun \
-		$(BIN_DIR)/$(BINARY)-yarn \
-		$(BIN_DIR)/$(BINARY)-pnpm \
 		2>/dev/null | awk '{print $$5"\t"$$NF}'
 
 .PHONY: install
