@@ -234,9 +234,12 @@ for the snapshot mechanism.
 
 | Target | Output | Tags | Use |
 |---|---|---|---|
-| `make build` | 12 MB (debug) | — | local dev |
-| `make build-release` | 8.2 MB | `-ldflags='-s -w'` | full features |
-| `make build-core` | 7.4 MB | `nojsscan` + stripped | size-constrained CI runners (no AST scanner, no cgo) |
+| `make build` | ~27 MB (debug) | — | local dev |
+| `make build-release` | ~22 MB | `-ldflags='-s -w'` | full features |
+| `make build-core` | ~10 MB | `nojsscan` + stripped | size-constrained CI runners (no AST scanner, no cgo) |
+
+The AST scanner ships eight tree-sitter grammars (≈12 MB after strip)
+— `aegis-core` skips them entirely.
 
 `risk_engine.go` (default) registers the JS tree-sitter scanner;
 `risk_engine_off.go` (`//go:build nojsscan`) is a no-op stub.
