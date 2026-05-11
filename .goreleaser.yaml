@@ -39,7 +39,7 @@ builds:
       - goos: linux
         goarch: arm64
         env:
-          - CC=./scripts/zig-cc-arm64.sh
+          - 'CC={{ .Env.GITHUB_WORKSPACE }}/scripts/zig-cc-arm64.sh'
     # v0.1.0 ships cgo binaries for linux/amd64 + linux/arm64 only.
     # Reliable cross-cgo to darwin and windows from a linux runner
     # needs the macOS SDK / mingw headers in addition to zig; ship
@@ -86,7 +86,7 @@ builds:
       - goos: linux
         goarch: arm64
         env:
-          - CC=./scripts/zig-cc-arm64.sh
+          - 'CC={{ .Env.GITHUB_WORKSPACE }}/scripts/zig-cc-arm64.sh'
     goos: [linux]
     goarch: [amd64, arm64]
     flags:
@@ -106,7 +106,7 @@ builds:
       - goos: linux
         goarch: arm64
         env:
-          - CC=./scripts/zig-cc-arm64.sh
+          - 'CC={{ .Env.GITHUB_WORKSPACE }}/scripts/zig-cc-arm64.sh'
     goos: [linux]
     goarch: [amd64, arm64]
     flags:
@@ -126,7 +126,7 @@ builds:
       - goos: linux
         goarch: arm64
         env:
-          - CC=./scripts/zig-cc-arm64.sh
+          - 'CC={{ .Env.GITHUB_WORKSPACE }}/scripts/zig-cc-arm64.sh'
     goos: [linux]
     goarch: [amd64, arm64]
     flags:
@@ -146,7 +146,7 @@ builds:
       - goos: linux
         goarch: arm64
         env:
-          - CC=./scripts/zig-cc-arm64.sh
+          - 'CC={{ .Env.GITHUB_WORKSPACE }}/scripts/zig-cc-arm64.sh'
     goos: [linux]
     goarch: [amd64, arm64]
     flags:
