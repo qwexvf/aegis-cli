@@ -88,3 +88,26 @@ func detectMaintainerHijackAt(sig domain.MaintainerSignal, now func() time.Time)
 	}
 	return 0
 }
+
+// DetectMaintainerChanged fires when the npm user who pushed THIS
+// version differs from the user who pushed the previous version.
+// This is the canonical maintainer-handover shape: event-stream@3.3.5
+// was published by `dominictarr`, @3.3.6 by `right9ctrl`. Same for
+// coa, rc, ua-parser-js — every documented npm package-publish
+// compromise of the last decade either was a maintainer transfer
+// or made one look like one.
+//
+// Returns CapMaintainerChanged when both publisher fields are non-
+// empty and differ. Missing data returns 0 — we never fire on the
+// absence of evidence, only on concrete mismatch. Scoped vs unscoped
+// publisher names are compared case-sensitively, matching npm's
+// own normalization.
+func DetectMaintainerChanged(sig domain.MaintainerSignal) domain.Capability {
+	if sig.Publisher == "" || sig.PreviousPublisher == "" {
+		return 0
+	}
+	if sig.Publisher == sig.PreviousPublisher {
+		return 0
+	}
+	return domain.CapMaintainerChanged
+}

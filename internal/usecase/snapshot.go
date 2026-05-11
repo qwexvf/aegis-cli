@@ -492,8 +492,8 @@ func (s *Snapshot) analyzeOneSlot(ctx context.Context, dep domain.Dependency, sl
 		// without a fetcher implementation yet).
 		if s.maintainerSignal != nil {
 			if sig, err := s.maintainerSignal.FetchMaintainerSignal(ctx, dep.Ecosystem, dep.Name, dep.Version); err == nil {
-				if c := s.heuristics.RunMaintainerSignal(sig); c != 0 {
-					fp.Capabilities = fp.Capabilities.Union(domain.NewCapabilitySet(c))
+				if caps := s.heuristics.RunMaintainerSignal(sig); len(caps) > 0 {
+					fp.Capabilities = fp.Capabilities.Union(domain.NewCapabilitySet(caps...))
 				}
 			}
 		}

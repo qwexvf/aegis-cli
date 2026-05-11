@@ -35,4 +35,19 @@ type MaintainerSignal struct {
 	// PreviousPublishedAt is RFC3339 of PreviousVersion's publish.
 	// Pair with PublishedAt to compute the gap (in days).
 	PreviousPublishedAt string
+
+	// Publisher is the npm user who pushed the queried version
+	// (registry's per-version _npmUser.name). Empty when the
+	// registry didn't expose it. Used by the maintainer-transfer
+	// heuristic to spot the canonical compromise shape:
+	// event-stream@3.3.5 was published by `dominictarr`, but
+	// event-stream@3.3.6 by `right9ctrl`. A changed publisher on a
+	// long-lived package is a high-precision signal.
+	Publisher string
+
+	// PreviousPublisher is the npm user who pushed PreviousVersion.
+	// Empty when PreviousVersion is empty or the registry didn't
+	// expose the field. Compare against Publisher to detect a
+	// maintainer transfer between consecutive releases.
+	PreviousPublisher string
 }
