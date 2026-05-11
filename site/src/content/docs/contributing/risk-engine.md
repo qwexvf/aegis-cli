@@ -69,6 +69,8 @@ WeightRawIPLiteral   = 15
 WeightSizeAnomaly    = 5    // drift only
 WeightHookContent    = 30   // drift only — hook script body changed
 WeightCapabilityAdd  = 15   // drift only — per new capability
+WeightTarballDrift   = 60   // tarball file list ≠ source-tag tree
+WeightMaintainerChanged = 55 // current publisher ≠ previous version's
 ```
 
 ### Special case — env-var credential heuristic

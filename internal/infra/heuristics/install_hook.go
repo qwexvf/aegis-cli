@@ -175,7 +175,10 @@ func scriptMatchesMalwarePattern(body string) bool {
 	}
 	for _, re := range inlineExecPatterns {
 		m := re.FindStringSubmatch(body)
-		if m == nil {
+		// Every pattern in inlineExecPatterns is shaped `(lang)…(body)`,
+		// so a match always has m[0..2]. Guard anyway so a future
+		// pattern edit can't silently turn a flag into a panic.
+		if len(m) < 3 {
 			continue
 		}
 		// Only the node case gets the benign carve-out — `node --eval

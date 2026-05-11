@@ -62,7 +62,9 @@ func parsePnpmLock(raw []byte, direct map[string]bool) ([]domain.Dependency, err
 		entry = strings.TrimPrefix(entry, "/")
 
 		// Strip pnpm peer-dep suffix: "name@1.2.3(react@18.0.0)" -> "name@1.2.3"
-		if i := strings.Index(entry, "("); i > 0 {
+		// Only strip when the parentheses are balanced — otherwise the
+		// `(` is part of a malformed key we shouldn't silently truncate.
+		if i := strings.Index(entry, "("); i > 0 && strings.HasSuffix(entry, ")") {
 			entry = entry[:i]
 		}
 

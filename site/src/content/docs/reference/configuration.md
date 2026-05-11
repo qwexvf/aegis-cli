@@ -64,10 +64,14 @@ The override is the operator's "I know what I'm doing" escape hatch. Both env va
 - **Binary droppers** — stray `.exe`/`.dll`/`.so`/`.scpt`/`.ps1` in a package tarball. Per-ecosystem carve-outs recognise legitimate native shapes (PyPI `<pkg>/.cpython-*-*.so`, `<pkg>/.libs/`, `.abi3.so`, `.pyd`).
 - **Typosquat names** — Levenshtein ≤ 2 from a curated top-list per ecosystem (npm, PyPI, crates.io). One-line addition per new ecosystem via `top_<eco>_packages.txt`.
 - **Maintainer hijack** — fresh release after a long quiet period from a low-download package, the canonical event-stream / ctx / rest-client shape.
+- **Maintainer transfer** — current version's `_npmUser` differs from the previous version's. Catches account-handoff attacks where the package is republished by a new (potentially attacker) maintainer.
+- **Tarball / source drift** *(opt-in)* — fetches the GitHub repo tree for the tag matching the published version and diffs against the tarball file list. Flags scripts or code present in the tarball but absent from the source tag (the canonical "post-publish payload injection" shape).
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `AEGIS_NO_HEURISTICS` | (unset) | When set to anything non-empty, disables the malware heuristic pass. Useful when A/B testing heuristic vs AST-only scoring or to silence false positives during initial rollout. |
+| `AEGIS_DRIFT` | (unset) | When set to anything non-empty, enables the tarball-source-drift detector. Requires network access to GitHub; respects `GITHUB_TOKEN` for the 5000/hr authenticated rate limit (60/hr without). Direct deps only by default — see `AEGIS_DRIFT_ALL`. |
+| `AEGIS_DRIFT_ALL` | (unset) | Run the drift detector on transitive deps too, not just direct ones. Cold-scan slow on large dep graphs; use when investigating a specific incident. |
 
 ### Reachability
 
@@ -83,6 +87,12 @@ The override is the operator's "I know what I'm doing" escape hatch. Both env va
 | Variable | Default | Purpose |
 |---|---|---|
 | `AEGIS_NPM_REGISTRY` | `https://registry.npmjs.org` | Override the npm registry endpoint. Use this for private registries (Verdaccio, Artifactory, GitHub Packages) — version resolution and tarball fetches both honor it. |
+
+### Debugging
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AEGIS_PPROF` | (unset) | Set to a `host:port` (e.g. `:6060`) to expose Go's `net/http/pprof` endpoints for the duration of the command. Useful for profiling cold scans on large dep graphs — `go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30`. |
 
 ### Display / TTY
 
