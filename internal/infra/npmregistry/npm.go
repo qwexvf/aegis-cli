@@ -124,6 +124,13 @@ type MaintainerSignal struct {
 	// PreviousPublishedAt is RFC3339 of the previous version's
 	// publish time. Pair with PublishedAt to compute the gap.
 	PreviousPublishedAt string
+
+	// Publisher is _npmUser.name from versions[version]. Empty when
+	// the registry omits it.
+	Publisher string
+
+	// PreviousPublisher is _npmUser.name from versions[PreviousVersion].
+	PreviousPublisher string
 }
 
 // FetchMaintainerSignal returns the metadata bundle used by the
@@ -157,8 +164,20 @@ func (c *Client) FetchMaintainerSignal(ctx context.Context, pkg, version string)
 	if resp.StatusCode != http.StatusOK {
 		return MaintainerSignal{}, fmt.Errorf("registry returned %d for %s", resp.StatusCode, pkg)
 	}
+	// We pull two pieces of per-version metadata from the packument:
+	//   - time[version]            → PublishedAt
+	//   - versions[version]._npmUser.name → Publisher
+	// versions is a fat map (one entry per published version, each
+	// with the full package.json + npm metadata); we only care about
+	// _npmUser, so we declare a narrow struct so the decoder skips
+	// the rest of each version's payload cheaply.
 	var p struct {
-		Time map[string]string `json:"time"`
+		Time     map[string]string `json:"time"`
+		Versions map[string]struct {
+			NpmUser struct {
+				Name string `json:"name"`
+			} `json:"_npmUser"`
+		} `json:"versions"`
 	}
 	body, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
 	if err != nil {
@@ -170,8 +189,12 @@ func (c *Client) FetchMaintainerSignal(ctx context.Context, pkg, version string)
 
 	out := MaintainerSignal{
 		PublishedAt: p.Time[version],
+		Publisher:   p.Versions[version].NpmUser.Name,
 	}
 	out.PreviousVersion, out.PreviousPublishedAt = previousVersion(p.Time, version, out.PublishedAt)
+	if out.PreviousVersion != "" {
+		out.PreviousPublisher = p.Versions[out.PreviousVersion].NpmUser.Name
+	}
 
 	// Best-effort weekly downloads. Failure is silently zeroed —
 	// the heuristic interprets zero as "unknown", not "no users".
