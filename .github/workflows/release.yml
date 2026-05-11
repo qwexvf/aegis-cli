@@ -45,7 +45,7 @@ jobs:
       # outages don't block releases. use-cache: true reuses the zig
       # binary across runs (saves ~3 min on warm cache, avoids the
       # CDN entirely).
-      - uses: mlugg/setup-zig@v1
+      - uses: mlugg/setup-zig@v2
         with:
           version: 0.13.0
           use-cache: true
