@@ -10,10 +10,20 @@ sidebar:
 ### Pre-built binaries
 
 Download the latest release for your platform from
-[Releases](https://github.com/qwexvf/aegis-cli/releases). Artifacts are
-signed with [cosign](https://docs.sigstore.dev/cosign/) keyless OIDC and
-ship with [SLSA build provenance](https://slsa.dev/). Verify before
-running:
+[Releases](https://github.com/qwexvf/aegis-cli/releases). Two flavours:
+
+| Asset | Platforms | AST scanner | Notes |
+|---|---|---|---|
+| `aegis_<ver>_linux_amd64.tar.gz` | linux/amd64 | yes (cgo, tree-sitter) | Full feature set. |
+| `aegis-core_<ver>_<os>_<arch>.tar.gz` | linux/darwin/windows × amd64/arm64 | no (pure Go) | Install gate, OSV lookup, heuristics. Drop-in CLI for environments without a cgo toolchain. |
+
+If you need the AST scanner on darwin / windows / linux-arm64, build
+from source (see below) — the `go install` toolchain handles cgo
+locally.
+
+Artifacts are signed with [cosign](https://docs.sigstore.dev/cosign/)
+keyless OIDC and ship with [SLSA build provenance](https://slsa.dev/).
+Verify before running:
 
 ```sh
 cosign verify-blob \
