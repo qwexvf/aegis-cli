@@ -77,6 +77,15 @@ func (a *repoTreeAdapter) FetchRepoTree(
 			// drift check for this dep, don't fail the scan.
 			return nil, "", nil
 		}
+		// Truncated trees (>100k entries) are an incomplete file
+		// list; comparing the tarball against the partial set
+		// produces silent false-negatives — a payload in the
+		// unreturned tail looks like it matches because we never
+		// see it. Skip the drift check on truncation rather than
+		// emit a misleading "clean" verdict.
+		if tree.Truncated {
+			return nil, "", nil
+		}
 		paths := make([]string, 0, len(tree.Tree))
 		for _, n := range tree.Tree {
 			if n.Type == "blob" {
