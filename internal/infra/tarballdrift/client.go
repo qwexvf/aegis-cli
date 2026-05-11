@@ -124,7 +124,7 @@ func (c *Client) Tree(ctx context.Context, owner, repo, ref string) (*TreeRespon
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if err := classifyStatus(resp); err != nil {
 		return nil, err
@@ -151,7 +151,7 @@ func (c *Client) resolveCommitSHA(ctx context.Context, owner, repo, ref string) 
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if err := classifyStatus(resp); err != nil {
 		return "", err
