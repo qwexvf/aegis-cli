@@ -2,10 +2,6 @@ bin/
 
 dist/
 
-# Zig cross-cgo cache (setup-zig redirects ZIG_*_CACHE_DIR into the
-# repo working dir; goreleaser rejects a dirty tree otherwise).
-.zig-cache/
-
 # stray gendocs binary if built at root (cmd/gendocs/ is the source)
 /gendocs
 
