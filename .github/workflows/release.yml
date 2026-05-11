@@ -45,10 +45,17 @@ jobs:
       # outages don't block releases. use-cache: true reuses the zig
       # binary across runs (saves ~3 min on warm cache, avoids the
       # CDN entirely).
-      - uses: mlugg/setup-zig@v2
+      - uses: mlugg/setup-zig@v2.2.1
         with:
-          version: 0.13.0
+          version: 0.15.1
           use-cache: true
+
+      # Sanity-check zig is on PATH before goreleaser runs. The per-build
+      # CC=`zig cc -target ...` overrides in .goreleaser.yaml depend on
+      # this; if zig isn't reachable, cgo cross-builds silently fall back
+      # to no-cgo and tree-sitter bindings get excluded by build
+      # constraints (caught us on v0.15.0).
+      - run: zig version
 
       - uses: sigstore/cosign-installer@v3
 
