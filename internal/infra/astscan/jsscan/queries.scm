@@ -21,11 +21,18 @@
     (string (string_fragment) @mod
       (#eq? @mod "child_process")))) @cap.shell-spawn
 
-;; obj.exec/execSync/spawn/spawnSync/fork/execFile(/Sync)
+;; obj.execSync/execFile/execFileSync/spawn/spawnSync/fork
+;; Note: bare ".exec" is intentionally EXCLUDED. RegExp.prototype.exec
+;; is the dominant `.exec(` shape in real-world JS (every regex-heavy
+;; lib — color parsers, URL routers, validators — calls `re.exec(s)`).
+;; The other names listed here have no RegExp-prototype collision and
+;; are specific to child_process. The require('child_process') match
+;; above still catches the cp.exec(cmd) form for any package that
+;; actually pulls the module in.
 (call_expression
   function: (member_expression
     property: (property_identifier) @method
-    (#match? @method "^(exec|execSync|execFile|execFileSync|spawn|spawnSync|fork)$")))
+    (#match? @method "^(execSync|execFile|execFileSync|spawn|spawnSync|fork)$")))
   @cap.shell-spawn
 
 ;; bare execSync/spawnSync/execFileSync — high-confidence destructured

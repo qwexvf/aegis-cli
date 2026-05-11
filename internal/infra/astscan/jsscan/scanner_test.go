@@ -154,18 +154,17 @@ func TestScanner_UAParserJSStylePayloadDetectsAllSignals(t *testing.T) {
 }
 
 func TestScanner_DoesNotFalsePositiveOnMethodNamedExec(t *testing.T) {
-	// Verify we don't trip on user-defined methods accidentally named
-	// "exec" — but our query DOES match "obj.exec(...)" without checking
-	// the receiver. This is a known false-positive class. Document:
-	src := `
-		class MyDB { exec(sql) { return this.driver.run(sql); } }
-		new MyDB().exec("SELECT 1");
-	`
-	f := scan(t, src)
-	if _, hit := f.Capabilities[domain.CapShellSpawn]; !hit {
-		// Expected behavior: today's query DOES flag this. We assert
-		// the current state so downstream changes are intentional.
-		t.Logf("note: db.exec() did not trip CapShellSpawn (query may have been tightened — update test)")
+	// Bare `.exec(` is RegExp.prototype.exec in real-world JS more often
+	// than child_process.exec. The query intentionally drops bare
+	// `.exec` (the `require('child_process')` rule still catches the
+	// real shape). Make sure neither db.exec nor regex.exec trips.
+	for _, src := range []string{
+		`class MyDB { exec(sql) { return this.driver.run(sql); } } new MyDB().exec("SELECT 1");`,
+		`const RGB_RE = /^rgb\(/; RGB_RE.exec("rgb(0,0,0)");`,
+		`const m = /(\d+)/.exec(input.trim());`,
+	} {
+		f := scan(t, src)
+		notHas(t, f, domain.CapShellSpawn)
+		notHas(t, f, domain.CapDynamicEval)
 	}
-	notHas(t, f, domain.CapDynamicEval)
 }
