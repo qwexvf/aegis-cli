@@ -1,20 +1,15 @@
 name: release
 
+# Cut a release: `git tag v0.X.Y && git push origin v0.X.Y`.
+# Goreleaser auto-generates the changelog from conventional-commit
+# messages (see the `changelog:` block in .goreleaser.yaml).
 on:
   push:
     tags:
       - 'v*'
-  # release-please creates the tag + GitHub Release via the GITHUB_TOKEN,
-  # and tags created by GITHUB_TOKEN do NOT fire `push` workflows (anti-loop
-  # guard). The `release: published` event DOES fire, so this branch picks
-  # up release-please-driven releases. Manual `git push origin v*` still
-  # uses the `push: tags` branch above.
-  release:
-    types: [published]
 
 # Same tag re-pushed (e.g. force-update during a rocky release) cancels
-# nothing — we want both runs to finish so we can pick the green one.
-# release-please-driven tags never overlap.
+# nothing — let both runs finish so we can pick the green one.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -42,27 +37,10 @@ jobs:
 
       - uses: anchore/sbom-action/download-syft@v0
 
-      # Extract this tag's section from CHANGELOG.md so the GitHub
-      # release body shows the curated notes instead of the
-      # auto-generated commit list. Falls back to auto-generated
-      # notes when the section is missing.
-      - name: Extract release notes from CHANGELOG.md
-        id: notes
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          if bash scripts/extract-changelog.sh "$tag" > /tmp/release-notes.md && [[ -s /tmp/release-notes.md ]]; then
-            echo "Found CHANGELOG.md section for $tag ($(wc -l < /tmp/release-notes.md) lines)"
-            echo "notes_arg=--release-notes=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
-          else
-            echo "No CHANGELOG.md section for $tag — falling back to auto-generated notes"
-            echo "notes_arg=" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: latest
-          args: release --clean ${{ steps.notes.outputs.notes_arg }}
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
