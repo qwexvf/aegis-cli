@@ -97,3 +97,87 @@ func TestDetectMaintainerHijackRisk(t *testing.T) {
 		})
 	}
 }
+
+func TestDetectMaintainerChanged(t *testing.T) {
+	tests := []struct {
+		name string
+		sig  domain.MaintainerSignal
+		want domain.Capability
+	}{
+		{
+			name: "event-stream shape — publisher changed between versions",
+			sig: domain.MaintainerSignal{
+				Publisher:         "right9ctrl",
+				PreviousPublisher: "dominictarr",
+			},
+			want: domain.CapMaintainerChanged,
+		},
+		{
+			name: "same publisher across versions — no signal",
+			sig: domain.MaintainerSignal{
+				Publisher:         "sindresorhus",
+				PreviousPublisher: "sindresorhus",
+			},
+			want: 0,
+		},
+		{
+			name: "missing current publisher — no signal (don't fire on missing data)",
+			sig: domain.MaintainerSignal{
+				PreviousPublisher: "dominictarr",
+			},
+			want: 0,
+		},
+		{
+			name: "missing previous publisher — no signal",
+			sig: domain.MaintainerSignal{
+				Publisher: "right9ctrl",
+			},
+			want: 0,
+		},
+		{
+			name: "no data at all — no signal",
+			sig:  domain.MaintainerSignal{},
+			want: 0,
+		},
+		{
+			name: "publisher case sensitive — different case is a different account",
+			sig: domain.MaintainerSignal{
+				Publisher:         "Dominictarr",
+				PreviousPublisher: "dominictarr",
+			},
+			want: domain.CapMaintainerChanged,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := DetectMaintainerChanged(tc.sig)
+			if got != tc.want {
+				t.Errorf("DetectMaintainerChanged = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunMaintainerSignal_BothFire(t *testing.T) {
+	// event-stream shape: publisher changed AND hijack-shape (low
+	// downloads, long gap, fresh publish). Both heuristics fire;
+	// the aggregator returns both caps.
+	now := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
+	rfc := func(d time.Time) string { return d.Format(time.RFC3339) }
+	sig := domain.MaintainerSignal{
+		PublishedAt:         rfc(now.Add(-3 * 24 * time.Hour)),
+		PreviousPublishedAt: rfc(now.AddDate(-1, 0, 0)),
+		WeeklyDownloads:     200,
+		Publisher:           "right9ctrl",
+		PreviousPublisher:   "dominictarr",
+	}
+	hijack := detectMaintainerHijackAt(sig, fixedNow(now))
+	changed := DetectMaintainerChanged(sig)
+	if hijack != domain.CapMaintainerHijackRisk {
+		t.Errorf("hijack = %v, want CapMaintainerHijackRisk", hijack)
+	}
+	if changed != domain.CapMaintainerChanged {
+		t.Errorf("changed = %v, want CapMaintainerChanged", changed)
+	}
+}

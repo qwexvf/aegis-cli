@@ -208,11 +208,12 @@ type MalwareHeuristics interface {
 	Run(eco domain.Ecosystem, name string, manifestRaw []byte, src PackageSource) []domain.Capability
 
 	// RunMaintainerSignal is a separate entry point for the
-	// hijack heuristic because it needs registry-side data the
-	// per-package source pass doesn't have. Snapshot.Enrich calls
-	// it after FetchMaintainerSignal returns. Returns 0 when no
-	// signal fires.
-	RunMaintainerSignal(sig domain.MaintainerSignal) domain.Capability
+	// hijack + transfer heuristics because they need registry-side
+	// data the per-package source pass doesn't have. Snapshot.Enrich
+	// calls it after FetchMaintainerSignal returns. Returns the
+	// slice of capabilities that fired (today: hijack-risk
+	// and/or maintainer-changed); empty slice when no signal.
+	RunMaintainerSignal(sig domain.MaintainerSignal) []domain.Capability
 
 	// RunTarballDrift is the third entry point: detects "review-
 	// evading payload" — files in the published tarball that don't

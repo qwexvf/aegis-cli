@@ -56,5 +56,7 @@ func (r *Resolver) FetchMaintainerSignal(ctx context.Context, eco domain.Ecosyst
 		WeeklyDownloads:     sig.WeeklyDownloads,
 		PreviousVersion:     sig.PreviousVersion,
 		PreviousPublishedAt: sig.PreviousPublishedAt,
+		Publisher:           sig.Publisher,
+		PreviousPublisher:   sig.PreviousPublisher,
 	}, nil
 }
