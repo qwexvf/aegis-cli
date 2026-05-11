@@ -2,15 +2,20 @@
 #
 # Two build flavours:
 #
-#   1. cgo (linux/amd64 only): the default `aegis` binary and the per-PM
-#      `aegis-{npm,bun,yarn,pnpm}` binaries embed the JS AST scanner via
-#      tree-sitter cgo. We only ship these for linux/amd64. Anyone on a
-#      different OS/arch who wants the AST scanner installs from source
-#      with `go install github.com/qwexvf/aegis-cli/cmd/aegis@latest`.
+#   1. `aegis` (cgo, linux/amd64 only): default binary with the JS AST
+#      scanner via tree-sitter cgo. Anyone on a different OS/arch who
+#      wants the AST scanner installs from source with
+#      `go install github.com/qwexvf/aegis-cli/cmd/aegis@latest`.
 #
-#   2. nojsscan (linux/darwin/windows × amd64/arm64): `aegis-core` drops
-#      the AST scanner via the `nojsscan` build tag. Pure-Go, no cgo.
-#      Covers every other platform.
+#   2. `aegis-core` (no-cgo, linux/darwin/windows × amd64/arm64): drops
+#      the AST scanner via the `nojsscan` build tag. Pure-Go. Covers
+#      every other platform.
+#
+# Per-pm binaries (`aegis-npm`, `aegis-bun`, …) were dropped in v0.16
+# — they trimmed only 19 KB off the binary, not worth four extra
+# builds + archives + cosign attestations. The build tags
+# (`nonpm`, `nobun`, `noyarn`, `nopnpm`) stay around for users who
+# want a smaller `go install`.
 #
 # Version, commit, build-date are stamped into the cli package via
 # ldflags. The `version` cobra command (root.go) reads them.
@@ -48,50 +53,6 @@ builds:
       - -tags=nojsscan
     ldflags: *ldflags
 
-  - id: aegis-npm
-    binary: aegis-npm
-    main: ./cmd/aegis
-    env:
-      - CGO_ENABLED=1
-    goos: [linux]
-    goarch: [amd64]
-    flags:
-      - -tags=nobun,noyarn,nopnpm
-    ldflags: *ldflags
-
-  - id: aegis-bun
-    binary: aegis-bun
-    main: ./cmd/aegis
-    env:
-      - CGO_ENABLED=1
-    goos: [linux]
-    goarch: [amd64]
-    flags:
-      - -tags=nonpm,noyarn,nopnpm
-    ldflags: *ldflags
-
-  - id: aegis-yarn
-    binary: aegis-yarn
-    main: ./cmd/aegis
-    env:
-      - CGO_ENABLED=1
-    goos: [linux]
-    goarch: [amd64]
-    flags:
-      - -tags=nonpm,nobun,nopnpm
-    ldflags: *ldflags
-
-  - id: aegis-pnpm
-    binary: aegis-pnpm
-    main: ./cmd/aegis
-    env:
-      - CGO_ENABLED=1
-    goos: [linux]
-    goarch: [amd64]
-    flags:
-      - -tags=nonpm,nobun,noyarn
-    ldflags: *ldflags
-
 archives:
   - id: default
     ids: [aegis]
@@ -111,34 +72,6 @@ archives:
     files:
       - LICENSE
       - README.md
-
-  # One archive entry per pm-id so each ships its own tarball.
-  # A single archive entry with `ids: [aegis-npm, aegis-bun, ...]`
-  # collapses to one tarball per target (which on linux/amd64 means
-  # all four binaries merged into one archive).
-  - id: aegis-npm
-    ids: [aegis-npm]
-    formats: [tar.gz]
-    name_template: 'aegis-npm_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    files: [LICENSE, README.md]
-
-  - id: aegis-bun
-    ids: [aegis-bun]
-    formats: [tar.gz]
-    name_template: 'aegis-bun_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    files: [LICENSE, README.md]
-
-  - id: aegis-yarn
-    ids: [aegis-yarn]
-    formats: [tar.gz]
-    name_template: 'aegis-yarn_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    files: [LICENSE, README.md]
-
-  - id: aegis-pnpm
-    ids: [aegis-pnpm]
-    formats: [tar.gz]
-    name_template: 'aegis-pnpm_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    files: [LICENSE, README.md]
 
 checksum:
   name_template: checksums.txt
