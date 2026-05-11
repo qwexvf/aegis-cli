@@ -112,13 +112,33 @@ archives:
       - LICENSE
       - README.md
 
-  - id: per-pm
-    ids: [aegis-npm, aegis-bun, aegis-yarn, aegis-pnpm]
+  # One archive entry per pm-id so each ships its own tarball.
+  # A single archive entry with `ids: [aegis-npm, aegis-bun, ...]`
+  # collapses to one tarball per target (which on linux/amd64 means
+  # all four binaries merged into one archive).
+  - id: aegis-npm
+    ids: [aegis-npm]
     formats: [tar.gz]
-    name_template: '{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    files:
-      - LICENSE
-      - README.md
+    name_template: 'aegis-npm_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files: [LICENSE, README.md]
+
+  - id: aegis-bun
+    ids: [aegis-bun]
+    formats: [tar.gz]
+    name_template: 'aegis-bun_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files: [LICENSE, README.md]
+
+  - id: aegis-yarn
+    ids: [aegis-yarn]
+    formats: [tar.gz]
+    name_template: 'aegis-yarn_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files: [LICENSE, README.md]
+
+  - id: aegis-pnpm
+    ids: [aegis-pnpm]
+    formats: [tar.gz]
+    name_template: 'aegis-pnpm_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files: [LICENSE, README.md]
 
 checksum:
   name_template: checksums.txt
