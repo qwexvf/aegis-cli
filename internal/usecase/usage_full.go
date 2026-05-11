@@ -1,6 +1,12 @@
+//go:build !nojsscan
+
 // Package usecase: usage.go contains AnalyzeUsage, the project-source
 // import walk that classifies each Dependency as Used / Unused /
 // Unknown.
+//
+// This file is the full implementation. The `nojsscan` build (see
+// usage_stub.go) ships no-op stubs so binaries without the AST scanner
+// don't drag in depusage's cgo tree-sitter chain.
 //
 // Why a separate file (and not inside snapshot.go's Enrich): the import
 // scan is independent of the OSV-lookup + AST-fingerprint phases. Wiring
