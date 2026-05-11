@@ -135,6 +135,7 @@ Full docs: **[qwexvf.github.io/aegis-cli](https://qwexvf.github.io/aegis-cli/)**
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Open an issue before a non-trivial PR.
 Vulnerability reports: [GitHub Private Vulnerability Reporting](https://github.com/qwexvf/aegis-cli/security/advisories/new) — not public issues.
+Maintainers cutting a release: [RELEASING.md](RELEASING.md).
 
 ## License
 
