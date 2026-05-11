@@ -80,14 +80,75 @@ var downloadExecPatterns = []*regexp.Regexp{
 
 // inlineExecPatterns matches inline scripting from CLI flags — the
 // other half of the canonical attack: short, hard-to-read, runs at
-// install time.
+// install time. Each pattern captures the inline script body (group 2)
+// so we can inspect it; benign one-liners like
+// `node --eval "if (process.env.CI) process.exit(0)"` (the standard
+// husky-skip-in-CI pattern) shouldn't trip the alarm.
 var inlineExecPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\bnode\s+-e\b`),
-	regexp.MustCompile(`\bnode\s+--eval\b`),
-	regexp.MustCompile(`\bpython\d?\s+-c\b`),
-	regexp.MustCompile(`\bruby\s+-e\b`),
-	regexp.MustCompile(`\bperl\s+-e\b`),
-	regexp.MustCompile(`\bdeno\s+eval\b`),
+	regexp.MustCompile(`\b(node)\s+(?:-e|--eval)\s+(.+)$`),
+	regexp.MustCompile(`\b(python\d?)\s+-c\s+(.+)$`),
+	regexp.MustCompile(`\b(ruby|perl)\s+-e\s+(.+)$`),
+	regexp.MustCompile(`\b(deno)\s+eval\s+(.+)$`),
+}
+
+// inlineBenignPattern matches inline scripts that, on inspection, are
+// short control-flow one-liners — not download-and-execute payloads.
+// Allows `node --eval "if (process.env.CI) process.exit(0)"` and similar
+// CI-skip guards without flagging the whole prepare hook.
+var inlineBenignPattern = regexp.MustCompile(
+	`^[\s'"]*(?:if\s*\(?\s*)?process\.(?:env\.\w+|exit\s*\(\s*\d+\s*\)|argv|platform|version)`)
+
+// inlineDangerSignals is a deny-list of substrings that, when found
+// inside an inline -e/-c script body, indicate real risk: process
+// spawning, dynamic require/import, network I/O, or filesystem writes.
+var inlineDangerSignals = []string{
+	"require(", "import(",
+	"child_process", "execSync", "spawn", "exec(",
+	"fetch(", "http.", "https.", "net.",
+	"fs.write", "writeFileSync", "createWriteStream",
+	"atob(", `Buffer.from`, "base64",
+	"eval(", "Function(",
+}
+
+// inlineLengthThreshold — anything longer is treated as opaque enough
+// to warrant a human look, even without a deny-list match.
+const inlineLengthThreshold = 120
+
+// inlineScriptIsSuspicious decides whether a captured inline body
+// (the content after `-e` / `--eval` / `-c`) deserves a flag. Strips
+// the surrounding quotes the shell would, then applies the deny-list.
+// Short, deny-list-clean bodies pass.
+func inlineScriptIsSuspicious(body string) bool {
+	body = strings.TrimSpace(body)
+	body = strings.TrimRight(body, "&|;")
+	body = strings.TrimSpace(body)
+	body = trimMatchingQuotes(body)
+	if body == "" {
+		return false
+	}
+	if len(body) > inlineLengthThreshold {
+		return true
+	}
+	if inlineBenignPattern.MatchString(body) {
+		return false
+	}
+	for _, sig := range inlineDangerSignals {
+		if strings.Contains(body, sig) {
+			return true
+		}
+	}
+	return false
+}
+
+func trimMatchingQuotes(s string) string {
+	if len(s) < 2 {
+		return s
+	}
+	first, last := s[0], s[len(s)-1]
+	if (first == '"' || first == '\'') && first == last {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
 
 // base64PipedPattern matches a base64 blob piped into a shell —
@@ -113,7 +174,19 @@ func scriptMatchesMalwarePattern(body string) bool {
 		}
 	}
 	for _, re := range inlineExecPatterns {
-		if re.MatchString(body) {
+		m := re.FindStringSubmatch(body)
+		if m == nil {
+			continue
+		}
+		// Only the node case gets the benign carve-out — `node --eval
+		// "if (process.env.CI) process.exit(0)"` is the standard
+		// husky-skip-in-CI prepare hook and shouldn't trip us.
+		// python/ruby/perl/deno -e payloads are rarely seen outside
+		// of attacker payloads, so keep flagging them unconditionally.
+		if m[1] != "node" {
+			return true
+		}
+		if inlineScriptIsSuspicious(m[2]) {
 			return true
 		}
 	}
