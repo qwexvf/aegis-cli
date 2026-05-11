@@ -1,19 +1,18 @@
 # GoReleaser config for the aegis CLI.
 #
-# Build flavours mirror the Makefile. Two pieces of context to know:
+# Two build flavours:
 #
-#   1. The default `aegis` binary embeds the JS AST scanner (tree-sitter
-#      via cgo). Cross-compiling cgo from a single linux/amd64 runner is
-#      painful, so the matrix uses native-arch runners later. For now the
-#      release pipeline uses zig as the cross-compiler so a single host
-#      can produce all binaries — see the `env` block on each build.
+#   1. cgo (linux/amd64 only): the default `aegis` binary and the per-PM
+#      `aegis-{npm,bun,yarn,pnpm}` binaries embed the JS AST scanner via
+#      tree-sitter cgo. We only ship these for linux/amd64. Anyone on a
+#      different OS/arch who wants the AST scanner installs from source
+#      with `go install github.com/qwexvf/aegis-cli/cmd/aegis@latest`.
 #
-#   2. The `nojsscan` build tag drops the AST scanner; that build does
-#      not need cgo. The per-PM binaries DO still embed the scanner
-#      (per Makefile docstring: "AST scanner stays on; combine with
-#      nojsscan for gate-only"), so they need cgo too.
+#   2. nojsscan (linux/darwin/windows × amd64/arm64): `aegis-core` drops
+#      the AST scanner via the `nojsscan` build tag. Pure-Go, no cgo.
+#      Covers every other platform.
 #
-# Version, commit, and build-date are stamped into the cli package via
+# Version, commit, build-date are stamped into the cli package via
 # ldflags. The `version` cobra command (root.go) reads them.
 
 version: 2
@@ -25,39 +24,19 @@ before:
     - go mod download
 
 builds:
-  # ---------------------------------------------------------------- #
-  # Default release: full feature set, all PMs, JS AST scanner on.   #
-  # ---------------------------------------------------------------- #
   - id: aegis
     binary: aegis
     main: ./cmd/aegis
     env:
       - CGO_ENABLED=1
-      # Cross-arch cgo from a linux/amd64 GitHub runner: zig is the C
-      # compiler for arm64; see `overrides:` below. amd64 uses host gcc.
-    overrides:
-      - goos: linux
-        goarch: arm64
-        env:
-          - 'CC={{ .Env.GITHUB_WORKSPACE }}/scripts/zig-cc-arm64.sh'
-    # v0.1.0 ships cgo binaries for linux/amd64 + linux/arm64 only.
-    # Reliable cross-cgo to darwin and windows from a linux runner
-    # needs the macOS SDK / mingw headers in addition to zig; ship
-    # aegis-core (no cgo) for those platforms today, and add native
-    # macos-latest / windows-latest jobs in a future minor release if
-    # demand justifies the CI cost. Mac users who want the AST scanner
-    # can `go install github.com/qwexvf/aegis-cli/cmd/aegis@latest`.
     goos: [linux]
-    goarch: [amd64, arm64]
-    ldflags:
+    goarch: [amd64]
+    ldflags: &ldflags
       - -s -w
       - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
       - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
       - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
 
-  # ---------------------------------------------------------------- #
-  # Core: same binary minus the JS AST scanner. No cgo.              #
-  # ---------------------------------------------------------------- #
   - id: aegis-core
     binary: aegis-core
     main: ./cmd/aegis
@@ -67,105 +46,57 @@ builds:
     goarch: [amd64, arm64]
     flags:
       - -tags=nojsscan
-    ldflags:
-      - -s -w
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+    ldflags: *ldflags
 
-  # ---------------------------------------------------------------- #
-  # Per-PM single-tool binaries. Same shape as the Makefile targets. #
-  # AST scanner stays compiled in (per Makefile commentary), so cgo. #
-  # ---------------------------------------------------------------- #
   - id: aegis-npm
     binary: aegis-npm
     main: ./cmd/aegis
     env:
       - CGO_ENABLED=1
-    overrides:
-      - goos: linux
-        goarch: arm64
-        env:
-          - 'CC={{ .Env.GITHUB_WORKSPACE }}/scripts/zig-cc-arm64.sh'
     goos: [linux]
-    goarch: [amd64, arm64]
+    goarch: [amd64]
     flags:
       - -tags=nobun,noyarn,nopnpm
-    ldflags:
-      - -s -w
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+    ldflags: *ldflags
 
   - id: aegis-bun
     binary: aegis-bun
     main: ./cmd/aegis
     env:
       - CGO_ENABLED=1
-    overrides:
-      - goos: linux
-        goarch: arm64
-        env:
-          - 'CC={{ .Env.GITHUB_WORKSPACE }}/scripts/zig-cc-arm64.sh'
     goos: [linux]
-    goarch: [amd64, arm64]
+    goarch: [amd64]
     flags:
       - -tags=nonpm,noyarn,nopnpm
-    ldflags:
-      - -s -w
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+    ldflags: *ldflags
 
   - id: aegis-yarn
     binary: aegis-yarn
     main: ./cmd/aegis
     env:
       - CGO_ENABLED=1
-    overrides:
-      - goos: linux
-        goarch: arm64
-        env:
-          - 'CC={{ .Env.GITHUB_WORKSPACE }}/scripts/zig-cc-arm64.sh'
     goos: [linux]
-    goarch: [amd64, arm64]
+    goarch: [amd64]
     flags:
       - -tags=nonpm,nobun,nopnpm
-    ldflags:
-      - -s -w
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+    ldflags: *ldflags
 
   - id: aegis-pnpm
     binary: aegis-pnpm
     main: ./cmd/aegis
     env:
       - CGO_ENABLED=1
-    overrides:
-      - goos: linux
-        goarch: arm64
-        env:
-          - 'CC={{ .Env.GITHUB_WORKSPACE }}/scripts/zig-cc-arm64.sh'
     goos: [linux]
-    goarch: [amd64, arm64]
+    goarch: [amd64]
     flags:
       - -tags=nonpm,nobun,noyarn
-    ldflags:
-      - -s -w
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
-      - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
+    ldflags: *ldflags
 
 archives:
   - id: default
     ids: [aegis]
     formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
-    name_template: >-
-      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
     files:
       - LICENSE
       - README.md
@@ -176,8 +107,7 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
-    name_template: >-
-      aegis-core_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    name_template: 'aegis-core_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
     files:
       - LICENSE
       - README.md
@@ -185,11 +115,7 @@ archives:
   - id: per-pm
     ids: [aegis-npm, aegis-bun, aegis-yarn, aegis-pnpm]
     formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
-    name_template: >-
-      {{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    name_template: '{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
     files:
       - LICENSE
       - README.md
@@ -223,7 +149,7 @@ changelog:
 
 # Cosign keyless OIDC signing. Signs the checksums file — verifying
 # checksums.txt then verifying any artifact against it transitively
-# verifies the artifact. Avoids signing every tarball individually.
+# verifies the artifact.
 signs:
   - id: cosign-checksums
     cmd: cosign
@@ -237,11 +163,6 @@ signs:
     output: true
     certificate: '${artifact}.pem'
     signature: '${artifact}.sig'
-
-# Package-manager distribution (Homebrew tap, Scoop bucket, etc.) is
-# intentionally NOT configured. First releases ship as raw GitHub Release
-# tarballs only. Add `brews:` / `scoops:` / `nfpms:` blocks once the
-# project has a stable cadence and the tap/bucket repos exist.
 
 release:
   github:
