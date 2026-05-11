@@ -4,6 +4,13 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.15.1](https://github.com/qwexvf/aegis-cli/compare/v0.15.0...v0.15.1) (2026-05-11)
+
+
+### Fixed
+
+* **release:** split per-pm archives so all four pm tarballs ship ([#58](https://github.com/qwexvf/aegis-cli/issues/58)) ([12f4a66](https://github.com/qwexvf/aegis-cli/commit/12f4a66789eb8aa720af5a13c8bc03dee56667d8))
+
 ## [0.15.0](https://github.com/qwexvf/aegis-cli/compare/v0.14.0...v0.15.0) (2026-05-11)
 
 
