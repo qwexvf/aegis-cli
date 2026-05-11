@@ -265,6 +265,9 @@ func main() {
 		// fast. Pair with GITHUB_TOKEN for the 5000/hr cap.
 		if os.Getenv("AEGIS_DRIFT") != "" {
 			snapshot.WithRepoTreeFetcher(newRepoTreeAdapter())
+			if os.Getenv("AEGIS_DRIFT_ALL") != "" {
+				snapshot.WithRepoTreeFullSweep(true)
+			}
 		}
 	}
 	analyzePresenter := cli.NewAnalyzePresenter(presenter)

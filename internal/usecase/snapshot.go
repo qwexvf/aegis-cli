@@ -90,6 +90,13 @@ type Snapshot struct {
 	// other heuristics still run.
 	repoTree RepoTreeFetcher
 
+	// repoTreeFullSweep widens the drift check from direct-deps-only
+	// to every dep in the snapshot. Off by default because a 5000-
+	// dep tree would burn the GitHub 5000/hr quota in one scan;
+	// callers running an offline audit (cached GH responses, no
+	// time pressure) can flip this via WithRepoTreeFullSweep.
+	repoTreeFullSweep bool
+
 	// allowlist is applied post-RiskScore/DriftScore in Diff so
 	// known-benign capabilities (lodash dynamic-eval, build tools'
 	// shell-spawn) don't manufacture false-positive verdicts.
@@ -191,6 +198,17 @@ func (s *Snapshot) WithMaintainerSignalFetcher(f MaintainerSignalFetcher) *Snaps
 // nil disables drift detection; other heuristics still run.
 func (s *Snapshot) WithRepoTreeFetcher(r RepoTreeFetcher) *Snapshot {
 	s.repoTree = r
+	return s
+}
+
+// WithRepoTreeFullSweep flips the drift check from direct-deps-only
+// to every dep (transitive included). Default is direct-only because
+// fetching one GitHub tree per dep on a 5000-dep project burns the
+// 5000/hr quota in a single scan and adds ~10 minutes of latency.
+// Set this when running an audit pipeline that wants deep coverage
+// and can tolerate the rate-limit ceiling.
+func (s *Snapshot) WithRepoTreeFullSweep(full bool) *Snapshot {
+	s.repoTreeFullSweep = full
 	return s
 }
 
@@ -504,7 +522,15 @@ func (s *Snapshot) analyzeOneSlot(ctx context.Context, dep domain.Dependency, sl
 		// extra round-trip (GitHub API). When the fetcher returns
 		// no files (unresolved repo/tag, rate-limited, unsupported
 		// host), the detector returns 0 ("no signal") and we skip.
-		if s.repoTree != nil {
+		//
+		// Restricted to direct deps by default: on a 5000-dep tree,
+		// the drift check would burn the 5000/hr GitHub quota in one
+		// scan and add ~10 minutes of latency. Direct deps are the
+		// surface the user actually controls, and a real publish-
+		// time payload at any depth eventually reaches the direct
+		// surface anyway. Set AEGIS_DRIFT_ALL=1 to scan transitives
+		// too (for offline audits with cached GH responses).
+		if s.repoTree != nil && (dep.Direct || s.repoTreeFullSweep) {
 			if repoFiles, subdir, err := s.repoTree.FetchRepoTree(ctx, dep.Ecosystem, dep.Name, dep.Version, src.Manifest); err == nil && len(repoFiles) > 0 {
 				if c := s.heuristics.RunTarballDrift(src.Manifest, src, repoFiles, subdir); c != 0 {
 					fp.Capabilities = fp.Capabilities.Union(domain.NewCapabilitySet(c))
