@@ -58,5 +58,6 @@ func (r *Resolver) FetchMaintainerSignal(ctx context.Context, eco domain.Ecosyst
 		PreviousPublishedAt: sig.PreviousPublishedAt,
 		Publisher:           sig.Publisher,
 		PreviousPublisher:   sig.PreviousPublisher,
+		VersionUnpublished:  sig.VersionUnpublished,
 	}, nil
 }
