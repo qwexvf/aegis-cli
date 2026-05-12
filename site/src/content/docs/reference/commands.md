@@ -219,7 +219,8 @@ aegis ci --sarif > packages.sarif             # SARIF 2.1.0 output
 | `--quiet` | off | Print only the summary line. |
 | `--no-enrich` | off | Skip the AST scan; score on existing fingerprints. Faster, thinner. |
 | `--baseline <path>` | (none) | Drift mode: diff against this saved snapshot, only fail on *newly-introduced* findings. Doesn't touch your `aegis.lock`. |
-| `--scan-actions` | off | Also scan `.github/workflows/` for risky patterns (same checks as `aegis actions scan --fail-on high`). Respects `.aegis-actions-allowlist.yaml`. |
+| `--scan-actions` | off | Also scan `.github/workflows/`. Threshold controlled by `--actions-fail-on`. Respects `.aegis-actions-allowlist.yaml`. |
+| `--actions-fail-on` | `high` | Minimum severity for `--scan-actions`: `low\|medium\|high\|critical` |
 | `--sarif` | off | Emit package findings as SARIF 2.1.0 instead of human/JSON output. For upload to GitHub Code Scanning. |
 
 The fingerprint cache (`~/.aegis/cache/fingerprints/`) persists across runs — a warm CI is fast. Only newly-added or version-changed deps incur AST scan cost.
@@ -491,14 +492,15 @@ aegis actions scan --sarif > results.sarif
 
 | Flag | Default | Description |
 |---|---|---|
-| `--fail-on` | `high` | Minimum severity: `low\|medium\|high\|critical` |
+| `--min-severity` | `high` | Minimum severity to fail on: `low\|medium\|high\|critical` |
+| `--fail-on` | — | Deprecated alias for `--min-severity`; prints a warning |
 | `--json` | `false` | JSON output |
 | `--sarif` | `false` | SARIF 2.1.0 output (GitHub Code Scanning / VS Code) |
 | `--dir` | cwd | Project root; ignored when `--repo` is set |
 | `--repo` | — | Remote GitHub repo (`owner/repo`) via GitHub Contents API |
 | `--token` | — | GitHub PAT; prefer `$GITHUB_TOKEN` (CLI args visible in process list) |
 
-**Exit codes**: `0` clean, `1` findings ≥ `--fail-on`, `2` I/O error.
+**Exit codes**: `0` clean, `1` findings ≥ `--min-severity`, `2` I/O error.
 
 **Detections**
 
