@@ -163,6 +163,142 @@ jobs:
 	}
 }
 
+func TestAnalyze_OIDCNpmPublish(t *testing.T) {
+	t.Run("job-level id-token:write + npm publish fires", func(t *testing.T) {
+		body := []byte(`on: push
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@0e58ed8671d6b60d0890c21b07f8835ace038e67
+      - run: npm publish
+`)
+		wf, err := ParseBytes("publish.yml", body)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		findings := Analyze(wf)
+		hit := false
+		for _, f := range findings {
+			if f.Kind == domain.FindingOIDCNpmPublish {
+				if f.Severity != domain.SevHigh {
+					t.Errorf("severity: got %q want high", f.Severity)
+				}
+				hit = true
+			}
+		}
+		if !hit {
+			t.Errorf("expected oidc_npm_publish finding; got %+v", findings)
+		}
+	})
+
+	t.Run("workflow-level write-all + npm publish fires", func(t *testing.T) {
+		body := []byte(`on: push
+permissions: write-all
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm publish --access public
+`)
+		wf, err := ParseBytes("publish.yml", body)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		findings := Analyze(wf)
+		hit := false
+		for _, f := range findings {
+			if f.Kind == domain.FindingOIDCNpmPublish {
+				hit = true
+			}
+		}
+		if !hit {
+			t.Errorf("expected oidc_npm_publish finding; got %+v", findings)
+		}
+	})
+
+	t.Run("id-token:write without npm publish does not fire", func(t *testing.T) {
+		body := []byte(`on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - run: go build ./...
+`)
+		wf, err := ParseBytes("deploy.yml", body)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		for _, f := range Analyze(wf) {
+			if f.Kind == domain.FindingOIDCNpmPublish {
+				t.Errorf("unexpected oidc_npm_publish finding: %+v", f)
+			}
+		}
+	})
+}
+
+func TestAnalyze_CachePoisoning(t *testing.T) {
+	t.Run("pull_request_target + actions/cache fires", func(t *testing.T) {
+		body := []byte(`on: pull_request_target
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node
+      - run: npm ci
+`)
+		wf, err := ParseBytes("build.yml", body)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		findings := Analyze(wf)
+		hit := false
+		for _, f := range findings {
+			if f.Kind == domain.FindingCachePoisoning {
+				if f.Severity != domain.SevHigh {
+					t.Errorf("severity: got %q want high", f.Severity)
+				}
+				hit = true
+			}
+		}
+		if !hit {
+			t.Errorf("expected cache_poisoning finding; got %+v", findings)
+		}
+	})
+
+	t.Run("actions/cache on push does not fire", func(t *testing.T) {
+		body := []byte(`on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: node
+      - run: npm ci
+`)
+		wf, err := ParseBytes("build.yml", body)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		for _, f := range Analyze(wf) {
+			if f.Kind == domain.FindingCachePoisoning {
+				t.Errorf("unexpected cache_poisoning finding on push: %+v", f)
+			}
+		}
+	})
+}
+
 func TestAnalyze_CleanWorkflow(t *testing.T) {
 	body := []byte(`on: push
 permissions:

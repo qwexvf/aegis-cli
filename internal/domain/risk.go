@@ -120,6 +120,12 @@ const (
 	// (router_init.js / router_runtime.js / tanstack_runner.js). Instant
 	// Block; the filename is a confirmed IOC from the 2026 campaign.
 	WeightKnownMalwareIOC = 100
+
+	// WeightVCSDependency — manifest pins a dependency to a VCS URL
+	// (git+https://, :git =>, git = "..."). In a published package this
+	// is anomalous; weight pushes to Prompt alone, Block in combination
+	// with install-hook or obfuscation signals.
+	WeightVCSDependency = 45
 )
 
 // credentialEnvVarRoots is the list of env var name prefixes that, when
