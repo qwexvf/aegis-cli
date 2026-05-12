@@ -163,7 +163,7 @@ func (a *Analyze) Run(ctx context.Context, req AnalyzeRequest) (AnalyzeResult, e
 	// `aegis analyze` and `aegis snapshot enrich` produce the same
 	// capability set on identical input.
 	if a.heuristics != nil {
-		extra := a.heuristics.Run(req.Ecosystem, req.Name, src.Manifest, src)
+		extra := a.heuristics.Run(req.Ecosystem, req.Name, req.Version, src.Manifest, src)
 		if len(extra) > 0 {
 			merged := append([]domain.Capability(nil), fp.Capabilities...)
 			for _, c := range extra {

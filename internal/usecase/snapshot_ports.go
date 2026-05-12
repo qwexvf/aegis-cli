@@ -193,7 +193,7 @@ type MaintainerSignalFetcher interface {
 // calls. The infra/heuristics adapter is pure-function and stateless,
 // so this is automatic.
 type MalwareHeuristics interface {
-	Run(eco domain.Ecosystem, name string, manifestRaw []byte, src PackageSource) []domain.Capability
+	Run(eco domain.Ecosystem, name, version string, manifestRaw []byte, src PackageSource) []domain.Capability
 
 	// RunMaintainerSignal is a separate entry point for the
 	// hijack + transfer heuristics because they need registry-side

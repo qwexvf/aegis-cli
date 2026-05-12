@@ -7,8 +7,9 @@ import "github.com/qwexvf/aegis-cli/internal/domain"
 // tree. All Check functions operate on this type — no ecosystem switches needed.
 type NormalizedPackage struct {
 	// Identity
-	Name string
-	Eco  domain.Ecosystem
+	Name    string
+	Version string // semver string of the installed version, e.g. "v1.2.3"
+	Eco     domain.Ecosystem
 
 	// Deps is the full dependency list across all groups/scopes.
 	// Parsers classify each dep as Registry, VCS, or Local.
@@ -26,6 +27,11 @@ type NormalizedPackage struct {
 	// pyproject.toml, etc.) for checks that need ecosystem-specific
 	// raw parsing (e.g. unlisted payload detection).
 	ManifestRaw []byte
+
+	// RetractedVersions lists versions this module has explicitly retracted
+	// in its go.mod. Populated by goParser; empty for other ecosystems.
+	// checkGoRetract compares pkg.Version against this list.
+	RetractedVersions []string
 }
 
 // Dep is one entry from a package manifest's dependency list.

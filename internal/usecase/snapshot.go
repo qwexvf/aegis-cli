@@ -497,7 +497,7 @@ func (s *Snapshot) analyzeOneSlot(ctx context.Context, dep domain.Dependency, sl
 	// sketchy URL targets, binary droppers, and typosquat names.
 	// nil heuristics is the safe no-op; merge is dedup-on-insert.
 	if s.heuristics != nil {
-		extra := s.heuristics.Run(dep.Ecosystem, dep.Name, src.Manifest, src)
+		extra := s.heuristics.Run(dep.Ecosystem, dep.Name, dep.Version, src.Manifest, src)
 		if len(extra) > 0 {
 			fp.Capabilities = fp.Capabilities.Union(domain.NewCapabilitySet(extra...))
 		}

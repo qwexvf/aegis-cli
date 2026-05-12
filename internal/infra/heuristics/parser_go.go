@@ -22,14 +22,34 @@ func (p *goParser) Parse(name string, manifestRaw []byte, src domain.PackageSour
 	for filename, body := range src.Files {
 		if strings.ToLower(path.Base(filename)) == "go.mod" {
 			pkg.Deps = append(pkg.Deps, parseGoMod(body)...)
+			pkg.RetractedVersions = append(pkg.RetractedVersions, parseGoRetract(body)...)
 		}
 	}
 	return pkg
 }
 
+// parseGoRetract extracts explicitly retracted versions from go.mod bytes.
+// A retract directive signals that the module author considers that version
+// unsafe or broken; consumers pinned to it should upgrade.
+func parseGoRetract(body []byte) []string {
+	var versions []string
+	for _, m := range goRetractVersionPattern.FindAllSubmatch(body, -1) {
+		if len(m) > 1 {
+			versions = append(versions, string(m[1]))
+		}
+	}
+	return versions
+}
+
 // goReplaceTargetPattern captures the replacement module path (after =>) in a
 // go.mod replace directive. The => operator only appears in replace stanzas.
 var goReplaceTargetPattern = regexp.MustCompile(`=>\s+(\S+)`)
+
+// goRetractVersionPattern matches single-version retract directives:
+//
+//	retract v1.0.0
+//	retract v1.0.0 // reason comment
+var goRetractVersionPattern = regexp.MustCompile(`(?m)^\s*retract\s+(v[\w.+-]+)`)
 
 // parseGoMod extracts replace directives from go.mod bytes.
 // External replaces (not ./ or ../) are flagged as DepSourceVCS because
