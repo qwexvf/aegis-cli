@@ -262,15 +262,30 @@ func TestActions_Scan_SortedOutput(t *testing.T) {
 	dir := t.TempDir()
 	writeWorkflow(t, dir, "b.yml", unpinnedWorkflow)
 	writeWorkflow(t, dir, "a.yml", writeAllWorkflow)
+	ignore := domain.NewActionsIgnoreSet([]domain.ActionsIgnoreRule{
+		{Kind: "write_all_permissions", Reason: "sort test"},
+	})
 	a := usecase.NewActions()
-	res, err := a.Scan(usecase.ActionsScanRequest{ProjectDir: dir})
+	res, err := a.Scan(usecase.ActionsScanRequest{ProjectDir: dir, Ignore: ignore})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// sort order preserved
 	for i := 1; i < len(res.Findings); i++ {
 		if res.Findings[i].File < res.Findings[i-1].File {
 			t.Errorf("findings not sorted by file: %q before %q",
 				res.Findings[i-1].File, res.Findings[i].File)
 		}
+	}
+	// suppression state survives sort
+	hasSuppressed := false
+	for _, f := range res.Findings {
+		if f.Suppressed {
+			hasSuppressed = true
+			break
+		}
+	}
+	if !hasSuppressed {
+		t.Error("suppressed findings should be preserved in sorted output")
 	}
 }
