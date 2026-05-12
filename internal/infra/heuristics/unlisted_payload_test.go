@@ -1,6 +1,7 @@
 package heuristics
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -31,8 +32,8 @@ func TestDetectUnlistedPayload(t *testing.T) {
 			},
 			Manifest: manifest,
 		}
-		got := DetectUnlistedPayload(manifest, src)
-		if got != domain.CapUnlistedLargeFile {
+		got := checkUnlistedPayload(NormalizedPackage{Files: src.Files, ManifestRaw: manifest})
+		if !slices.Contains(got, domain.CapUnlistedLargeFile) {
 			t.Fatalf("want CapUnlistedLargeFile, got %v", got)
 		}
 	})
@@ -46,8 +47,8 @@ func TestDetectUnlistedPayload(t *testing.T) {
 			},
 			Manifest: manifest,
 		}
-		got := DetectUnlistedPayload(manifest, src)
-		if got != 0 {
+		got := checkUnlistedPayload(NormalizedPackage{Files: src.Files, ManifestRaw: manifest})
+		if len(got) != 0 {
 			t.Errorf("want 0 (dist/ is whitelisted), got %v", got)
 		}
 	})
@@ -65,8 +66,8 @@ func TestDetectUnlistedPayload(t *testing.T) {
 			},
 			Manifest: manifest,
 		}
-		got := DetectUnlistedPayload(manifest, src)
-		if got != 0 {
+		got := checkUnlistedPayload(NormalizedPackage{Files: src.Files, ManifestRaw: manifest})
+		if len(got) != 0 {
 			t.Errorf("want 0 (file is declared in files field), got %v", got)
 		}
 	})
@@ -80,8 +81,8 @@ func TestDetectUnlistedPayload(t *testing.T) {
 			},
 			Manifest: manifest,
 		}
-		got := DetectUnlistedPayload(manifest, src)
-		if got != 0 {
+		got := checkUnlistedPayload(NormalizedPackage{Files: src.Files, ManifestRaw: manifest})
+		if len(got) != 0 {
 			t.Errorf("want 0 (non-code file), got %v", got)
 		}
 	})
@@ -95,15 +96,15 @@ func TestDetectUnlistedPayload(t *testing.T) {
 			},
 			Manifest: manifest,
 		}
-		got := DetectUnlistedPayload(manifest, src)
-		if got != 0 {
+		got := checkUnlistedPayload(NormalizedPackage{Files: src.Files, ManifestRaw: manifest})
+		if len(got) != 0 {
 			t.Errorf("want 0 (small file), got %v", got)
 		}
 	})
 
 	t.Run("empty source — no signal", func(t *testing.T) {
-		got := DetectUnlistedPayload(nil, usecase.PackageSource{})
-		if got != 0 {
+		got := checkUnlistedPayload(NormalizedPackage{})
+		if len(got) != 0 {
 			t.Errorf("want 0 on empty input, got %v", got)
 		}
 	})

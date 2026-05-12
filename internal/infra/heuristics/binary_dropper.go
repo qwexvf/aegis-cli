@@ -5,38 +5,7 @@ import (
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
-	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
-
-// DetectBinaryDropper flags packages that ship a native executable
-// or platform-specific script of a kind unusual for a JS package:
-//
-//   - .exe / .msi / .bat / .cmd          — Windows binary or batch
-//   - .dll / .so / .dylib                  — native library
-//   - .scpt / .applescript                 — macOS script
-//   - .ps1                                 — PowerShell
-//
-// Why heuristic and not deny-list: legitimate packages DO ship native
-// binaries (esbuild on npm, pillow on PyPI, -sys crates on crates.io).
-// Per-ecosystem carve-outs (isExpectedNativePath) recognise the
-// canonical packaging conventions; anything that ships a native blob
-// outside those conventions is the signal. Weight in
-// domain.WeightBinaryDropper is moderate, not overriding.
-func DetectBinaryDropper(eco domain.Ecosystem, src usecase.PackageSource) domain.Capability {
-	if len(src.Files) == 0 {
-		return 0
-	}
-	for filename := range src.Files {
-		if !isSuspiciousBinary(filename) {
-			continue
-		}
-		if isExpectedNativePath(eco, filename) {
-			continue
-		}
-		return domain.CapBinaryDropper
-	}
-	return 0
-}
 
 // isSuspiciousBinary returns true when the filename's extension is on
 // the "native binary or platform script" list. Lowercase comparison

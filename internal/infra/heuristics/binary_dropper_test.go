@@ -1,6 +1,7 @@
 package heuristics
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -12,7 +13,7 @@ func TestDetectBinaryDropper(t *testing.T) {
 		name  string
 		eco   domain.Ecosystem
 		files map[string][]byte
-		want  domain.Capability
+		want  domain.Capability // 0 means no capability expected
 	}{
 		{
 			name:  ".exe in npm package",
@@ -117,9 +118,17 @@ func TestDetectBinaryDropper(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := DetectBinaryDropper(tc.eco, usecase.PackageSource{Files: tc.files})
-			if got != tc.want {
-				t.Errorf("got %v, want %v", got, tc.want)
+			src := usecase.PackageSource{Files: tc.files}
+			pkg := NormalizedPackage{Eco: tc.eco, Files: src.Files}
+			got := checkBinaryDropper(pkg)
+			if tc.want == 0 {
+				if len(got) != 0 {
+					t.Errorf("got %v, want []", got)
+				}
+			} else {
+				if !slices.Contains(got, tc.want) {
+					t.Errorf("got %v, want %v", got, tc.want)
+				}
 			}
 		})
 	}

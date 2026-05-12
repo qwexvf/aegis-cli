@@ -1,6 +1,7 @@
 package heuristics
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -41,9 +42,15 @@ func TestDetectTyposquat(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := DetectTyposquat(tc.eco, tc.pkg)
-			if got != tc.want {
-				t.Errorf("DetectTyposquat(%q) = %v, want %v", tc.pkg, got, tc.want)
+			got := checkTyposquat(NormalizedPackage{Eco: tc.eco, Name: tc.pkg})
+			if tc.want == 0 {
+				if len(got) != 0 {
+					t.Errorf("checkTyposquat(%q) = %v, want empty", tc.pkg, got)
+				}
+			} else {
+				if !slices.Contains(got, tc.want) {
+					t.Errorf("checkTyposquat(%q) = %v, want %v", tc.pkg, got, tc.want)
+				}
 			}
 		})
 	}

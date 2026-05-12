@@ -4,9 +4,6 @@ import (
 	"maps"
 	"path"
 	"strings"
-
-	"github.com/qwexvf/aegis-cli/internal/domain"
-	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // unlistedPayloadSizeThreshold is the minimum file size (bytes) that
@@ -39,48 +36,6 @@ var unlistedMetadataFiles = map[string]struct{}{
 	"notice":          {},
 	"authors":         {},
 	"contributors.md": {},
-}
-
-// DetectUnlistedPayload reports CapUnlistedLargeFile when the tarball
-// contains a code file that is:
-//
-//  1. At least unlistedPayloadSizeThreshold bytes in size.
-//  2. A JS/TS/CJS/MJS source file (the attack-relevant extensions).
-//  3. Not declared in the package.json "files" allowlist.
-//  4. Not under a build-output directory (dist/, lib/, build/, etc.).
-//
-// This catches the Mini Shai-Hulud router_init.js (2.3 MB) without
-// requiring a GitHub tree comparison. The check is purely local:
-// tarball + manifest, no network.
-//
-// manifestRaw is the raw bytes of the tarball's package.json. src.Files
-// is the full extracted file map. Returns 0 on malformed input.
-func DetectUnlistedPayload(manifestRaw []byte, src usecase.PackageSource) domain.Capability {
-	if len(src.Files) == 0 {
-		return 0
-	}
-	// Parse the "files" allowlist from package.json. Absence means no
-	// allowlist (every file is implicitly included), but we still check
-	// for large unlisted files — the anomaly is the SIZE + LOCATION,
-	// not merely the absence from the files field. If the files field is
-	// missing, pkgFiles is nil and the whitelist below only covers the
-	// hardcoded build-output dirs.
-	pkgFiles := extractPackageFilesField(manifestRaw)
-	whitelist := buildUnlistedWhitelist(pkgFiles)
-
-	for filename, body := range src.Files {
-		if len(body) < unlistedPayloadSizeThreshold {
-			continue
-		}
-		if !isUnlistedCodeFile(filename) {
-			continue
-		}
-		if whitelist(filename) {
-			continue
-		}
-		return domain.CapUnlistedLargeFile
-	}
-	return 0
 }
 
 // buildUnlistedWhitelist returns a predicate that accepts files which

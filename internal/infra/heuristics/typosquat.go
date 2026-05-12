@@ -50,56 +50,6 @@ func parseTopList(raw string) map[string]bool {
 	return out
 }
 
-// DetectTyposquat flags packages whose name is within Levenshtein
-// distance 2 of a top package in the same ecosystem — but ISN'T
-// itself in that list. Catches `electron-stable` (vs `electron`),
-// `lodahs` (vs `lodash`), `colourama` (vs `colorama`), `rustdecimal`
-// (vs `rust_decimal`).
-//
-// Returns 0 (no signal) when:
-//
-//   - the ecosystem has no top-list yet (silent — better than FP)
-//   - name is itself a top package (no point flagging React as a typo
-//     of itself)
-//   - distance to the nearest top package is ≥ 3 (false-positive
-//     ceiling — at distance 3 most candidates are unrelated)
-//
-// Weight (domain.WeightTyposquatRisk = 40) deliberately doesn't push
-// to Block on its own — heuristics combine with other signals via
-// the existing risk scorer.
-func DetectTyposquat(eco domain.Ecosystem, name string) domain.Capability {
-	if name == "" {
-		return 0
-	}
-	list, ok := topPackages[eco]
-	if !ok {
-		return 0 // no list for this ecosystem — silent
-	}
-	// Strip scope prefix: @foo/bar → bar. Scoped packages can't typo
-	// non-scoped ones at the registry level, but the bare name still
-	// participates in the comparison (so @attacker/lodash also fires).
-	bare := name
-	if strings.HasPrefix(bare, "@") {
-		if idx := strings.Index(bare, "/"); idx > 0 {
-			bare = bare[idx+1:]
-		}
-	}
-	if list[bare] {
-		return 0 // it IS a top package — not a squat candidate
-	}
-	for top := range list {
-		// Cheap pre-filter: lengths must be within 2 to be at
-		// Levenshtein ≤ 2. Saves the full DP table on most pairs.
-		if abs(len(bare)-len(top)) > 2 {
-			continue
-		}
-		if levenshtein(bare, top) <= 2 {
-			return domain.CapTyposquatRisk
-		}
-	}
-	return 0
-}
-
 // levenshtein returns the edit distance between a and b. Classic
 // dynamic programming, no early exit (distances ≤ 2 are quick to
 // compute regardless and the pre-filter culls most pairs anyway).
@@ -133,11 +83,4 @@ func levenshtein(a, b string) int {
 		prev, curr = curr, prev
 	}
 	return prev[lb]
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
 }

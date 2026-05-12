@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
-	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 func TestDetectSourcePatterns_Obfuscation(t *testing.T) {
@@ -53,7 +52,7 @@ func TestDetectSourcePatterns_Obfuscation(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			caps := DetectSourcePatterns(usecase.PackageSource{
+			caps := checkSourcePatterns(NormalizedPackage{
 				Files: map[string][]byte{"index.js": []byte(tc.js)},
 			})
 			has := false
@@ -123,7 +122,7 @@ func TestDetectSourcePatterns_SuspiciousURL(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			caps := DetectSourcePatterns(usecase.PackageSource{
+			caps := checkSourcePatterns(NormalizedPackage{
 				Files: map[string][]byte{"index.js": []byte(tc.js)},
 			})
 			has := false
@@ -143,7 +142,7 @@ func TestDetectSourcePatterns_SuspiciousURL(t *testing.T) {
 // on README / changelog content that contains the word "eval" or
 // example URLs.
 func TestDetectSourcePatterns_OnlyJSFiles(t *testing.T) {
-	caps := DetectSourcePatterns(usecase.PackageSource{
+	caps := checkSourcePatterns(NormalizedPackage{
 		Files: map[string][]byte{
 			"README.md":    []byte("Don't use eval(atob(x)). And don't fetch https://pastebin.com."),
 			"package.json": []byte("{}"),
@@ -198,7 +197,7 @@ func TestDetectSourcePatterns_URLScanIsLanguageAgnostic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			caps := DetectSourcePatterns(usecase.PackageSource{
+			caps := checkSourcePatterns(NormalizedPackage{
 				Files: map[string][]byte{tt.filename: []byte(tt.body)},
 			})
 			has := false
@@ -273,7 +272,7 @@ func TestDetectSourcePatterns_RubyObfuscation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			caps := DetectSourcePatterns(usecase.PackageSource{
+			caps := checkSourcePatterns(NormalizedPackage{
 				Files: map[string][]byte{tt.filename: []byte(tt.body)},
 			})
 			has := false
@@ -353,7 +352,7 @@ func TestDetectSourcePatterns_PythonObfuscation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			caps := DetectSourcePatterns(usecase.PackageSource{
+			caps := checkSourcePatterns(NormalizedPackage{
 				Files: map[string][]byte{tt.filename: []byte(tt.body)},
 			})
 			has := false
@@ -419,7 +418,7 @@ func TestDetectSourcePatterns_ShellFetcher(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			caps := DetectSourcePatterns(usecase.PackageSource{
+			caps := checkSourcePatterns(NormalizedPackage{
 				Files: map[string][]byte{tc.file: []byte(tc.body)},
 			})
 			got := slices.Contains(caps, domain.CapInstallHookSuspicious)
@@ -432,7 +431,7 @@ func TestDetectSourcePatterns_ShellFetcher(t *testing.T) {
 
 func TestDetectSourcePatterns_Minified(t *testing.T) {
 	js := strings.Repeat("var x=1;", 1000) + `eval(atob("YWJj"))` + strings.Repeat("var y=2;", 1000)
-	caps := DetectSourcePatterns(usecase.PackageSource{
+	caps := checkSourcePatterns(NormalizedPackage{
 		Files: map[string][]byte{"bundle.min.js": []byte(js)},
 	})
 	found := false
