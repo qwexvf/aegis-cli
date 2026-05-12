@@ -307,6 +307,7 @@ func main() {
 	if vulnLookup != nil {
 		sbom.WithVulnLookup(vulnLookup)
 	}
+	actions := usecase.NewActions()
 
 	// Optionally attach the risk engine (AST scanner) + submit
 	// pipeline. The implementation is selected at compile time via
@@ -374,6 +375,7 @@ func main() {
 		ExplainPresenter:   explainPresenter,
 		Hook:               hook,
 		Sbom:               sbom,
+		Actions:            actions,
 		API:                apiClient,
 		Cache:              cache,
 		Audit:              audit,

