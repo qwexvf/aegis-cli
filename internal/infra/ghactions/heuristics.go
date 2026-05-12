@@ -15,13 +15,13 @@ func Analyze(wf domain.Workflow) []domain.WorkflowFinding {
 	var findings []domain.WorkflowFinding
 
 	// Workflow-level checks first.
-	findings = append(findings, checkWriteAllPermissions(wf, wf.Permissions, wf.Path, 0)...)
+	findings = append(findings, checkWriteAllPermissions(wf.Permissions, wf.Path, 0)...)
 	prTarget := hasEvent(wf.On, "pull_request_target")
 
 	for _, job := range wf.Jobs {
 		// Job-level permissions override workflow-level. Re-check.
 		if job.Permissions.Mode != "" {
-			findings = append(findings, checkWriteAllPermissions(wf, job.Permissions, wf.Path, job.Line)...)
+			findings = append(findings, checkWriteAllPermissions(job.Permissions, wf.Path, job.Line)...)
 		}
 
 		jobHasCheckout := false
@@ -91,31 +91,26 @@ func checkUnpinnedRef(ref domain.ActionRef) []domain.WorkflowFinding {
 // suspiciousRunPatterns are precompiled at package init. Order is
 // stable so JSON output is reproducible.
 var suspiciousRunPatterns = []struct {
-	name    string
 	pattern *regexp.Regexp
 	sev     domain.Severity
 	hint    string
 }{
 	{
-		name:    "curl_pipe_sh",
 		pattern: regexp.MustCompile(`(?i)(curl|wget)\s+[^\n|]*\|\s*(sh|bash|zsh|ksh)\b`),
 		sev:     domain.SevHigh,
 		hint:    "curl|sh / wget|sh — downloads and executes remote script with no integrity check",
 	},
 	{
-		name:    "base64_decode_exec",
 		pattern: regexp.MustCompile(`(?i)\b(base64\s+(-d|--decode)|echo\s+[A-Za-z0-9+/=]{40,}\s*\|\s*base64)`),
 		sev:     domain.SevHigh,
 		hint:    "base64 decode in run script — common obfuscation primitive",
 	},
 	{
-		name:    "raw_ip_url",
 		pattern: regexp.MustCompile(`https?://\d+\.\d+\.\d+\.\d+(:\d+)?(/|$|\s)`),
 		sev:     domain.SevHigh,
 		hint:    "raw IPv4 in URL — legitimate scripts use hostnames",
 	},
 	{
-		name:    "exfil_to_pastebin",
 		pattern: regexp.MustCompile(`(?i)\b(pastebin\.com|hastebin\.com|requestbin\.|webhook\.site|ngrok\.io|burpcollaborator\.net|oast\.\w+)\b`),
 		sev:     domain.SevHigh,
 		hint:    "well-known data-exfil destination",
@@ -133,7 +128,7 @@ func checkSuspiciousRun(run domain.RunScript) []domain.WorkflowFinding {
 			Kind:     domain.FindingSuspiciousRun,
 			Severity: p.sev,
 			File:     run.File,
-			Line:     run.Line + countLeadingNewlines(run.Body[:loc[0]]),
+			Line:     run.Line + 1 + countLeadingNewlines(run.Body[:loc[0]]),
 			Message:  p.hint,
 			Evidence: truncate(run.Body[loc[0]:loc[1]], 120),
 		})
@@ -175,7 +170,7 @@ func checkScriptInjection(run domain.RunScript) []domain.WorkflowFinding {
 // implicit "no permissions block declared" case. The implicit case is
 // only flagged at workflow scope (jobs without their own permissions
 // inherit the workflow scope).
-func checkWriteAllPermissions(_ domain.Workflow, perms domain.WorkflowPermissions, file string, line int) []domain.WorkflowFinding {
+func checkWriteAllPermissions(perms domain.WorkflowPermissions, file string, line int) []domain.WorkflowFinding {
 	if perms.Mode != "write-all" {
 		return nil
 	}

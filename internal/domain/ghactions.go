@@ -126,7 +126,6 @@ const (
 	FindingScriptInjection
 )
 
-// String renders the kind for JSON output and log messages.
 func (k WorkflowFindingKind) String() string {
 	switch k {
 	case FindingUnpinnedRef:
@@ -141,6 +140,13 @@ func (k WorkflowFindingKind) String() string {
 		return "script_injection"
 	}
 	return "unknown"
+}
+
+// MarshalText makes WorkflowFindingKind encode as its string name in
+// JSON (and any encoding.TextMarshaler consumer) instead of the raw
+// integer iota value.
+func (k WorkflowFindingKind) MarshalText() ([]byte, error) {
+	return []byte(k.String()), nil
 }
 
 // IsSHAPinned reports whether Ref is a 40-character lowercase hex SHA.

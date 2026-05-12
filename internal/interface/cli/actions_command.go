@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -105,7 +106,7 @@ func parseSeverity(s string) (domain.Severity, error) {
 	return "", fmt.Errorf("invalid --fail-on %q: want one of low|medium|high|critical", s)
 }
 
-func renderActionsResult(out interface{ Write(p []byte) (int, error) }, r usecase.ActionsScanResult, asJSON bool) {
+func renderActionsResult(out io.Writer, r usecase.ActionsScanResult, asJSON bool) {
 	if asJSON {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
