@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
+          go-version: "1.26.3"
           cache: true
       - name: go test -race
         run: go test -race ./...
@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
+          go-version: "1.26.3"
           cache: true
       # Install from source so the linter binary is compiled with the
       # same Go toolchain as the project. The pre-built golangci-lint
@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
+          go-version: "1.26.3"
           cache: true
       - name: build aegis + aegis-core
         run: |
@@ -79,7 +79,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
+          go-version: "1.26.3"
           cache: true
       - uses: goreleaser/goreleaser-action@v7
         with:
@@ -93,7 +93,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
+          go-version: "1.26.3"
           cache: true
       - name: install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
