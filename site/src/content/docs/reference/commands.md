@@ -455,6 +455,73 @@ Checks performed:
 
 ---
 
+## `aegis actions scan`
+
+Scan GitHub Actions workflows for supply-chain risks — locally or from a remote repository.
+
+```sh
+# Scan current project's .github/workflows/
+aegis actions scan
+
+# Scan a remote repository (uses $GITHUB_TOKEN automatically)
+aegis actions scan --repo owner/repo
+
+# Emit SARIF 2.1.0 for GitHub Code Scanning
+aegis actions scan --sarif > results.sarif
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--fail-on` | `high` | Minimum severity: `low\|medium\|high\|critical` |
+| `--json` | `false` | JSON output |
+| `--sarif` | `false` | SARIF 2.1.0 output (GitHub Code Scanning / VS Code) |
+| `--dir` | cwd | Project root; ignored when `--repo` is set |
+| `--repo` | — | Remote GitHub repo (`owner/repo`) via GitHub Contents API |
+| `--token` | — | GitHub PAT; prefer `$GITHUB_TOKEN` (CLI args visible in process list) |
+
+**Exit codes**: `0` clean, `1` findings ≥ `--fail-on`, `2` I/O error.
+
+**Detections**
+
+| Finding | Severity |
+|---|---|
+| `unpinned_ref` | High / Medium |
+| `pull_request_target_checkout` | Critical |
+| `write_all_permissions` | High |
+| `script_injection` | Critical |
+| `suspicious_run` | High |
+| `oidc_npm_publish` | High |
+| `cache_poisoning` | High |
+
+**Allowlist** — suppress findings via `.aegis-actions-allowlist.yaml`:
+
+```yaml
+version: 1
+rules:
+  - kind: unpinned_ref
+    file: .github/workflows/release.yml
+    reason: "managed by dependabot"
+  - kind: "*"
+    file: .github/workflows/legacy.yml
+    reason: "legacy workflow not in production path"
+```
+
+Suppressed findings are still shown in output but don't trigger `--fail-on`.
+
+**Upload SARIF to GitHub Security tab**
+
+```yaml
+- run: aegis actions scan --sarif > aegis-actions.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: aegis-actions.sarif
+  if: always()
+```
+
+---
+
 ## `aegis admin gen-key`
 
 Generate a fresh submit API key plus a sha256 hex digest for installing it server-side. Used when bootstrapping a new operator account against a self-hosted Aegis API.
