@@ -176,6 +176,10 @@ func main() {
 	// queried concurrently and results merged (MultiSource). Env vars
 	// still override per-provider credentials (GITHUB_TOKEN, AEGIS_API_KEY,
 	// AEGIS_OSV_URL).
+	// vulnLookup is captured here so the SBOM use case can reuse the
+	// same provider chain (the sbom command's --include-vulns flag
+	// goes through this).
+	var vulnLookup usecase.VulnLookup
 	if os.Getenv("AEGIS_NO_VULN_LOOKUP") == "" {
 		cfg, cfgErr := config.Load()
 		if cfgErr != nil {
@@ -217,9 +221,9 @@ func main() {
 				}
 			}
 			if len(sources) == 1 {
-				snapshot.WithVulnLookup(sources[0])
+				vulnLookup = sources[0]
 			} else if len(sources) > 1 {
-				snapshot.WithVulnLookup(vulnlookup.MultiSource{Sources: sources})
+				vulnLookup = vulnlookup.MultiSource{Sources: sources}
 			}
 		} else {
 			// Legacy env-var mode for backwards compatibility.
@@ -241,18 +245,21 @@ func main() {
 				}
 				switch {
 				case aegisLookup != nil && osvLookup != nil:
-					snapshot.WithVulnLookup(vulnlookup.Fallback{
+					vulnLookup = vulnlookup.Fallback{
 						Primary:   aegisLookup,
 						Secondary: osvLookup,
 						Logger:    func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) },
-					})
+					}
 				case aegisLookup != nil:
-					snapshot.WithVulnLookup(aegisLookup)
+					vulnLookup = aegisLookup
 				case osvLookup != nil:
-					snapshot.WithVulnLookup(osvLookup)
+					vulnLookup = osvLookup
 				}
 			}
 		}
+	}
+	if vulnLookup != nil {
+		snapshot.WithVulnLookup(vulnLookup)
 	}
 
 	// Behaviour-based malware heuristics: suspicious install hooks,
@@ -296,6 +303,10 @@ func main() {
 	explain := usecase.NewExplain(store, analyze, explainPresenter)
 	hookPresenter := cli.NewHookPresenter(presenter)
 	hook := usecase.NewHook(hookfs.New(), hookPresenter)
+	sbom := usecase.NewSbom(store, clii.Version)
+	if vulnLookup != nil {
+		sbom.WithVulnLookup(vulnLookup)
+	}
 
 	// Optionally attach the risk engine (AST scanner) + submit
 	// pipeline. The implementation is selected at compile time via
@@ -362,6 +373,7 @@ func main() {
 		Explain:            explain,
 		ExplainPresenter:   explainPresenter,
 		Hook:               hook,
+		Sbom:               sbom,
 		API:                apiClient,
 		Cache:              cache,
 		Audit:              audit,
