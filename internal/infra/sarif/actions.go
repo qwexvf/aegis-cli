@@ -67,7 +67,7 @@ func ActionsToSARIF(result usecase.ActionsScanResult, toolVersion, baseDir strin
 			Level:   severityToSARIFLevel(f.Severity),
 			Message: Message{Text: f.Message},
 			Locations: []Location{{
-				PhysicalLocation: PhysicalLocation{
+				PhysicalLocation: &PhysicalLocation{
 					ArtifactLocation: ArtifactLocation{
 						URI:       uri,
 						URIBaseID: "%SRCROOT%",

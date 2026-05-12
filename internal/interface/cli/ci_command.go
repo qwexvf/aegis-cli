@@ -113,7 +113,10 @@ deps incur AST scan cost.`,
 			// Actions scan integration: run after package scan.
 			actionsPass := true
 			if scanActions {
-				ignore, _ := allowlist.LoadActionsIgnore(cwd)
+				ignore, err := allowlist.LoadActionsIgnore(cwd)
+				if err != nil {
+					return &exitCodeError{code: 2, err: fmt.Errorf("actions allowlist: %w", err), silent: false}
+				}
 				aResult, aErr := actions.Scan(cmd.Context(), usecase.ActionsScanRequest{
 					ProjectDir: cwd,
 					FailOn:     domain.SevHigh,
