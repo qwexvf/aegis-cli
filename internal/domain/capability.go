@@ -134,6 +134,38 @@ const (
 	// reviewers of the GitHub repo will never see". Skipped silently
 	// when no upstream repo is resolvable.
 	CapTarballDrift
+
+	// CapGitDepInOptionalDep — the tarball's package.json contains an
+	// optionalDependency whose version spec is a git URL or commit-SHA
+	// pin (e.g. "github:org/repo#40hexsha"). No legitimate published
+	// package ships git-SHA deps in optionalDependencies — this is the
+	// canonical worm-propagation injection vector used in the 2026
+	// Mini Shai-Hulud / TanStack attack. Catches both original packages
+	// and any downstream package infected by the worm's updateTarball()
+	// routine.
+	CapGitDepInOptionalDep
+
+	// CapUnlistedLargeFile — the tarball contains a code file (≥512 KB)
+	// that is not declared in the package.json "files" allowlist and is
+	// not under a standard build-output directory (dist/, lib/, etc.).
+	// Canonical shape: router_init.js (2.3 MB obfuscated worm) smuggled
+	// into 84 @tanstack/* packages without appearing in the repo or the
+	// files field. Detects without requiring GitHub tree access.
+	CapUnlistedLargeFile
+
+	// CapVersionUnpublished — this version appears in the npm registry's
+	// time map (i.e. was published) but is absent from the versions map
+	// (i.e. was subsequently yanked). npm unpublishes under its security
+	// policy; a lockfile pinning a yanked version means the package was
+	// installed during an active incident window. Treat as block-tier.
+	CapVersionUnpublished
+
+	// CapKnownMalwareIOC — the tarball contains a file whose name is on
+	// the confirmed-malware IOC list (router_init.js, router_runtime.js,
+	// tanstack_runner.js). These filenames were confirmed malware in the
+	// 2026 Mini Shai-Hulud campaign. Block immediately; no allowlist
+	// exception is reasonable.
+	CapKnownMalwareIOC
 )
 
 // String returns the canonical name. Used for serialization, logs,
@@ -174,6 +206,14 @@ func (c Capability) String() string {
 		return "tarball-source-drift"
 	case CapMaintainerChanged:
 		return "maintainer-changed"
+	case CapGitDepInOptionalDep:
+		return "git-dep-in-optional"
+	case CapUnlistedLargeFile:
+		return "unlisted-large-file"
+	case CapVersionUnpublished:
+		return "version-unpublished"
+	case CapKnownMalwareIOC:
+		return "known-malware-ioc"
 	}
 	return "unknown"
 }
@@ -218,6 +258,14 @@ func (c Capability) Description() string {
 		return "published tarball contains source files not present in the upstream git tag (payload smuggled past github review)"
 	case CapMaintainerChanged:
 		return "publisher of this version differs from publisher of previous version (maintainer-handover compromise shape)"
+	case CapGitDepInOptionalDep:
+		return "optionalDependency resolves to a git SHA commit — worm-propagation injection vector (Mini Shai-Hulud shape)"
+	case CapUnlistedLargeFile:
+		return "tarball contains a ≥512 KB code file not in package.json files field — smuggled payload shape"
+	case CapVersionUnpublished:
+		return "version was published then yanked — lockfile pins a package from an active incident window"
+	case CapKnownMalwareIOC:
+		return "tarball contains a confirmed-malware filename IOC (router_init.js / router_runtime.js / tanstack_runner.js)"
 	}
 	return "no description available"
 }
@@ -243,6 +291,10 @@ func AllCapabilities() []Capability {
 		CapPatchVersionDrift,
 		CapTarballDrift,
 		CapMaintainerChanged,
+		CapGitDepInOptionalDep,
+		CapUnlistedLargeFile,
+		CapVersionUnpublished,
+		CapKnownMalwareIOC,
 	}
 }
 

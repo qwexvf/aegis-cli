@@ -89,6 +89,25 @@ func detectMaintainerHijackAt(sig domain.MaintainerSignal, now func() time.Time)
 	return 0
 }
 
+// DetectVersionUnpublished fires when the queried version was published
+// to the registry but was subsequently removed (yanked). The signal is
+// carried via MaintainerSignal.VersionUnpublished, which the npm adapter
+// populates by comparing the packument's time map (always retains yank
+// timestamps) against the versions map (entries removed on yank).
+//
+// npm removes versions only under its security policy — a lockfile
+// pinning a yanked version almost always means the package was installed
+// during an active or recently resolved supply-chain incident.
+//
+// Returns CapVersionUnpublished on fire, 0 otherwise. Missing data
+// (VersionUnpublished == false) always returns 0.
+func DetectVersionUnpublished(sig domain.MaintainerSignal) domain.Capability {
+	if sig.VersionUnpublished {
+		return domain.CapVersionUnpublished
+	}
+	return 0
+}
+
 // DetectMaintainerChanged fires when the npm user who pushed THIS
 // version differs from the user who pushed the previous version.
 // This is the canonical maintainer-handover shape: event-stream@3.3.5

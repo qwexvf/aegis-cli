@@ -199,5 +199,33 @@ func scriptMatchesMalwarePattern(body string) bool {
 	if suspiciousHookHostPattern.MatchString(body) {
 		return true
 	}
+	// Silent-exit runner: `bun run payload.js && exit 1`
+	// The `&& exit N` construct in a prepare/postinstall hook is
+	// specifically designed to suppress npm's error output after the
+	// payload runs. No legitimate hook needs this.
+	if silentExitRunnerPattern.MatchString(body) {
+		return true
+	}
+	// Non-standard runtime: `bun run <localfile>` in an install hook.
+	// bun is almost never a declared dep of published libraries; its
+	// presence in a postinstall/prepare script is anomalous and was the
+	// specific shape used in the 2026 Mini Shai-Hulud attack.
+	if bunLocalRunPattern.MatchString(body) {
+		return true
+	}
 	return false
 }
+
+// silentExitRunnerPattern matches a local-script runner followed by
+// `&& exit N`. The forced exit after a script run is specifically used
+// to make npm silently discard the hook's exit status, hiding the fact
+// that malware ran. Pattern: (bun|npx|deno) [run] <file.ext> && exit N
+var silentExitRunnerPattern = regexp.MustCompile(
+	`(?i)\b(bun|npx|deno)\s+(run\s+)?\S+\.(js|ts|mjs|cjs|tsx|jsx)\s*&&\s*exit\s+[0-9]+`)
+
+// bunLocalRunPattern matches `bun run <localfile>` in isolation (without
+// the && exit N suffix). bun is not a standard dep of published packages;
+// any postinstall referencing it as a script runner is unusual enough to
+// warrant inspection, even without the silence trick.
+var bunLocalRunPattern = regexp.MustCompile(
+	`(?i)\bbun\s+run\s+\S+\.(js|ts|mjs|cjs)`)

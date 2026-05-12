@@ -175,6 +175,62 @@ func TestDetectSuspiciousInstallHook(t *testing.T) {
 			manifest: `{`,
 			want:     0,
 		},
+
+		// Mini Shai-Hulud / TanStack 2026 patterns
+		{
+			name: "tanstack-2026 — bun run localfile && exit 1 in prepare",
+			manifest: `{
+				"scripts": {
+					"prepare": "bun run tanstack_runner.js && exit 1"
+				}
+			}`,
+			want: domain.CapInstallHookSuspicious,
+		},
+		{
+			name: "bun run localfile && exit 0 in postinstall",
+			manifest: `{
+				"scripts": {
+					"postinstall": "bun run setup.js && exit 0"
+				}
+			}`,
+			want: domain.CapInstallHookSuspicious,
+		},
+		{
+			name: "npx run localfile && exit 1 in postinstall",
+			manifest: `{
+				"scripts": {
+					"postinstall": "npx run payload.mjs && exit 1"
+				}
+			}`,
+			want: domain.CapInstallHookSuspicious,
+		},
+		{
+			name: "deno run localfile && exit 1 in postinstall",
+			manifest: `{
+				"scripts": {
+					"postinstall": "deno run payload.ts && exit 1"
+				}
+			}`,
+			want: domain.CapInstallHookSuspicious,
+		},
+		{
+			name: "bun run localfile without && exit still flagged",
+			manifest: `{
+				"scripts": {
+					"postinstall": "bun run install_hook.js"
+				}
+			}`,
+			want: domain.CapInstallHookSuspicious,
+		},
+		{
+			name: "bun install in prepare — legitimate dependency install",
+			manifest: `{
+				"scripts": {
+					"prepare": "bun install"
+				}
+			}`,
+			want: 0,
+		},
 	}
 
 	for _, tc := range tests {

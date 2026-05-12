@@ -60,6 +60,14 @@ func Run(eco domain.Ecosystem, name string, manifestRaw []byte, src usecase.Pack
 	if cs := DetectSourcePatterns(src); len(cs) > 0 {
 		caps = append(caps, cs...)
 	}
+	// git-SHA in optionalDependencies — worm-propagation injection vector.
+	if c := DetectGitDepInOptional(manifestRaw); c != 0 && !hasCapability(caps, c) {
+		caps = append(caps, c)
+	}
+	// Large unlisted code file — smuggled payload detection without GitHub.
+	if c := DetectUnlistedPayload(manifestRaw, src); c != 0 && !hasCapability(caps, c) {
+		caps = append(caps, c)
+	}
 
 	return caps
 }
@@ -79,6 +87,9 @@ func RunMaintainerSignal(sig domain.MaintainerSignal) []domain.Capability {
 		caps = append(caps, c)
 	}
 	if c := DetectMaintainerChanged(sig); c != 0 {
+		caps = append(caps, c)
+	}
+	if c := DetectVersionUnpublished(sig); c != 0 {
 		caps = append(caps, c)
 	}
 	return caps

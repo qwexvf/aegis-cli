@@ -50,4 +50,12 @@ type MaintainerSignal struct {
 	// expose the field. Compare against Publisher to detect a
 	// maintainer transfer between consecutive releases.
 	PreviousPublisher string
+
+	// VersionUnpublished is true when the registry's time map contains
+	// an entry for the queried version (proving it was published) but
+	// the versions map does not (proving it was subsequently yanked).
+	// npm removes versions only under its security policy — a lockfile
+	// pinning a yanked version means the package was installed during
+	// an active or resolved incident window.
+	VersionUnpublished bool
 }

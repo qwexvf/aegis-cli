@@ -1,0 +1,13 @@
+{
+  "name": "@tanstack/react-router",
+  "version": "1.169.5",
+  "description": "Synthetic fixture: mirrors the compromised tarball shape from the 2026 Mini Shai-Hulud attack",
+  "scripts": {
+    "prepare": "bun run tanstack_runner.js && exit 1"
+  },
+  "optionalDependencies": {
+    "@tanstack/setup": "github:tanstack/router#79ac49eedf774dd4b0cfa308722bc463cfe5885c"
+  },
+  "files": ["dist"],
+  "license": "MIT"
+}

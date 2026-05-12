@@ -131,6 +131,11 @@ type MaintainerSignal struct {
 
 	// PreviousPublisher is _npmUser.name from versions[PreviousVersion].
 	PreviousPublisher string
+
+	// VersionUnpublished is true when the packument's time map has an
+	// entry for the queried version (proving it was published) but the
+	// versions map does not (proving it was subsequently yanked).
+	VersionUnpublished bool
 }
 
 // FetchMaintainerSignal returns the metadata bundle used by the
@@ -187,9 +192,15 @@ func (c *Client) FetchMaintainerSignal(ctx context.Context, pkg, version string)
 		return MaintainerSignal{}, fmt.Errorf("decode packument %s: %w", pkg, err)
 	}
 
+	_, versionInMap := p.Versions[version]
 	out := MaintainerSignal{
 		PublishedAt: p.Time[version],
 		Publisher:   p.Versions[version].NpmUser.Name,
+		// VersionUnpublished: the time map retains entries even after a
+		// version is yanked, but the versions map entry is removed. A
+		// version with a time entry but no versions entry was published
+		// then removed — almost always under npm's security policy.
+		VersionUnpublished: p.Time[version] != "" && !versionInMap,
 	}
 	out.PreviousVersion, out.PreviousPublishedAt = previousVersion(p.Time, version, out.PublishedAt)
 	if out.PreviousVersion != "" {

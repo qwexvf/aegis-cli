@@ -181,3 +181,39 @@ func TestRunMaintainerSignal_BothFire(t *testing.T) {
 		t.Errorf("changed = %v, want CapMaintainerChanged", changed)
 	}
 }
+
+// TestDetectVersionUnpublished covers the yanked-version detector that
+// catches users whose lockfile pins a version that was published during
+// an active incident window and subsequently removed from the registry.
+func TestDetectVersionUnpublished(t *testing.T) {
+	t.Run("tanstack-2026 — version yanked after incident", func(t *testing.T) {
+		// Simulates @tanstack/react-router@1.169.5: present in time map,
+		// absent from versions map = published then yanked.
+		sig := domain.MaintainerSignal{
+			PublishedAt:        "2026-05-11T19:20:42.105Z",
+			VersionUnpublished: true,
+		}
+		got := DetectVersionUnpublished(sig)
+		if got != domain.CapVersionUnpublished {
+			t.Fatalf("want CapVersionUnpublished, got %v", got)
+		}
+	})
+
+	t.Run("normal live version — not flagged", func(t *testing.T) {
+		sig := domain.MaintainerSignal{
+			PublishedAt:        "2026-05-05T20:37:38.526Z",
+			VersionUnpublished: false,
+		}
+		got := DetectVersionUnpublished(sig)
+		if got != 0 {
+			t.Errorf("want 0 (version is live), got %v", got)
+		}
+	})
+
+	t.Run("empty signal — no false positive", func(t *testing.T) {
+		got := DetectVersionUnpublished(domain.MaintainerSignal{})
+		if got != 0 {
+			t.Errorf("want 0 on empty signal, got %v", got)
+		}
+	})
+}
