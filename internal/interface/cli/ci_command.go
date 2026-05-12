@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
+	"github.com/qwexvf/aegis-cli/internal/infra/sarif"
 	presentercli "github.com/qwexvf/aegis-cli/internal/presenter/cli"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
@@ -19,13 +21,15 @@ import (
 //	0   passed (no findings ≥ --fail-on)
 //	1   failed (one or more findings ≥ --fail-on)
 //	2   couldn't reach a verdict (config error, network failure, etc.)
-func ciCommand(uc *usecase.CI, presenter *presentercli.CIPresenter) *cobra.Command {
+func ciCommand(uc *usecase.CI, actions *usecase.Actions, presenter *presentercli.CIPresenter) *cobra.Command {
 	var (
 		failOnStr    string
 		jsonOut      bool
+		sarifOut     bool
 		quiet        bool
 		noEnrich     bool
 		baselinePath string
+		scanActions  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "ci",
@@ -69,10 +73,62 @@ deps incur AST scan cost.`,
 			if runErr != nil {
 				return &exitCodeError{code: 2, err: runErr, silent: true}
 			}
-			if !result.Passed {
+
+			// SARIF output: emit package findings, then return.
+			if sarifOut {
+				log := sarif.CIToSARIF(result, Version)
+				b, err := sarif.Marshal(log)
+				if err != nil {
+					return &exitCodeError{code: 2, err: err, silent: false}
+				}
+				_, _ = cmd.OutOrStdout().Write(b)
+				_, _ = fmt.Fprintln(cmd.OutOrStdout())
+				if !result.Passed {
+					active := 0
+					for _, f := range result.Findings {
+						if f.Verdict >= failOn {
+							active++
+						}
+					}
+					return &exitCodeError{code: 1, err: fmt.Errorf("ci: %d finding(s) ≥ %s", active, failOn), silent: true}
+				}
+				return nil
+			}
+
+			// Actions scan integration: run after package scan.
+			actionsPass := true
+			if scanActions {
+				ignore, _ := allowlist.LoadActionsIgnore(cwd)
+				aResult, aErr := actions.Scan(cmd.Context(), usecase.ActionsScanRequest{
+					ProjectDir: cwd,
+					FailOn:     domain.SevHigh,
+					Ignore:     ignore,
+				})
+				if aErr != nil {
+					return &exitCodeError{code: 2, err: fmt.Errorf("actions scan: %w", aErr), silent: false}
+				}
+				actionsPass = aResult.Passed
+				if !jsonOut && !quiet {
+					fmt.Fprintf(cmd.OutOrStdout(), "\nactions scan: scanned %d workflow(s)", aResult.Workflows)
+					active := 0
+					for _, f := range aResult.Findings {
+						if !f.Suppressed {
+							active++
+						}
+					}
+					if active > 0 {
+						fmt.Fprintf(cmd.OutOrStdout(), ", %d finding(s)\n", active)
+					} else {
+						fmt.Fprintln(cmd.OutOrStdout(), ", no findings")
+					}
+				}
+			}
+
+			if !result.Passed || !actionsPass {
+				active := len(result.Findings)
 				return &exitCodeError{
 					code:   1,
-					err:    fmt.Errorf("ci: %d finding(s) ≥ %s", len(result.Findings), failOn),
+					err:    fmt.Errorf("ci: %d finding(s) ≥ %s", active, failOn),
 					silent: true,
 				}
 			}
@@ -87,6 +143,10 @@ deps incur AST scan cost.`,
 		"print only the summary line (no per-finding detail)")
 	cmd.Flags().BoolVar(&noEnrich, "no-enrich", false,
 		"skip the AST scan; score only on existing fingerprints (faster but thinner)")
+	cmd.Flags().BoolVar(&sarifOut, "sarif", false,
+		"emit package findings as SARIF 2.1.0 (for GitHub Code Scanning)")
+	cmd.Flags().BoolVar(&scanActions, "scan-actions", false,
+		"also scan .github/workflows/ and fail if Actions findings ≥ high")
 	cmd.Flags().StringVar(&baselinePath, "baseline", "",
 		"path to a saved aegis.lock to diff against (drift mode — catches "+
 			"version-changed deps that grew new capabilities; doesn't touch your aegis.lock)")
