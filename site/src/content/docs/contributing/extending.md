@@ -12,6 +12,8 @@ How to add support for a new package ecosystem (Maven, Composer, Swift, …) or 
 
 | Want to add… | Implement | Register at | Files needed |
 |---|---|---|---|
+| **New ecosystem manifest parser (heuristics)** | `heuristics.EcosystemParser` | `defaultPipeline` in `heuristics.go` | **1** |
+| **New behavior detector (heuristics)** | `heuristics.Check` | `defaultPipeline` in `heuristics.go` | **1** |
 | New lockfile format | `locksnap.LockfileParser` | `locksnap.Register(p)` (composition root or init) | 1-2 |
 | New AST language scanner | `astscan.LanguageScanner` | `dispatcher.Register(eco, s)` | 3-5 (parser, queries, scanner, tests) |
 | New vulnerability feed | `usecase.VulnLookup` | `snapshot.WithVulnLookup(...)` | 1 (HTTP adapter) |
@@ -20,6 +22,69 @@ How to add support for a new package ecosystem (Maven, Composer, Swift, …) or 
 | New PM wrapper (`aegis nx install …`) | `pmwrapper.PackageManager` | `cmd/aegis/pm_<name>.go` with `//go:build !no<name>` | 1 |
 
 Every interface is in `internal/usecase/snapshot_ports.go` (or `internal/infra/astscan/scanner.go` for the AST one). Domain types live in `internal/domain/`.
+
+## Easiest: adding a heuristic ecosystem parser
+
+The heuristics package uses a two-stage pipeline:
+
+```
+EcosystemParser.Parse() → NormalizedPackage → []Check → []Capability
+```
+
+Adding a new ecosystem parser is **one file + one registration line**. No check files change — `checkVCSDeps`, `checkInstallHooks`, `checkBinaryDropper`, and every other check run automatically for the new ecosystem.
+
+### 1. Implement `EcosystemParser`
+
+`internal/infra/heuristics/parser_<eco>.go`:
+
+```go
+type swiftParser struct{}
+
+func (p *swiftParser) Ecosystems() []domain.Ecosystem {
+    return []domain.Ecosystem{domain.EcoSwift}
+}
+
+func (p *swiftParser) Parse(name string, manifestRaw []byte, src domain.PackageSource) NormalizedPackage {
+    pkg := NormalizedPackage{Eco: domain.EcoSwift, Name: name, Files: src.Files, ManifestRaw: manifestRaw}
+    // parse Package.swift → populate pkg.Deps (VCS/registry/local) and pkg.Hooks
+    return pkg
+}
+```
+
+Populate `Dep.Source`:
+- `DepSourceVCS` — git URL (e.g. `.package(url: "https://github.com/...")`)
+- `DepSourceLocal` — local path (e.g. `.package(path: "../mylib")`)
+- `DepSourceRegistry` — versioned registry dep
+
+### 2. Register in `defaultPipeline`
+
+One line in `internal/infra/heuristics/heuristics.go`:
+
+```go
+var defaultPipeline = NewPipeline(
+    []EcosystemParser{
+        // ... existing parsers ...
+        &swiftParser{},  // ← add this
+    },
+    []Check{ /* unchanged */ },
+)
+```
+
+### Adding a new Check
+
+```go
+// internal/infra/heuristics/check_<name>.go
+func checkMyDetection(pkg NormalizedPackage) []domain.Capability {
+    for _, dep := range pkg.Deps {
+        if dep.Source == DepSourceVCS && slices.Contains(dep.Groups, "optional") {
+            // custom logic here
+        }
+    }
+    return nil
+}
+```
+
+Register in `defaultPipeline`'s `[]Check` slice. All ecosystems benefit immediately.
 
 ## The most common case: adding a lockfile
 

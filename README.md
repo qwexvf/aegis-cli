@@ -14,7 +14,7 @@ Supply-chain security scanner for 9 package ecosystems and GitHub Actions workfl
 - **Transitive deps included** — lockfile-based; every resolved package is scanned, not just direct deps
 - **Polyglot monorepo** — finds all lockfiles, merges into a single `aegis.lock`
 - **CycloneDX 1.5 SBOM** — `aegis sbom` emits a standards-compliant BOM from the snapshot; `--include-vulns` attaches OSV advisories
-- **GitHub Actions scanner** — `aegis actions scan` walks `.github/workflows/*.yml`; flags unpinned action refs, `pull_request_target` + checkout escalation, script injection, `curl|sh` in `run:` blocks, and `permissions: write-all`
+- **GitHub Actions scanner** — `aegis actions scan` walks `.github/workflows/*.yml` (or fetches from a remote repo with `--repo owner/repo`); flags unpinned action refs, `pull_request_target` + checkout escalation, OIDC + npm publish worm vector, `actions/cache` poisoning, script injection, `curl|sh` in `run:` blocks, and `permissions: write-all`; outputs SARIF 2.1.0 with `--sarif` for GitHub Code Scanning
 - **Offline capable** — `AEGIS_NO_VULN_LOOKUP=1` for air-gapped use; self-hosted OSV mirror via `AEGIS_OSV_URL`
 
 ## Ecosystems
@@ -105,6 +105,7 @@ aegis completion fish > ~/.config/fish/completions/aegis.fish
 4. **Heuristics** — behavior-based detectors over the tarball and registry metadata (no network beyond step 2):
    - install hooks doing `curl|sh`, `bun run <file> && exit 1`, and similar download-execute patterns
    - `optionalDependencies` pointing at git SHA commits (worm-propagation injection vector)
+   - VCS dependencies (`git+https://`, `git = "..."`, `:git =>`) across PyPI, Cargo, RubyGems, Go, Composer, Gleam — bypasses registry immutability
    - unlisted large code files (≥512 KB not in `files` field — smuggled payload shape)
    - confirmed-malware IOC filenames (`router_init.js`, `router_runtime.js`, `tanstack_runner.js`)
    - yanked versions: lockfile pinning a version removed from the registry flags users who installed during an incident window
@@ -129,6 +130,40 @@ rules:
 ```
 
 Three layers, in match order: builtin (~20 curated rules) → user (`~/.aegis/allowlist.yaml`) → project (`.aegis-allowlist.yaml`).
+
+## GitHub Actions Workflow Scanner
+
+```bash
+# Scan local workflows
+aegis actions scan
+
+# Scan a remote repository (uses $GITHUB_TOKEN)
+aegis actions scan --repo owner/repo
+
+# Emit SARIF for GitHub Code Scanning
+aegis actions scan --sarif > results.sarif
+```
+
+Suppress known-safe findings with `.aegis-actions-allowlist.yaml`:
+
+```yaml
+version: 1
+rules:
+  - kind: unpinned_ref
+    file: .github/workflows/release.yml
+    reason: "pinned via dependabot"
+  - kind: write_all_permissions
+    reason: "covered by network policy"
+```
+
+Upload to GitHub Security tab:
+
+```yaml
+- run: aegis actions scan --sarif > aegis.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: aegis.sarif
+```
 
 ## CI
 
