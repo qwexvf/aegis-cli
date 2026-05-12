@@ -16,8 +16,8 @@ import (
 // AST worker pool.
 type heuristicsAdapter struct{}
 
-func (heuristicsAdapter) Run(eco domain.Ecosystem, name string, manifestRaw []byte, src usecase.PackageSource) []domain.Capability {
-	return heuristics.Run(eco, name, manifestRaw, src)
+func (heuristicsAdapter) Run(eco domain.Ecosystem, name, version string, manifestRaw []byte, src usecase.PackageSource) []domain.Capability {
+	return heuristics.Run(eco, name, version, manifestRaw, src)
 }
 
 // RunMaintainerSignal is the second entry point — separated from

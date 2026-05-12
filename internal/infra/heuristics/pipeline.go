@@ -46,7 +46,7 @@ func NewPipeline(parsers []EcosystemParser, checks []Check) *Pipeline {
 // Run normalizes the input with the registered parser (or a fallback
 // if none is registered for eco), executes every check, and returns
 // the deduplicated union of all detected capabilities.
-func (p *Pipeline) Run(eco domain.Ecosystem, name string, manifestRaw []byte, src domain.PackageSource) []domain.Capability {
+func (p *Pipeline) Run(eco domain.Ecosystem, name, version string, manifestRaw []byte, src domain.PackageSource) []domain.Capability {
 	var pkg NormalizedPackage
 	if parser, ok := p.parsers[eco]; ok {
 		pkg = parser.Parse(name, manifestRaw, src)
@@ -58,6 +58,7 @@ func (p *Pipeline) Run(eco domain.Ecosystem, name string, manifestRaw []byte, sr
 			ManifestRaw: manifestRaw,
 		}
 	}
+	pkg.Version = version
 
 	seen := make(map[domain.Capability]struct{})
 	var caps []domain.Capability

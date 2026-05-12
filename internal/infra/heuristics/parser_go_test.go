@@ -6,6 +6,71 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
+func TestGoRetract(t *testing.T) {
+	t.Run("retracted version triggers CapVersionUnpublished", func(t *testing.T) {
+		gomod := `module example.com/mymod
+go 1.22
+retract v1.0.0 // security vulnerability
+`
+		pkg := NormalizedPackage{
+			Eco:     domain.EcoGo,
+			Version: "v1.0.0",
+			RetractedVersions: func() []string {
+				p := &goParser{}
+				n := p.Parse("example.com/mymod", nil, domain.PackageSource{
+					Files: map[string][]byte{"go.mod": []byte(gomod)},
+				})
+				return n.RetractedVersions
+			}(),
+		}
+		got := checkGoRetract(pkg)
+		if !hasCap(got, domain.CapVersionUnpublished) {
+			t.Errorf("want CapVersionUnpublished for retracted v1.0.0, got %v", got)
+		}
+	})
+
+	t.Run("non-retracted version does not fire", func(t *testing.T) {
+		gomod := `module example.com/mymod
+go 1.22
+retract v1.0.0
+`
+		p := &goParser{}
+		n := p.Parse("example.com/mymod", nil, domain.PackageSource{
+			Files: map[string][]byte{"go.mod": []byte(gomod)},
+		})
+		n.Version = "v1.1.0" // different from retracted v1.0.0
+		got := checkGoRetract(n)
+		if hasCap(got, domain.CapVersionUnpublished) {
+			t.Errorf("v1.1.0 is not retracted, should not fire")
+		}
+	})
+
+	t.Run("no version set is no-op", func(t *testing.T) {
+		pkg := NormalizedPackage{
+			Eco:               domain.EcoGo,
+			RetractedVersions: []string{"v1.0.0"},
+			// Version intentionally empty
+		}
+		if got := checkGoRetract(pkg); len(got) != 0 {
+			t.Errorf("no version set should be no-op, got %v", got)
+		}
+	})
+
+	t.Run("via Run() pipeline with matching version", func(t *testing.T) {
+		gomod := `module example.com/vuln
+go 1.22
+retract v2.0.0
+`
+		src := domain.PackageSource{
+			Files: map[string][]byte{"go.mod": []byte(gomod)},
+		}
+		caps := Run(domain.EcoGo, "example.com/vuln", "v2.0.0", nil, src)
+		if !hasCap(caps, domain.CapVersionUnpublished) {
+			t.Errorf("Run() with retracted version: want CapVersionUnpublished, got %v", caps)
+		}
+	})
+}
+
 func TestGoParser(t *testing.T) {
 	cases := []struct {
 		name      string

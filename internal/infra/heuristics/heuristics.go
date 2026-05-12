@@ -46,14 +46,15 @@ var defaultPipeline = NewPipeline(
 		checkOptionalGitDep,  // optional VCS dep → CapGitDepInOptionalDep (worm vector)
 		checkUnlistedPayload, // large unlisted file → CapUnlistedLargeFile
 		checkVCSDeps,         // any VCS dep → CapVCSDependency
+		checkGoRetract,       // Go retract directive + version match → CapVersionUnpublished
 	},
 )
 
 // Run is the backward-compatible entry point. Parses the package with the
 // registered ecosystem parser and runs all checks. Callers (snapshot.Enrich,
 // analyze.Analyze) don't need to change.
-func Run(eco domain.Ecosystem, name string, manifestRaw []byte, src domain.PackageSource) []domain.Capability {
-	return defaultPipeline.Run(eco, name, manifestRaw, src)
+func Run(eco domain.Ecosystem, name, version string, manifestRaw []byte, src domain.PackageSource) []domain.Capability {
+	return defaultPipeline.Run(eco, name, version, manifestRaw, src)
 }
 
 // RunMaintainerSignal runs the registry-side hijack detectors. Separated
