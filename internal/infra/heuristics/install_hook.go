@@ -176,11 +176,11 @@ func scriptMatchesMalwarePattern(body string) bool {
 	if silentExitRunnerPattern.MatchString(body) {
 		return true
 	}
-	// Non-standard runtime: `bun run <localfile>` in an install hook.
-	// bun is almost never a declared dep of published libraries; its
-	// presence in a postinstall/prepare script is anomalous and was the
-	// specific shape used in the 2026 Mini Shai-Hulud attack.
-	if bunLocalRunPattern.MatchString(body) {
+	// Non-standard runtime: `bun run <localfile>` or `deno run <localfile>`
+	// in an install hook. Neither runtime is a standard dep of published
+	// packages; their presence in postinstall/prepare is anomalous.
+	// (npx excluded: `npx <tool>` is common in legitimate prepare scripts.)
+	if nonStandardRuntimePattern.MatchString(body) {
 		return true
 	}
 	return false
@@ -193,9 +193,9 @@ func scriptMatchesMalwarePattern(body string) bool {
 var silentExitRunnerPattern = regexp.MustCompile(
 	`(?i)\b(bun|npx|deno)\s+(run\s+)?\S+\.(js|ts|mjs|cjs|tsx|jsx)\s*&&\s*exit\s+[0-9]+`)
 
-// bunLocalRunPattern matches `bun run <localfile>` in isolation (without
-// the && exit N suffix). bun is not a standard dep of published packages;
-// any postinstall referencing it as a script runner is unusual enough to
-// warrant inspection, even without the silence trick.
-var bunLocalRunPattern = regexp.MustCompile(
-	`(?i)\bbun\s+run\s+\S+\.(js|ts|mjs|cjs)`)
+// nonStandardRuntimePattern matches `bun run <localfile>` or `deno run
+// <localfile>` in isolation (without the && exit N suffix). Both are
+// non-standard runtimes for published npm packages; their presence alone
+// is anomalous enough to warrant inspection.
+var nonStandardRuntimePattern = regexp.MustCompile(
+	`(?i)\b(bun|deno)\s+run\s+\S+\.(js|ts|mjs|cjs|tsx|jsx)`)
