@@ -145,7 +145,7 @@ func NewRoot(d Deps) *cobra.Command {
 		add(analyzeCommand(d.Analyze, d.AnalyzePresenter), groupInspect)
 	}
 	if d.CI != nil && d.CIPresenter != nil {
-		add(ciCommand(d.CI, d.CIPresenter), groupGate)
+		add(ciCommand(d.CI, d.Actions, d.CIPresenter), groupGate)
 	}
 	if d.Recheck != nil && d.RecheckPresenter != nil {
 		add(recheckCommand(d.Recheck, d.RecheckPresenter), groupGate)

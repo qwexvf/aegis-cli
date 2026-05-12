@@ -68,8 +68,18 @@ type Message struct {
 }
 
 // Location points to the file and line where the finding was detected.
+// For package-scanner results, PhysicalLocation may be absent and
+// LogicalLocations carries the package identity instead.
 type Location struct {
-	PhysicalLocation PhysicalLocation `json:"physicalLocation"`
+	PhysicalLocation PhysicalLocation  `json:"physicalLocation"`
+	LogicalLocations []LogicalLocation `json:"logicalLocations,omitempty"`
+}
+
+// LogicalLocation identifies a package, module, or namespace rather than
+// a specific source file. Used by the package scanner (no file:line).
+type LogicalLocation struct {
+	FullyQualifiedName string `json:"fullyQualifiedName,omitempty"`
+	Kind               string `json:"kind,omitempty"` // "package", "module", etc.
 }
 
 // PhysicalLocation identifies a source file and optional region.
