@@ -91,6 +91,13 @@ type WorkflowFinding struct {
 	Message  string     // human-facing, one line
 	Evidence string     // raw snippet from the workflow (truncated)
 	Ref      *ActionRef // populated when the finding is about a `uses:`
+
+	// Suppressed is true when an ActionsIgnoreRule matched this finding.
+	// The finding is still included in output for transparency; it does
+	// not contribute to the Passed/failed threshold.
+	Suppressed bool
+	// SuppressBy holds the Reason from the matching ignore rule.
+	SuppressBy string
 }
 
 // WorkflowFindingKind enumerates the heuristic checks. Each kind maps

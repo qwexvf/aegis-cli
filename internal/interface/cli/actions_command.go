@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
 )
@@ -63,9 +64,14 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ignore, err := allowlist.LoadActionsIgnore(projectDir)
+			if err != nil {
+				return fmt.Errorf("actions allowlist: %w", err)
+			}
 			result, err := uc.Scan(usecase.ActionsScanRequest{
 				ProjectDir: projectDir,
 				FailOn:     failOn,
+				Ignore:     ignore,
 			})
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
@@ -123,6 +129,14 @@ func renderActionsResult(out io.Writer, r usecase.ActionsScanResult, asJSON bool
 		return
 	}
 	for _, f := range r.Findings {
+		if f.Suppressed {
+			fmt.Fprintf(out, "%s:%d  [suppressed] %s: %s", f.File, f.Line, f.Kind, f.Message)
+			if f.SuppressBy != "" {
+				fmt.Fprintf(out, " (%s)", f.SuppressBy)
+			}
+			fmt.Fprintln(out)
+			continue
+		}
 		fmt.Fprintf(out, "%s:%d  [%s] %s: %s\n", f.File, f.Line, f.Severity, f.Kind, f.Message)
 		if f.Evidence != "" {
 			fmt.Fprintf(out, "    evidence: %s\n", f.Evidence)
