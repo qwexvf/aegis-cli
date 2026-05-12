@@ -23,6 +23,10 @@ ci:
   # Disable AST enrichment by default (--no-enrich).
   # no_enrich: false
 
+  # Minimum severity for --scan-actions (--actions-fail-on).
+  # Values: low | medium | high | critical  (default: high)
+  # actions_fail_on: high
+
 actions:
   # Default --fail-on severity for `aegis actions scan`.
   # Values: low | medium | high | critical  (default: high)

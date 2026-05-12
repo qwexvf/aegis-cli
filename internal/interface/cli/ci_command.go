@@ -23,13 +23,14 @@ import (
 //	2   couldn't reach a verdict (config error, network failure, etc.)
 func ciCommand(uc *usecase.CI, actions *usecase.Actions, presenter *presentercli.CIPresenter) *cobra.Command {
 	var (
-		failOnStr    string
-		jsonOut      bool
-		sarifOut     bool
-		quiet        bool
-		noEnrich     bool
-		baselinePath string
-		scanActions  bool
+		failOnStr        string
+		jsonOut          bool
+		sarifOut         bool
+		quiet            bool
+		noEnrich         bool
+		baselinePath     string
+		scanActions      bool
+		actionsFailOnStr string
 	)
 	cmd := &cobra.Command{
 		Use:   "ci",
@@ -68,6 +69,9 @@ deps incur AST scan cost.`,
 			}
 			if !cmd.Flags().Changed("no-enrich") && cfg.CI.NoEnrich {
 				noEnrich = true
+			}
+			if !cmd.Flags().Changed("actions-fail-on") && cfg.CI.ActionsFailOn != "" {
+				actionsFailOnStr = cfg.CI.ActionsFailOn
 			}
 
 			failOn, err := parseFailOn(failOnStr)
@@ -117,9 +121,13 @@ deps incur AST scan cost.`,
 				if err != nil {
 					return &exitCodeError{code: 2, err: fmt.Errorf("actions allowlist: %w", err), silent: false}
 				}
+				actionsFailOn, aFailOnErr := parseSeverity(actionsFailOnStr)
+				if aFailOnErr != nil {
+					return aFailOnErr
+				}
 				aResult, aErr := actions.Scan(cmd.Context(), usecase.ActionsScanRequest{
 					ProjectDir: cwd,
-					FailOn:     domain.SevHigh,
+					FailOn:     actionsFailOn,
 					Ignore:     ignore,
 				})
 				if aErr != nil {
@@ -164,7 +172,9 @@ deps incur AST scan cost.`,
 	cmd.Flags().BoolVar(&sarifOut, "sarif", false,
 		"emit package findings as SARIF 2.1.0 (for GitHub Code Scanning)")
 	cmd.Flags().BoolVar(&scanActions, "scan-actions", false,
-		"also scan .github/workflows/ and fail if Actions findings ≥ high")
+		"also scan .github/workflows/ and fail if Actions findings ≥ --actions-fail-on")
+	cmd.Flags().StringVar(&actionsFailOnStr, "actions-fail-on", "high",
+		"min severity for --scan-actions: low|medium|high|critical")
 	cmd.Flags().StringVar(&baselinePath, "baseline", "",
 		"path to a saved aegis.lock to diff against (drift mode — catches "+
 			"version-changed deps that grew new capabilities; doesn't touch your aegis.lock)")
