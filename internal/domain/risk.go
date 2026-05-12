@@ -96,6 +96,30 @@ const (
 	// with allowlist for known build-flow quirks (e.g. packages that
 	// regenerate large protobuf bundles at publish time).
 	WeightTarballDrift = 60
+
+	// WeightGitDepInOptionalDep — optionalDependency with a git-SHA
+	// version spec. No legitimate published package does this; it is
+	// the canonical worm-propagation vector (Mini Shai-Hulud / TanStack
+	// 2026). Weight pushes to Prompt alone; Block when combined with
+	// other signals from the same tarball.
+	WeightGitDepInOptionalDep = 65
+
+	// WeightUnlistedLargeFile — ≥512 KB code file in tarball root not
+	// declared in package.json files field. The canonical shape of a
+	// smuggled payload (router_init.js at 2.3 MB). Pushes to Prompt
+	// alone; Block in combination.
+	WeightUnlistedLargeFile = 55
+
+	// WeightVersionUnpublished — installed version was published then
+	// yanked. npm removes versions only under its security policy, so
+	// this is nearly always evidence of an active or resolved incident.
+	// Weight crosses Block threshold alone.
+	WeightVersionUnpublished = 75
+
+	// WeightKnownMalwareIOC — confirmed-malware filename found in tarball
+	// (router_init.js / router_runtime.js / tanstack_runner.js). Instant
+	// Block; the filename is a confirmed IOC from the 2026 campaign.
+	WeightKnownMalwareIOC = 100
 )
 
 // credentialEnvVarRoots is the list of env var name prefixes that, when
@@ -224,6 +248,22 @@ func RiskScore(fp *Fingerprint) RiskAssessment {
 			add(c.String(),
 				"publisher of this version differs from publisher of previous version (maintainer-handover compromise shape)",
 				WeightMaintainerChanged)
+		case CapGitDepInOptionalDep:
+			add(c.String(),
+				"optionalDependency resolves to a git SHA commit — worm-propagation injection vector",
+				WeightGitDepInOptionalDep)
+		case CapUnlistedLargeFile:
+			add(c.String(),
+				"tarball contains a ≥512 KB code file not in package.json files field — smuggled payload shape",
+				WeightUnlistedLargeFile)
+		case CapVersionUnpublished:
+			add(c.String(),
+				"version was published then yanked — lockfile pins a package from an active incident window",
+				WeightVersionUnpublished)
+		case CapKnownMalwareIOC:
+			add(c.String(),
+				"tarball contains a confirmed-malware filename IOC (router_init.js / router_runtime.js / tanstack_runner.js)",
+				WeightKnownMalwareIOC)
 		}
 	}
 

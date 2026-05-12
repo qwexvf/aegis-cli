@@ -35,8 +35,15 @@ func DetectSourcePatterns(src usecase.PackageSource) []domain.Capability {
 		obfuscation  bool
 		suspURL      bool
 		shellFetcher bool // curl/wget piped to shell found in source
+		malwareIOC   bool // known-bad filename present in tarball
 	}
 	for filename, body := range src.Files {
+		// Known-malware IOC check runs before any other filter — if the
+		// filename itself is a confirmed IOC we flag immediately and skip
+		// the rest of the per-file analysis for this path.
+		if !found.malwareIOC && isKnownMalwareFilename(filename) {
+			found.malwareIOC = true
+		}
 		if !isAnalyzableSource(filename) {
 			continue
 		}
@@ -66,11 +73,14 @@ func DetectSourcePatterns(src usecase.PackageSource) []domain.Capability {
 		if !found.shellFetcher && shellFetcherPattern.Match(body) {
 			found.shellFetcher = true
 		}
-		if found.obfuscation && found.suspURL && found.shellFetcher {
+		if found.obfuscation && found.suspURL && found.shellFetcher && found.malwareIOC {
 			break
 		}
 	}
 	var out []domain.Capability
+	if found.malwareIOC {
+		out = append(out, domain.CapKnownMalwareIOC)
+	}
 	if found.obfuscation {
 		out = append(out, domain.CapObfuscatedPayload)
 	}
@@ -81,6 +91,25 @@ func DetectSourcePatterns(src usecase.PackageSource) []domain.Capability {
 		out = append(out, domain.CapInstallHookSuspicious)
 	}
 	return out
+}
+
+// knownMalwareFilenames is the IOC filename blocklist. These filenames
+// were confirmed malware in the 2026 Mini Shai-Hulud / TanStack campaign.
+// Any tarball containing a file whose base name matches one of these
+// entries is immediately flagged as CapKnownMalwareIOC regardless of
+// where in the tarball tree the file appears.
+var knownMalwareFilenames = map[string]struct{}{
+	"router_init.js":     {},
+	"router_runtime.js":  {},
+	"tanstack_runner.js": {},
+}
+
+// isKnownMalwareFilename returns true when the base name of the file
+// path matches a confirmed IOC from the knownMalwareFilenames set.
+func isKnownMalwareFilename(filename string) bool {
+	base := strings.ToLower(path.Base(filename))
+	_, ok := knownMalwareFilenames[base]
+	return ok
 }
 
 // obfuscatedPayloadPattern matches the canonical "decode then
@@ -144,6 +173,13 @@ var suspiciousHostPatterns = []string{
 	"ipify.org",
 	"icanhazip.com",
 	"ifconfig.me",
+
+	// Session P2P network — used as C2 exfil channel in the 2026
+	// Mini Shai-Hulud / TanStack attack. Traffic mimics encrypted
+	// messaging app telemetry, making it hard to detect at the network
+	// layer. Any package embedding getsession.org URLs should be treated
+	// as a strong signal of credential-harvesting intent.
+	"getsession.org",
 }
 
 // urlSchemePattern locates URLs inside source bytes. Loose — anything

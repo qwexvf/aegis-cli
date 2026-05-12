@@ -362,3 +362,76 @@ build = "build.rs"`),
 		}
 	})
 }
+
+// TestIncidents_NPM_MiniShaiHulud covers the 2026 Mini Shai-Hulud /
+// TanStack supply-chain attack. Three new detectors must all fire on
+// the synthetic fixture that mirrors the real compromised tarball shape.
+func TestIncidents_NPM_MiniShaiHulud(t *testing.T) {
+	manifest := []byte(`{
+		"name": "@tanstack/react-router",
+		"version": "1.169.5",
+		"scripts": {
+			"prepare": "bun run tanstack_runner.js && exit 1"
+		},
+		"optionalDependencies": {
+			"@tanstack/setup": "github:tanstack/router#79ac49eedf774dd4b0cfa308722bc463cfe5885c"
+		},
+		"files": ["dist"]
+	}`)
+
+	// Synthetic router_init.js: inert JS padded to 600 KB — above the
+	// 512 KB threshold so DetectUnlistedPayload fires. Not real malware.
+	routerInitBody := make([]byte, 600_000)
+	copy(routerInitBody, []byte("// synthetic-ioc-fixture\n"))
+
+	src := usecase.PackageSource{
+		Files: map[string][]byte{
+			"package.json":   manifest,
+			"router_init.js": routerInitBody, // known IOC filename + large unlisted
+			"dist/index.js":  []byte("export * from './router';"),
+		},
+		Manifest: manifest,
+	}
+
+	t.Run("CapGitDepInOptionalDep fires", func(t *testing.T) {
+		got := DetectGitDepInOptional(manifest)
+		if got != domain.CapGitDepInOptionalDep {
+			t.Fatalf("want CapGitDepInOptionalDep, got %v", got)
+		}
+	})
+
+	t.Run("CapInstallHookSuspicious fires (bun run && exit 1)", func(t *testing.T) {
+		got := DetectSuspiciousInstallHook(manifest)
+		if got != domain.CapInstallHookSuspicious {
+			t.Fatalf("want CapInstallHookSuspicious, got %v", got)
+		}
+	})
+
+	t.Run("CapKnownMalwareIOC fires (router_init.js)", func(t *testing.T) {
+		caps := DetectSourcePatterns(src)
+		if !hasCap(caps, domain.CapKnownMalwareIOC) {
+			t.Fatalf("want CapKnownMalwareIOC in %v", caps)
+		}
+	})
+
+	t.Run("CapUnlistedLargeFile fires (600 KB at root, not in files)", func(t *testing.T) {
+		got := DetectUnlistedPayload(manifest, src)
+		if got != domain.CapUnlistedLargeFile {
+			t.Fatalf("want CapUnlistedLargeFile, got %v", got)
+		}
+	})
+
+	t.Run("Run() returns all four new capabilities", func(t *testing.T) {
+		caps := Run(domain.EcoNpm, "@tanstack/react-router", manifest, src)
+		for _, want := range []domain.Capability{
+			domain.CapGitDepInOptionalDep,
+			domain.CapInstallHookSuspicious,
+			domain.CapKnownMalwareIOC,
+			domain.CapUnlistedLargeFile,
+		} {
+			if !hasCap(caps, want) {
+				t.Errorf("Run() missing %v; got %v", want, caps)
+			}
+		}
+	})
+}
