@@ -1,6 +1,7 @@
 package usecase_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -73,7 +74,7 @@ jobs:
 func TestActions_Scan_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
 	a := usecase.NewActions()
-	res, err := a.Scan(usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevHigh})
+	res, err := a.Scan(context.Background(), usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevHigh})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +93,7 @@ func TestActions_Scan_CleanWorkflow(t *testing.T) {
 	dir := t.TempDir()
 	writeWorkflow(t, dir, "ci.yml", cleanWorkflow)
 	a := usecase.NewActions()
-	res, err := a.Scan(usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevHigh})
+	res, err := a.Scan(context.Background(), usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevHigh})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +114,7 @@ func TestActions_Scan_DetectsPullRequestTargetCheckout(t *testing.T) {
 	dir := t.TempDir()
 	writeWorkflow(t, dir, "pr.yml", prTargetCheckoutWorkflow)
 	a := usecase.NewActions()
-	res, err := a.Scan(usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevHigh})
+	res, err := a.Scan(context.Background(), usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevHigh})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +130,7 @@ func TestActions_Scan_DetectsUnpinnedRef(t *testing.T) {
 	dir := t.TempDir()
 	writeWorkflow(t, dir, "build.yml", unpinnedWorkflow)
 	a := usecase.NewActions()
-	res, err := a.Scan(usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevHigh})
+	res, err := a.Scan(context.Background(), usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevHigh})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +153,7 @@ func TestActions_Scan_MultipleWorkflows(t *testing.T) {
 	writeWorkflow(t, dir, "clean.yml", cleanWorkflow)
 	writeWorkflow(t, dir, "vuln.yml", writeAllWorkflow)
 	a := usecase.NewActions()
-	res, err := a.Scan(usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevHigh})
+	res, err := a.Scan(context.Background(), usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevHigh})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +171,7 @@ func TestActions_Scan_FailOnThreshold(t *testing.T) {
 	a := usecase.NewActions()
 
 	// At critical threshold: unpinned refs (medium/high) should not fail
-	res, err := a.Scan(usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevCritical})
+	res, err := a.Scan(context.Background(), usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevCritical})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +180,7 @@ func TestActions_Scan_FailOnThreshold(t *testing.T) {
 	}
 
 	// At medium threshold: should fail (tj-actions is high)
-	res, err = a.Scan(usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevMedium})
+	res, err = a.Scan(context.Background(), usecase.ActionsScanRequest{ProjectDir: dir, FailOn: domain.SevMedium})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +196,7 @@ func TestActions_Scan_IgnoreRuleSuppressesFinding(t *testing.T) {
 		{Kind: "pull_request_target_checkout", Reason: "reviewed, intentional"},
 	})
 	a := usecase.NewActions()
-	res, err := a.Scan(usecase.ActionsScanRequest{
+	res, err := a.Scan(context.Background(), usecase.ActionsScanRequest{
 		ProjectDir: dir,
 		FailOn:     domain.SevCritical,
 		Ignore:     ignore,
@@ -233,7 +234,7 @@ func TestActions_Scan_IgnoreByFile(t *testing.T) {
 		{Kind: "pull_request_target_checkout", File: "pr.yml", Reason: "ok"},
 	})
 	a := usecase.NewActions()
-	res, err := a.Scan(usecase.ActionsScanRequest{
+	res, err := a.Scan(context.Background(), usecase.ActionsScanRequest{
 		ProjectDir: dir,
 		FailOn:     domain.SevCritical,
 		Ignore:     ignore,
@@ -266,7 +267,7 @@ func TestActions_Scan_SortedOutput(t *testing.T) {
 		{Kind: "write_all_permissions", Reason: "sort test"},
 	})
 	a := usecase.NewActions()
-	res, err := a.Scan(usecase.ActionsScanRequest{ProjectDir: dir, Ignore: ignore})
+	res, err := a.Scan(context.Background(), usecase.ActionsScanRequest{ProjectDir: dir, Ignore: ignore})
 	if err != nil {
 		t.Fatal(err)
 	}
