@@ -126,3 +126,45 @@ func TestActionsToSARIF_RulesPopulated(t *testing.T) {
 		t.Error("rules should be populated even with no findings")
 	}
 }
+
+func TestActionsToSARIF_RelativeURI(t *testing.T) {
+	result := usecase.ActionsScanResult{
+		Findings: []domain.WorkflowFinding{{
+			Kind:     domain.FindingUnpinnedRef,
+			Severity: domain.SevMedium,
+			File:     "/home/user/project/.github/workflows/ci.yml",
+			Line:     1,
+			Message:  "test",
+		}},
+	}
+	log := sarif.ActionsToSARIF(result, "", "/home/user/project")
+	uri := log.Runs[0].Results[0].Locations[0].PhysicalLocation.ArtifactLocation.URI
+	if uri != ".github/workflows/ci.yml" {
+		t.Errorf("relativeURI: got %q want .github/workflows/ci.yml", uri)
+	}
+}
+
+func TestActionsToSARIF_SeverityLevels(t *testing.T) {
+	severities := []struct {
+		sev  domain.Severity
+		want string
+	}{
+		{domain.SevCritical, "error"},
+		{domain.SevHigh, "error"},
+		{domain.SevMedium, "warning"},
+		{domain.SevLow, "note"},
+	}
+	for _, tc := range severities {
+		result := usecase.ActionsScanResult{
+			Findings: []domain.WorkflowFinding{{
+				Kind: domain.FindingUnpinnedRef, Severity: tc.sev,
+				File: "a.yml", Line: 1, Message: "x",
+			}},
+		}
+		log := sarif.ActionsToSARIF(result, "", "")
+		got := log.Runs[0].Results[0].Level
+		if got != tc.want {
+			t.Errorf("severity %s → level: got %q want %q", tc.sev, got, tc.want)
+		}
+	}
+}

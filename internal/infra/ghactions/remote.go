@@ -11,7 +11,8 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
-const githubAPIBase = "https://api.github.com"
+// githubAPIBase is a var (not const) so tests can override it with httptest.Server URL.
+var githubAPIBase = "https://api.github.com"
 
 // githubContentEntry is one item from the GitHub Contents API list response.
 type githubContentEntry struct {
@@ -44,12 +45,13 @@ func FetchRemoteWorkflows(ctx context.Context, owner, repo, token string, httpCl
 	}
 
 	var workflows []ParsedWorkflow
+	var parseErrs []string
 	for _, e := range entries {
 		if e.Type != "file" {
 			continue
 		}
-		if !strings.HasSuffix(strings.ToLower(e.Name), ".yml") &&
-			!strings.HasSuffix(strings.ToLower(e.Name), ".yaml") {
+		name := strings.ToLower(e.Name)
+		if !strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml") {
 			continue
 		}
 		fileURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", githubAPIBase, owner, repo, e.Path)
@@ -59,14 +61,21 @@ func FetchRemoteWorkflows(ctx context.Context, owner, repo, token string, httpCl
 		}
 		yamlBytes, err := decodeContent(content)
 		if err != nil {
-			return nil, fmt.Errorf("decode %s: %w", e.Path, err)
+			parseErrs = append(parseErrs, fmt.Sprintf("%s: %v", e.Path, err))
+			continue
 		}
-		wfPath := fmt.Sprintf("%s/%s/.github/workflows/%s", owner, repo, e.Name)
+		wfPath := fmt.Sprintf(".github/workflows/%s", e.Name)
 		wf, err := ParseBytes(wfPath, yamlBytes)
 		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", e.Path, err)
+			// Malformed YAML: skip and keep going so one bad file
+			// doesn't abort the whole scan.
+			parseErrs = append(parseErrs, fmt.Sprintf("%s: %v", e.Path, err))
+			continue
 		}
 		workflows = append(workflows, ParsedWorkflow{Workflow: wf, Raw: yamlBytes})
+	}
+	if len(parseErrs) > 0 && len(workflows) == 0 {
+		return nil, fmt.Errorf("all workflows failed to parse: %s", strings.Join(parseErrs, "; "))
 	}
 	return workflows, nil
 }
@@ -92,11 +101,21 @@ func githubGet(ctx context.Context, client *http.Client, token, url string, out 
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// proceed
+	case http.StatusNotFound:
 		return fmt.Errorf("not found (404) — check repo name and that .github/workflows/ exists")
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("authentication failed (%d) — provide a valid token via --token or $GITHUB_TOKEN", resp.StatusCode)
+	case http.StatusTooManyRequests:
+		retry := resp.Header.Get("Retry-After")
+		if retry != "" {
+			return fmt.Errorf("rate limited (429) — retry after %s seconds; use --token for higher limits", retry)
+		}
+		return fmt.Errorf("rate limited (429) — use --token for higher rate limits (60 → 5000 req/hour)")
+	default:
+		return fmt.Errorf("unexpected HTTP %d from GitHub API", resp.StatusCode)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
