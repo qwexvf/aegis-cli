@@ -83,6 +83,7 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 				ProjectDir: projectDir,
 				Repo:       repo,
 				Token:      token,
+				Context:    cmd.Context(),
 				FailOn:     failOn,
 				Ignore:     ignore,
 			})

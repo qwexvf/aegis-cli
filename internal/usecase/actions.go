@@ -45,6 +45,10 @@ type ActionsScanRequest struct {
 	// Defaults to http.DefaultClient when nil.
 	HTTPClient *http.Client
 
+	// Context is used for remote API requests. Defaults to context.Background()
+	// when nil; callers should pass cobra's cmd.Context() for SIGINT propagation.
+	Context context.Context
+
 	// FailOn is the minimum severity that flips Passed to false. Zero
 	// value means any finding fails.
 	FailOn domain.Severity
@@ -76,7 +80,11 @@ func (a *Actions) Scan(req ActionsScanRequest) (ActionsScanResult, error) {
 		if !ok {
 			return ActionsScanResult{}, fmt.Errorf("actions: --repo must be owner/repo, got %q", req.Repo)
 		}
-		wfs, err := ghactions.FetchRemoteWorkflows(context.Background(), owner, repo, req.Token, req.HTTPClient)
+		ctx := req.Context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		wfs, err := ghactions.FetchRemoteWorkflows(ctx, owner, repo, req.Token, req.HTTPClient)
 		if err != nil {
 			return ActionsScanResult{}, fmt.Errorf("actions: remote fetch %s: %w", req.Repo, err)
 		}
