@@ -30,7 +30,7 @@ func TestActionsToSARIF_Structure(t *testing.T) {
 		},
 		Passed: false,
 	}
-	log := sarif.ActionsToSARIF(result, "0.1.0-test")
+	log := sarif.ActionsToSARIF(result, "0.1.0-test", "")
 
 	if log.Version != sarif.Version210 {
 		t.Errorf("version: got %q want %q", log.Version, sarif.Version210)
@@ -83,7 +83,7 @@ func TestActionsToSARIF_SuppressedFinding(t *testing.T) {
 			},
 		},
 	}
-	log := sarif.ActionsToSARIF(result, "")
+	log := sarif.ActionsToSARIF(result, "", "")
 	r := log.Runs[0].Results[0]
 	if len(r.Suppressions) == 0 {
 		t.Fatal("want suppressions entry for suppressed finding")
@@ -99,7 +99,7 @@ func TestActionsToSARIF_ValidJSON(t *testing.T) {
 			{Kind: domain.FindingWriteAllPermissions, Severity: domain.SevHigh, File: "a.yml", Line: 1, Message: "test"},
 		},
 	}
-	log := sarif.ActionsToSARIF(result, "1.0.0")
+	log := sarif.ActionsToSARIF(result, "1.0.0", "")
 	b, err := sarif.Marshal(log)
 	if err != nil {
 		t.Fatal(err)
@@ -114,14 +114,14 @@ func TestActionsToSARIF_ValidJSON(t *testing.T) {
 }
 
 func TestActionsToSARIF_EmptyResult(t *testing.T) {
-	log := sarif.ActionsToSARIF(usecase.ActionsScanResult{}, "1.0.0")
+	log := sarif.ActionsToSARIF(usecase.ActionsScanResult{}, "1.0.0", "")
 	if len(log.Runs[0].Results) != 0 {
 		t.Errorf("expected no results for empty input")
 	}
 }
 
 func TestActionsToSARIF_RulesPopulated(t *testing.T) {
-	log := sarif.ActionsToSARIF(usecase.ActionsScanResult{}, "1.0.0")
+	log := sarif.ActionsToSARIF(usecase.ActionsScanResult{}, "1.0.0", "")
 	if len(log.Runs[0].Tool.Driver.Rules) == 0 {
 		t.Error("rules should be populated even with no findings")
 	}
