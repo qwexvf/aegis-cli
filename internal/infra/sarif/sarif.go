@@ -71,7 +71,7 @@ type Message struct {
 // For package-scanner results, PhysicalLocation may be absent and
 // LogicalLocations carries the package identity instead.
 type Location struct {
-	PhysicalLocation PhysicalLocation  `json:"physicalLocation"`
+	PhysicalLocation *PhysicalLocation `json:"physicalLocation,omitempty"`
 	LogicalLocations []LogicalLocation `json:"logicalLocations,omitempty"`
 }
 

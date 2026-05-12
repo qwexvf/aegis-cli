@@ -89,6 +89,33 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	}
 }
 
+func TestLoad_InvalidCIFailOn(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "aegis.yml", "version: 1\nci:\n  fail_on: wrongvalue\n")
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Error("want error for invalid ci.fail_on")
+	}
+}
+
+func TestLoad_InvalidActionsFailOn(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "aegis.yml", "version: 1\nactions:\n  fail_on: notaseverity\n")
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Error("want error for invalid actions.fail_on")
+	}
+}
+
+func TestLoad_ValidEnumValues(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "aegis.yml", "version: 1\nci:\n  fail_on: prompt\nactions:\n  fail_on: medium\n")
+	_, err := config.Load(dir)
+	if err != nil {
+		t.Errorf("valid enum values should not error: %v", err)
+	}
+}
+
 func TestLoad_PartialConfig(t *testing.T) {
 	dir := t.TempDir()
 	// Only set ci.scan_actions — everything else zero

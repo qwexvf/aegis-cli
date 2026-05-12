@@ -66,7 +66,7 @@ func buildCIResult(dep domain.Dependency, flag domain.RiskFlag) Result {
 		Level:   capLevelFromWeight(flag.Weight),
 		Message: Message{Text: fmt.Sprintf("%s@%s: %s", dep.Name, dep.Version, flag.Detail)},
 		Locations: []Location{{
-			PhysicalLocation: PhysicalLocation{
+			PhysicalLocation: &PhysicalLocation{
 				ArtifactLocation: ArtifactLocation{
 					URI:       dep.Name + "@" + dep.Version,
 					URIBaseID: "%PKGROOT%",

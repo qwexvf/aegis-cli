@@ -68,7 +68,30 @@ func Load(projectDir string) (Config, error) {
 	if cfg.Version != 0 && cfg.Version != 1 {
 		return Config{}, fmt.Errorf("%s: unsupported version %d (want 1)", path, cfg.Version)
 	}
+	if err := cfg.validate(path); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// validate checks that enum fields contain recognised values.
+// Called immediately after unmarshal so bad config fails loudly at startup.
+func (c Config) validate(path string) error {
+	if c.CI.FailOn != "" {
+		switch c.CI.FailOn {
+		case "safe", "review", "prompt", "block":
+		default:
+			return fmt.Errorf("%s: ci.fail_on %q invalid — want safe|review|prompt|block", path, c.CI.FailOn)
+		}
+	}
+	if c.Actions.FailOn != "" {
+		switch c.Actions.FailOn {
+		case "low", "medium", "high", "critical":
+		default:
+			return fmt.Errorf("%s: actions.fail_on %q invalid — want low|medium|high|critical", path, c.Actions.FailOn)
+		}
+	}
+	return nil
 }
 
 func findConfigFile(dir string) (string, error) {
