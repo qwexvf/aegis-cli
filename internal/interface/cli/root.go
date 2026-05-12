@@ -81,6 +81,10 @@ type Deps struct {
 	// registered.
 	Sbom *usecase.Sbom
 
+	// Actions wires `aegis actions scan` — GitHub Actions workflow
+	// scanner. Optional; nil disables the subcommand.
+	Actions *usecase.Actions
+
 	// AllowlistLoader is a factory so each invocation of an allowlist
 	// subcommand picks up the cwd at run time (matters for project-
 	// scoped operations). When nil, the allowlist subcommand is not
@@ -155,6 +159,9 @@ func NewRoot(d Deps) *cobra.Command {
 	if d.Sbom != nil {
 		add(sbomCommand(d.Sbom), groupInspect)
 	}
+	if d.Actions != nil {
+		add(actionsCommand(d.Actions), groupInspect)
+	}
 	if d.AllowlistLoader != nil && d.AllowlistPresenter != nil {
 		add(allowlistCommand(d.AllowlistLoader, d.AllowlistPresenter), groupConfigure)
 	}
@@ -213,6 +220,7 @@ func NewDocsRoot() *cobra.Command {
 		Explain:            &usecase.Explain{},
 		Hook:               &usecase.Hook{},
 		Sbom:               &usecase.Sbom{},
+		Actions:            &usecase.Actions{},
 		AnalyzePresenter:   &presentercli.AnalyzePresenter{},
 		CIPresenter:        &presentercli.CIPresenter{},
 		RecheckPresenter:   &presentercli.RecheckPresenter{},
