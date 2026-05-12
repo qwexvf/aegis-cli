@@ -9,6 +9,7 @@ import (
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
+	"github.com/qwexvf/aegis-cli/internal/infra/sarif"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
 )
@@ -46,6 +47,7 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 	var (
 		failOnStr  string
 		jsonOut    bool
+		sarifOut   bool
 		projectDir string
 		repo       string
 		token      string
@@ -89,7 +91,7 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 			if err != nil {
 				return &exitCodeError{code: 2, err: err, silent: false}
 			}
-			renderActionsResult(cmd.OutOrStdout(), result, jsonOut)
+			renderActionsResult(cmd.OutOrStdout(), result, jsonOut, sarifOut)
 			if !result.Passed {
 				active := 0
 				for _, f := range result.Findings {
@@ -110,6 +112,8 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 		"min severity to fail on: low|medium|high|critical")
 	cmd.Flags().BoolVar(&jsonOut, "json", false,
 		"emit findings as JSON")
+	cmd.Flags().BoolVar(&sarifOut, "sarif", false,
+		"emit findings as SARIF 2.1.0 (for GitHub Code Scanning / VS Code)")
 	cmd.Flags().StringVar(&projectDir, "dir", "",
 		"project root (default: cwd); ignored when --repo is set")
 	cmd.Flags().StringVar(&repo, "repo", "",
@@ -133,7 +137,18 @@ func parseSeverity(s string) (domain.Severity, error) {
 	return "", fmt.Errorf("invalid --fail-on %q: want one of low|medium|high|critical", s)
 }
 
-func renderActionsResult(out io.Writer, r usecase.ActionsScanResult, asJSON bool) {
+func renderActionsResult(out io.Writer, r usecase.ActionsScanResult, asJSON, asSARIF bool) {
+	if asSARIF {
+		log := sarif.ActionsToSARIF(r, Version)
+		b, err := sarif.Marshal(log)
+		if err != nil {
+			fmt.Fprintf(out, `{"error":%q}`, err.Error())
+			return
+		}
+		_, _ = out.Write(b)
+		_, _ = fmt.Fprintln(out)
+		return
+	}
 	if asJSON {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
