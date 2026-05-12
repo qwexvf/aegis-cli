@@ -8,7 +8,13 @@ sidebar:
 
 How `aegis` is configured: environment variables, config file paths, and CI auto-detection. Authoritative as of `v0.1.0`.
 
-`aegis` has **no global config file**. Everything is either an environment variable, a per-project file in the repo, or a flag on the subcommand. This is deliberate — it makes the binary safe to drop into shared CI runners without surprise state.
+`aegis` is configured through **three layers** (CLI flags take precedence):
+
+1. **`aegis.yml`** (or `.aegis.yml`) — project-level config at the repository root. Sets default flag values for `aegis ci` and `aegis actions scan`. Optional; missing file is silently ignored.
+2. **Environment variables** — override built-in defaults globally.
+3. **CLI flags** — highest precedence; always override config file and env vars.
+
+This makes the binary safe to drop into shared CI runners without surprise state.
 
 > 🌐 marks variables that are **only meaningful when an Aegis API
 > server is reachable**. The hosted Aegis Cloud is not yet available
@@ -140,7 +146,9 @@ If your CI system isn't on this list, set `CI=true` or `AEGIS_CI=1` explicitly.
 | `~/.aegis/audit.jsonl` | every install gate / override / sync | NDJSON audit log: one line per outcome with timestamp, decision, reason, actor. Append-only. |
 | `~/.aegis/identity.json` | first run | Stable per-user reporter ID used for `snapshot submit` attribution. Random UUID; not personally identifying. |
 | `./aegis.lock` | `aegis snapshot save` | Project-level dependency snapshot. **Commit this** — it's the baseline `ci` and `recheck` compare against. |
+| `./aegis.yml` or `./.aegis.yml` | `aegis ci`, `aegis actions scan` | Project-level config file — default flag values. **Commit this** — team-shared. See [aegis.yml reference](#aegisyml) below. |
 | `./.aegis-allowlist.yaml` | `aegis allowlist add --scope=project` | Project-level allowlist. **Commit this** — team-shared. |
+| `./.aegis-actions-allowlist.yaml` | `aegis actions scan`, `aegis ci --scan-actions` | Actions-specific allowlist. **Commit this** — suppress known-safe workflow findings. |
 | `.git/hooks/pre-commit` | `aegis hook install` | Pre-commit hook that runs `aegis ci --fail-on=block`. Removed by `aegis hook uninstall`. |
 
 ### Recommended `.gitignore`
@@ -182,6 +190,32 @@ When a capability fires on `(eco, name, version)`, the allowlist layers are eval
 4. **Project** — `./.aegis-allowlist.yaml`
 
 If any layer suppresses a capability, the finding is annotated with the suppression source + reason but kept visible in `--json` output (so dashboards can still count "would-have-been-blocked-but-allowlisted" for transparency).
+
+## aegis.yml
+
+Place `aegis.yml` (or `.aegis.yml`) at the repository root to set default flag values for `aegis ci` and `aegis actions scan`. CLI flags always override config. Missing file is silently ignored.
+
+```yaml
+# aegis.yml
+version: 1
+
+ci:
+  fail_on: block          # --fail-on default (safe|review|prompt|block)
+  scan_actions: true      # always run --scan-actions
+  actions_fail_on: high   # --actions-fail-on default (low|medium|high|critical)
+  sarif: false            # --sarif default
+  no_enrich: false        # --no-enrich default
+
+actions:
+  fail_on: high           # --min-severity default for aegis actions scan
+  repo: ""                # --repo default (owner/repo)
+```
+
+**Precedence**: CLI flag > `aegis.yml` > built-in default.
+
+Invalid `fail_on` / `actions_fail_on` values error immediately at startup with a clear message — bad config never silently passes through to runtime.
+
+See `aegis.example.yml` in the repository root for the full annotated reference.
 
 ## Build-time configuration
 
