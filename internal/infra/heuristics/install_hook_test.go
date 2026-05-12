@@ -225,10 +225,28 @@ func TestDetectSuspiciousInstallHook(t *testing.T) {
 			want: domain.CapInstallHookSuspicious,
 		},
 		{
+			name: "deno run localfile without && exit still flagged",
+			manifest: `{
+				"scripts": {
+					"postinstall": "deno run payload.ts"
+				}
+			}`,
+			want: domain.CapInstallHookSuspicious,
+		},
+		{
 			name: "bun install in prepare — legitimate dependency install",
 			manifest: `{
 				"scripts": {
 					"prepare": "bun install"
+				}
+			}`,
+			want: 0,
+		},
+		{
+			name: "deno install in prepare — legitimate dependency install",
+			manifest: `{
+				"scripts": {
+					"prepare": "deno install"
 				}
 			}`,
 			want: 0,
