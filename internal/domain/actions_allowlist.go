@@ -24,14 +24,14 @@ func NewActionsIgnoreSet(rules []ActionsIgnoreRule) ActionsIgnoreSet {
 }
 
 // Suppress marks any finding that matches a rule as Suppressed=true and
-// stores the rule's Reason in SuppressBy. Returns a new slice; does not
-// mutate the input.
+// stores the rule's Reason in SuppressBy. Always returns a new slice;
+// never mutates the input.
 func (s ActionsIgnoreSet) Suppress(findings []WorkflowFinding) []WorkflowFinding {
-	if len(s.rules) == 0 || len(findings) == 0 {
-		return findings
-	}
 	out := make([]WorkflowFinding, len(findings))
 	copy(out, findings)
+	if len(s.rules) == 0 {
+		return out
+	}
 	for i := range out {
 		for _, rule := range s.rules {
 			if s.matches(rule, out[i]) {
@@ -51,7 +51,6 @@ func (s ActionsIgnoreSet) matches(rule ActionsIgnoreRule, f WorkflowFinding) boo
 	kindMatch := rule.Kind == "*" || rule.Kind == "" || rule.Kind == f.Kind.String()
 	fileMatch := rule.File == "*" || rule.File == "" ||
 		f.File == rule.File ||
-		strings.HasSuffix(f.File, "/"+rule.File) ||
-		strings.HasSuffix(f.File, rule.File)
+		strings.HasSuffix(f.File, "/"+rule.File)
 	return kindMatch && fileMatch
 }

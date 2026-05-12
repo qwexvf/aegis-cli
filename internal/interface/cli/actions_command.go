@@ -80,9 +80,15 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 			}
 			renderActionsResult(cmd.OutOrStdout(), result, jsonOut)
 			if !result.Passed {
+				active := 0
+				for _, f := range result.Findings {
+					if !f.Suppressed {
+						active++
+					}
+				}
 				return &exitCodeError{
 					code:   1,
-					err:    fmt.Errorf("actions: %d finding(s) ≥ %s", len(result.Findings), failOn),
+					err:    fmt.Errorf("actions: %d finding(s) ≥ %s", active, failOn),
 					silent: true,
 				}
 			}
