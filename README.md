@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/qwexvf/aegis-cli)](https://goreportcard.com/report/github.com/qwexvf/aegis-cli)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Supply-chain security scanner for 9 package ecosystems. No account, no API key, no backend.
+Supply-chain security scanner for 9 package ecosystems and GitHub Actions workflows. No account, no API key, no backend.
 
 ![demo](docs/demo.gif)
 
@@ -14,6 +14,7 @@ Supply-chain security scanner for 9 package ecosystems. No account, no API key, 
 - **Transitive deps included** — lockfile-based; every resolved package is scanned, not just direct deps
 - **Polyglot monorepo** — finds all lockfiles, merges into a single `aegis.lock`
 - **CycloneDX 1.5 SBOM** — `aegis sbom` emits a standards-compliant BOM from the snapshot; `--include-vulns` attaches OSV advisories
+- **GitHub Actions scanner** — `aegis actions scan` walks `.github/workflows/*.yml`; flags unpinned action refs, `pull_request_target` + checkout escalation, script injection, `curl|sh` in `run:` blocks, and `permissions: write-all`
 - **Offline capable** — `AEGIS_NO_VULN_LOOKUP=1` for air-gapped use; self-hosted OSV mirror via `AEGIS_OSV_URL`
 
 ## Ecosystems
@@ -84,6 +85,11 @@ aegis allowlist add lodash \
 aegis allowlist list
 aegis allowlist test npm/lodash@4.17.21
 aegis allowlist verify
+
+# GitHub Actions workflow scanner
+aegis actions scan                   # scan .github/workflows/ in cwd
+aegis actions scan --fail-on=high    # exit 1 on high/critical findings
+aegis actions scan --json            # machine-readable output
 
 # shell completion
 aegis completion bash > /etc/bash_completion.d/aegis
