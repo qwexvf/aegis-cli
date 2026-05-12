@@ -28,10 +28,20 @@ type NormalizedPackage struct {
 	// raw parsing (e.g. unlisted payload detection).
 	ManifestRaw []byte
 
-	// RetractedVersions lists versions this module has explicitly retracted
-	// in its go.mod. Populated by goParser; empty for other ecosystems.
-	// checkGoRetract compares pkg.Version against this list.
+	// RetractedVersions lists exact versions this module has retracted
+	// in its go.mod (e.g. `retract v1.0.0`).
 	RetractedVersions []string
+
+	// RetractedRanges lists inclusive version ranges this module has
+	// retracted (e.g. `retract [v1.0.0, v1.1.0]`).
+	RetractedRanges []RetractRange
+}
+
+// RetractRange is an inclusive [Low, High] version range from a go.mod
+// retract directive of the form `retract [vLow, vHigh]`.
+type RetractRange struct {
+	Low  string // inclusive lower bound, e.g. "v1.0.0"
+	High string // inclusive upper bound, e.g. "v1.1.0"
 }
 
 // Dep is one entry from a package manifest's dependency list.

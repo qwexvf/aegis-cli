@@ -56,6 +56,37 @@ retract v1.0.0
 		}
 	})
 
+	t.Run("range retract fires when version in range", func(t *testing.T) {
+		gomod := `module example.com/mymod
+go 1.22
+retract [v1.0.0, v1.2.0] // affected range
+`
+		p := &goParser{}
+		n := p.Parse("example.com/mymod", nil, domain.PackageSource{
+			Files: map[string][]byte{"go.mod": []byte(gomod)},
+		})
+		n.Version = "v1.1.0" // inside [v1.0.0, v1.2.0]
+		got := checkGoRetract(n)
+		if !hasCap(got, domain.CapVersionUnpublished) {
+			t.Errorf("v1.1.0 in range [v1.0.0, v1.2.0]: want CapVersionUnpublished, got %v", got)
+		}
+	})
+
+	t.Run("range retract does not fire when version above range", func(t *testing.T) {
+		gomod := `module example.com/mymod
+go 1.22
+retract [v1.0.0, v1.2.0]
+`
+		p := &goParser{}
+		n := p.Parse("example.com/mymod", nil, domain.PackageSource{
+			Files: map[string][]byte{"go.mod": []byte(gomod)},
+		})
+		n.Version = "v1.3.0"
+		if got := checkGoRetract(n); hasCap(got, domain.CapVersionUnpublished) {
+			t.Errorf("v1.3.0 above range should not fire")
+		}
+	})
+
 	t.Run("via Run() pipeline with matching version", func(t *testing.T) {
 		gomod := `module example.com/vuln
 go 1.22

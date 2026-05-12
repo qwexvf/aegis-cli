@@ -22,16 +22,20 @@ func (p *goParser) Parse(name string, manifestRaw []byte, src domain.PackageSour
 	for filename, body := range src.Files {
 		if strings.ToLower(path.Base(filename)) == "go.mod" {
 			pkg.Deps = append(pkg.Deps, parseGoMod(body)...)
-			pkg.RetractedVersions = append(pkg.RetractedVersions, parseGoRetract(body)...)
+			pkg.RetractedVersions = append(pkg.RetractedVersions, parseGoRetractSingle(body)...)
+			pkg.RetractedRanges = append(pkg.RetractedRanges, parseGoRetractRanges(body)...)
 		}
 	}
 	return pkg
 }
 
-// parseGoRetract extracts explicitly retracted versions from go.mod bytes.
-// A retract directive signals that the module author considers that version
-// unsafe or broken; consumers pinned to it should upgrade.
-func parseGoRetract(body []byte) []string {
+// goRetractRangePattern matches range-form retract directives:
+//
+//	retract [v1.0.0, v1.1.0]
+var goRetractRangePattern = regexp.MustCompile(`(?m)^\s*retract\s+\[\s*(v[\w.+-]+)\s*,\s*(v[\w.+-]+)\s*\]`)
+
+// parseGoRetractSingle extracts exact single-version retracts from go.mod.
+func parseGoRetractSingle(body []byte) []string {
 	var versions []string
 	for _, m := range goRetractVersionPattern.FindAllSubmatch(body, -1) {
 		if len(m) > 1 {
@@ -39,6 +43,20 @@ func parseGoRetract(body []byte) []string {
 		}
 	}
 	return versions
+}
+
+// parseGoRetractRanges extracts inclusive [Low, High] retract ranges from go.mod.
+func parseGoRetractRanges(body []byte) []RetractRange {
+	var ranges []RetractRange
+	for _, m := range goRetractRangePattern.FindAllSubmatch(body, -1) {
+		if len(m) > 2 {
+			ranges = append(ranges, RetractRange{
+				Low:  string(m[1]),
+				High: string(m[2]),
+			})
+		}
+	}
+	return ranges
 }
 
 // goReplaceTargetPattern captures the replacement module path (after =>) in a
