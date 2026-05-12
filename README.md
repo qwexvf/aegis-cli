@@ -10,7 +10,7 @@ Supply-chain security scanner for 9 package ecosystems. No account, no API key, 
 
 - **CVE / GHSA lookup** — batch query against [OSV.dev](https://osv.dev), all 9 ecosystems in one shot
 - **AST capability scan** — tree-sitter walks every package source; surfaces `shell-spawn`, `net-egress`, `dynamic-eval`, `fs-write-outside-root` and more, even on packages with no advisory yet
-- **Behavior heuristics** — postinstall hooks doing `curl|sh`, obfuscated payloads, typosquat names (Levenshtein distance 2), maintainer hijack patterns, patch-version capability drift
+- **Behavior heuristics** — postinstall hooks doing `curl|sh`, obfuscated payloads, typosquat names (Levenshtein distance 2), maintainer hijack patterns, patch-version capability drift, git-SHA optional deps (worm propagation vector), unlisted large files (smuggled payloads), yanked-version detection
 - **Transitive deps included** — lockfile-based; every resolved package is scanned, not just direct deps
 - **Polyglot monorepo** — finds all lockfiles, merges into a single `aegis.lock`
 - **CycloneDX 1.5 SBOM** — `aegis sbom` emits a standards-compliant BOM from the snapshot; `--include-vulns` attaches OSV advisories
@@ -96,9 +96,18 @@ aegis completion fish > ~/.config/fish/completions/aegis.fish
 1. **Parse** — lockfile → every resolved `(name, version)`, direct and transitive
 2. **Fetch** — tarballs from the registry; cached under `~/.aegis/cache/sources/`
 3. **AST scan** — tree-sitter walks each file; emits `capability:file:line:snippet` evidence
-4. **CVE lookup** — batch POST to OSV.dev; severity cached under `~/.aegis/cache/advisories/`
-5. **Allowlist** — builtin → `~/.aegis/allowlist.yaml` → `.aegis-allowlist.yaml`; specific beats wildcard
-6. **Verdict** — `max(ast, advisory)` vs `--fail-on`; Critical/High → `block`, Medium → `prompt`, Low → `review`
+4. **Heuristics** — behavior-based detectors over the tarball and registry metadata (no network beyond step 2):
+   - install hooks doing `curl|sh`, `bun run <file> && exit 1`, and similar download-execute patterns
+   - `optionalDependencies` pointing at git SHA commits (worm-propagation injection vector)
+   - unlisted large code files (≥512 KB not in `files` field — smuggled payload shape)
+   - confirmed-malware IOC filenames (`router_init.js`, `router_runtime.js`, `tanstack_runner.js`)
+   - yanked versions: lockfile pinning a version removed from the registry flags users who installed during an incident window
+   - maintainer hijack: publisher change between consecutive releases, fresh publish on abandoned package
+   - tarball drift: files in the published tarball absent from the upstream git tag (requires GitHub access)
+   - typosquat: name within Levenshtein distance 2 of a top-1000 package
+5. **CVE lookup** — batch POST to OSV.dev; severity cached under `~/.aegis/cache/advisories/`
+6. **Allowlist** — builtin → `~/.aegis/allowlist.yaml` → `.aegis-allowlist.yaml`; specific beats wildcard
+7. **Verdict** — `max(ast, advisory)` vs `--fail-on`; Critical/High → `block`, Medium → `prompt`, Low → `review`
 
 ## Allowlist
 
