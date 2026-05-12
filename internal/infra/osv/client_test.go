@@ -12,6 +12,32 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
+func TestCvssBaseScore(t *testing.T) {
+	tests := []struct {
+		vector string
+		want   float64
+	}{
+		// FIRST.org example vectors with known scores.
+		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", 9.8}, // Critical
+		{"CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H", 9.9}, // Critical scope-changed
+		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H", 8.8}, // High
+		{"CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N", 5.5}, // Medium
+		{"CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:N/I:N/A:L", 2.5}, // Low
+		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N", 0.0}, // zero impact
+		// Invalid / absent inputs.
+		{"", -1},
+		{"not-a-vector", -1},
+		{"CVSS:3.1/AV:N/AC:L", -1}, // too few parts
+		{"CVSS:3.1/AV:Z/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", -1}, // bad AV value
+	}
+	for _, tt := range tests {
+		got := cvssBaseScore(tt.vector)
+		if got != tt.want {
+			t.Errorf("cvssBaseScore(%q) = %.1f, want %.1f", tt.vector, got, tt.want)
+		}
+	}
+}
+
 // TestLookup_Batch verifies the happy path: a 2-dep query produces a
 // single batch POST and per-dep GET fan-out, and the results map is
 // keyed by AdvisoryQuery.Key() with one Advisory each.
