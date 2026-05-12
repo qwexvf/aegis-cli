@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -13,6 +14,15 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
 )
+
+// ansiEscapePattern matches ANSI terminal escape sequences.
+// Stripped from Evidence output to prevent terminal injection via
+// crafted workflow file content.
+var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripANSI(s string) string {
+	return ansiEscapePattern.ReplaceAllString(s, "")
+}
 
 // actionsCommand wires `aegis actions` and its subcommands. Today only
 // `scan` exists; future subcommands (audit remote repos, allowlist
@@ -119,7 +129,7 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 	cmd.Flags().StringVar(&repo, "repo", "",
 		"remote GitHub repository to scan (owner/repo); fetches workflows via GitHub API")
 	cmd.Flags().StringVar(&token, "token", "",
-		"GitHub personal access token for --repo (default: $GITHUB_TOKEN)")
+		"GitHub personal access token for --repo; prefer $GITHUB_TOKEN env var (CLI args are visible in process list)")
 	return cmd
 }
 
@@ -175,7 +185,10 @@ func renderActionsResult(out io.Writer, r usecase.ActionsScanResult, asJSON, asS
 		}
 		fmt.Fprintf(out, "%s:%d  [%s] %s: %s\n", f.File, f.Line, f.Severity, f.Kind, f.Message)
 		if f.Evidence != "" {
-			fmt.Fprintf(out, "    evidence: %s\n", f.Evidence)
+			// Strip ANSI escape sequences before printing Evidence to the terminal.
+			// Workflow run: bodies can contain attacker-controlled content that
+			// could manipulate terminal state via escape codes.
+			fmt.Fprintf(out, "    evidence: %s\n", stripANSI(f.Evidence))
 		}
 	}
 }

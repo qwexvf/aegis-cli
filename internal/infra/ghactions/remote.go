@@ -6,13 +6,33 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
 // githubAPIBase is a var (not const) so tests can override it with httptest.Server URL.
 var githubAPIBase = "https://api.github.com"
+
+// defaultHTTPClient has an explicit timeout so a slow or malicious server
+// cannot hold the CLI indefinitely. http.DefaultClient has no timeout.
+var defaultHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+// githubNamePattern validates GitHub owner and repo names.
+// GitHub allows letters, digits, hyphens, underscores, and dots.
+// Reject anything else to prevent URL manipulation.
+var githubNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+
+// validateGitHubName returns an error if name contains characters outside
+// the allowed GitHub owner/repo namespace.
+func validateGitHubName(name string) error {
+	if name == "" || !githubNamePattern.MatchString(name) {
+		return fmt.Errorf("invalid GitHub name %q: must match [a-zA-Z0-9._-]+", name)
+	}
+	return nil
+}
 
 // githubContentEntry is one item from the GitHub Contents API list response.
 type githubContentEntry struct {
@@ -35,8 +55,14 @@ type githubFileContent struct {
 // for Analyze(). owner and repo must be non-empty; token is optional
 // (without a token the API allows 60 req/hour).
 func FetchRemoteWorkflows(ctx context.Context, owner, repo, token string, httpClient *http.Client) ([]ParsedWorkflow, error) {
+	if err := validateGitHubName(owner); err != nil {
+		return nil, fmt.Errorf("owner: %w", err)
+	}
+	if err := validateGitHubName(repo); err != nil {
+		return nil, fmt.Errorf("repo: %w", err)
+	}
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = defaultHTTPClient
 	}
 	dir := fmt.Sprintf("%s/repos/%s/%s/contents/.github/workflows", githubAPIBase, owner, repo)
 	var entries []githubContentEntry
@@ -52,6 +78,12 @@ func FetchRemoteWorkflows(ctx context.Context, owner, repo, token string, httpCl
 		}
 		name := strings.ToLower(e.Name)
 		if !strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml") {
+			continue
+		}
+		// Reject paths containing ".." — the GitHub API should never return
+		// these, but validate defensively to prevent URL manipulation.
+		if strings.Contains(e.Path, "..") {
+			parseErrs = append(parseErrs, fmt.Sprintf("%s: suspicious path containing '..'", e.Path))
 			continue
 		}
 		fileURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", githubAPIBase, owner, repo, e.Path)

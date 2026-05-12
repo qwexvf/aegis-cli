@@ -119,6 +119,24 @@ func TestFetchRemoteWorkflows_MalformedYAML(t *testing.T) {
 	_ = wfs
 }
 
+func TestFetchRemoteWorkflows_InvalidOwnerRepo(t *testing.T) {
+	cases := []struct {
+		owner, repo string
+	}{
+		{"owner with spaces", "repo"},
+		{"owner", "repo/../../etc/passwd"},
+		{"", "repo"},
+		{"owner", ""},
+		{"owner@evil.com", "repo"},
+	}
+	for _, tc := range cases {
+		_, err := FetchRemoteWorkflows(context.Background(), tc.owner, tc.repo, "", nil)
+		if err == nil {
+			t.Errorf("expected error for owner=%q repo=%q", tc.owner, tc.repo)
+		}
+	}
+}
+
 func TestDecodeContent(t *testing.T) {
 	t.Run("valid base64", func(t *testing.T) {
 		c := githubFileContent{
