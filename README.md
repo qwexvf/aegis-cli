@@ -13,6 +13,7 @@ Supply-chain security scanner for 9 package ecosystems. No account, no API key, 
 - **Behavior heuristics** — postinstall hooks doing `curl|sh`, obfuscated payloads, typosquat names (Levenshtein distance 2), maintainer hijack patterns, patch-version capability drift
 - **Transitive deps included** — lockfile-based; every resolved package is scanned, not just direct deps
 - **Polyglot monorepo** — finds all lockfiles, merges into a single `aegis.lock`
+- **CycloneDX 1.5 SBOM** — `aegis sbom` emits a standards-compliant BOM from the snapshot; `--include-vulns` attaches OSV advisories
 - **Offline capable** — `AEGIS_NO_VULN_LOOKUP=1` for air-gapped use; self-hosted OSV mirror via `AEGIS_OSV_URL`
 
 ## Ecosystems
@@ -69,6 +70,11 @@ aegis analyze --evidence ua-parser-js@0.7.29
 # analyze a local source tree (no registry fetch)
 aegis analyze rubygems/rest-client@1.6.13 \
     --local examples/incidents/rubygems/rest-client-1.6.13/
+
+# SBOM export (CycloneDX 1.5 JSON)
+aegis sbom > sbom.json
+aegis sbom --pretty --include-vulns -o sbom.json
+aegis sbom --project=my-service -o sbom.json
 
 # allowlist
 aegis allowlist add lodash \

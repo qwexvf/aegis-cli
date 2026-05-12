@@ -3,9 +3,11 @@ module github.com/qwexvf/aegis-cli
 go 1.26
 
 require (
+	github.com/CycloneDX/cyclonedx-go v0.10.0
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/gleam-lang/tree-sitter-gleam v1.1.1-0.20260430091822-4e4643c2215c
 	github.com/klauspost/compress v1.18.6
+	github.com/package-url/packageurl-go v0.1.6
 	github.com/qwexvf/depusage v0.1.1
 	github.com/spf13/cobra v1.10.2
 	github.com/tree-sitter/go-tree-sitter v0.25.0
@@ -31,7 +33,6 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
