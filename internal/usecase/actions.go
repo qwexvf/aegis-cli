@@ -33,6 +33,12 @@ type ActionsScanRequest struct {
 	// FailOn is the minimum severity that flips Passed to false. Zero
 	// value means any finding fails.
 	FailOn domain.Severity
+
+	// Ignore suppresses matching findings so they don't contribute to
+	// the Passed/failed threshold. Suppressed findings are still included
+	// in Findings for transparency. Load from .aegis-actions-allowlist.yaml
+	// via infra/allowlist.LoadActionsIgnore.
+	Ignore domain.ActionsIgnoreSet
 }
 
 // ActionsScanResult is what Scan returns.
@@ -68,6 +74,7 @@ func (a *Actions) Scan(req ActionsScanRequest) (ActionsScanResult, error) {
 		}
 		return all[i].Kind < all[j].Kind
 	})
+	all = req.Ignore.Suppress(all)
 	res := ActionsScanResult{
 		Workflows: len(paths),
 		Findings:  all,
@@ -77,11 +84,11 @@ func (a *Actions) Scan(req ActionsScanRequest) (ActionsScanResult, error) {
 }
 
 func exceedsThreshold(findings []domain.WorkflowFinding, failOn domain.Severity) bool {
-	if failOn == "" {
-		return len(findings) > 0
-	}
 	for _, f := range findings {
-		if severityAtLeast(f.Severity, failOn) {
+		if f.Suppressed {
+			continue
+		}
+		if failOn == "" || severityAtLeast(f.Severity, failOn) {
 			return true
 		}
 	}
