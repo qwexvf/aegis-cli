@@ -166,6 +166,17 @@ const (
 	// 2026 Mini Shai-Hulud campaign. Block immediately; no allowlist
 	// exception is reasonable.
 	CapKnownMalwareIOC
+
+	// CapVCSDependency — the package manifest pins a dependency to a VCS
+	// URL (git+https://, :git =>, git = "...") rather than a registry
+	// version. Applies across ecosystems: PyPI (requirements.txt /
+	// pyproject.toml), Cargo (Cargo.toml [dependencies]), RubyGems
+	// (Gemfile). VCS deps bypass the registry's immutability guarantee:
+	// the referenced commit can be force-pushed or the repo deleted,
+	// making the exact installed code unpredictable and invisible to
+	// registry security scans. In a *published* package this is highly
+	// anomalous; in most ecosystems it is an outright anti-pattern.
+	CapVCSDependency
 )
 
 // String returns the canonical name. Used for serialization, logs,
@@ -214,6 +225,8 @@ func (c Capability) String() string {
 		return "version-unpublished"
 	case CapKnownMalwareIOC:
 		return "known-malware-ioc"
+	case CapVCSDependency:
+		return "vcs-dependency"
 	}
 	return "unknown"
 }
@@ -266,6 +279,8 @@ func (c Capability) Description() string {
 		return "version was published then yanked — lockfile pins a package from an active incident window"
 	case CapKnownMalwareIOC:
 		return "tarball contains a confirmed-malware filename IOC (router_init.js / router_runtime.js / tanstack_runner.js)"
+	case CapVCSDependency:
+		return "manifest pins a dep to a git/VCS URL — bypasses registry immutability; invisible to security scans"
 	}
 	return "no description available"
 }
@@ -295,6 +310,7 @@ func AllCapabilities() []Capability {
 		CapUnlistedLargeFile,
 		CapVersionUnpublished,
 		CapKnownMalwareIOC,
+		CapVCSDependency,
 	}
 }
 

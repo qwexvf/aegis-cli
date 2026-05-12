@@ -124,6 +124,21 @@ const (
 	// inside a `run:` body, where the source is attacker-controlled
 	// (PR title, branch name, issue body).
 	FindingScriptInjection
+
+	// FindingOIDCNpmPublish — job has `id-token: write` permission AND
+	// a `run:` step that invokes `npm publish`. This combination lets a
+	// compromised CI identity mint a short-lived npm token via OIDC
+	// federation and publish to the registry without any stored secret.
+	// The Mini Shai-Hulud worm used exactly this mechanism to self-replicate
+	// across 42 @tanstack/* packages in six minutes on 2026-05-11.
+	FindingOIDCNpmPublish
+
+	// FindingCachePoisoning — `actions/cache` (or `actions/cache/restore`)
+	// is used inside a `pull_request_target` workflow. Fork PRs run with
+	// read access to the base branch's cache scope; a malicious PR can
+	// read secrets that were previously cached, or write a poisoned cache
+	// entry that later executes on a privileged workflow run.
+	FindingCachePoisoning
 )
 
 func (k WorkflowFindingKind) String() string {
@@ -138,6 +153,10 @@ func (k WorkflowFindingKind) String() string {
 		return "write_all_permissions"
 	case FindingScriptInjection:
 		return "script_injection"
+	case FindingOIDCNpmPublish:
+		return "oidc_npm_publish"
+	case FindingCachePoisoning:
+		return "cache_poisoning"
 	}
 	return "unknown"
 }

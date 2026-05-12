@@ -24,12 +24,17 @@ func Analyze(wf domain.Workflow) []domain.WorkflowFinding {
 			findings = append(findings, checkWriteAllPermissions(job.Permissions, wf.Path, job.Line)...)
 		}
 
+		findings = append(findings, checkOIDCNpmPublish(job, wf.Permissions, wf.Path)...)
+
 		jobHasCheckout := false
 		for _, step := range job.Steps {
 			if step.Uses != nil {
 				findings = append(findings, checkUnpinnedRef(*step.Uses)...)
 				if isCheckoutWithRef(step) {
 					jobHasCheckout = true
+				}
+				if prTarget {
+					findings = append(findings, checkCachePoisoning(step, wf.Path)...)
 				}
 			}
 			if step.Run != nil {
@@ -48,6 +53,58 @@ func Analyze(wf domain.Workflow) []domain.WorkflowFinding {
 		}
 	}
 	return findings
+}
+
+// checkOIDCNpmPublish flags the id-token:write + npm publish combo that the
+// Mini Shai-Hulud worm used to self-replicate without stored credentials.
+func checkOIDCNpmPublish(job domain.WorkflowJob, wfPerms domain.WorkflowPermissions, file string) []domain.WorkflowFinding {
+	// Effective permissions: job-level overrides workflow-level when declared.
+	effectivePerms := wfPerms
+	if job.Permissions.Mode != "" || len(job.Permissions.Scopes) > 0 {
+		effectivePerms = job.Permissions
+	}
+	hasOIDC := effectivePerms.Mode == "write-all" ||
+		effectivePerms.Scopes["id-token"] == "write"
+	if !hasOIDC {
+		return nil
+	}
+	for _, step := range job.Steps {
+		if step.Run == nil {
+			continue
+		}
+		if !npmPublishPattern.MatchString(step.Run.Body) {
+			continue
+		}
+		return []domain.WorkflowFinding{{
+			Kind:     domain.FindingOIDCNpmPublish,
+			Severity: domain.SevHigh,
+			File:     file,
+			Line:     step.Run.Line,
+			Message:  "job " + job.ID + ": id-token:write + npm publish — OIDC federation can mint an npm token without stored credentials; worm self-replication vector (Mini Shai-Hulud, 2026-05-11)",
+			Evidence: truncate(step.Run.Body, 120),
+		}}
+	}
+	return nil
+}
+
+// checkCachePoisoning flags actions/cache usage inside pull_request_target
+// workflows. Fork PRs share the base branch cache scope, so a malicious PR
+// can read previously cached secrets or plant poisoned artifacts that later
+// execute on a privileged run.
+func checkCachePoisoning(step domain.WorkflowStep, file string) []domain.WorkflowFinding {
+	if step.Uses == nil {
+		return nil
+	}
+	if step.Uses.Owner != "actions" || step.Uses.Repo != "cache" {
+		return nil
+	}
+	return []domain.WorkflowFinding{{
+		Kind:     domain.FindingCachePoisoning,
+		Severity: domain.SevHigh,
+		File:     file,
+		Line:     step.Uses.Line,
+		Message:  "pull_request_target + actions/cache — fork PRs share the base branch cache scope; untrusted code can read cached secrets or poison cache entries for later privileged runs (Mini Shai-Hulud injection vector)",
+	}}
 }
 
 func hasEvent(events []string, want string) bool {
@@ -87,6 +144,10 @@ func checkUnpinnedRef(ref domain.ActionRef) []domain.WorkflowFinding {
 		Ref:      &ref,
 	}}
 }
+
+// npmPublishPattern matches npm publish invocations in run scripts.
+// Covers `npm publish` and the `npm pub` shorthand.
+var npmPublishPattern = regexp.MustCompile(`(?i)\bnpm\s+(publish|pub)\b`)
 
 // suspiciousRunPatterns are precompiled at package init. Order is
 // stable so JSON output is reproducible.
