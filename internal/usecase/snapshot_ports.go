@@ -33,22 +33,10 @@ type LockfileScanner interface {
 	ScanProject(projectDir string) ([]domain.Dependency, error)
 }
 
-// PackageSource is the output of fetching + extracting a package's
-// distribution. Files maps relative-path → file body. Manifest is the
-// raw package manifest (package.json / pyproject.toml / Cargo.toml /
-// gemspec) when present at the root.
-//
-// TarballSha256 is the hex sha256 of the raw distribution tarball the
-// fetcher downloaded (npm: the .tgz). Empty string when the source
-// didn't come from a tarball (cache reload, alternative ecosystems
-// without tarballs). The submit pipeline reads this to send the
-// provenance hash with each report so consumers can verify the
-// reporter actually saw the bytes they claim.
-type PackageSource struct {
-	Files         map[string][]byte
-	Manifest      []byte
-	TarballSha256 string
-}
+// PackageSource is defined in domain and re-exported here as a type alias
+// for backward compatibility. New code should reference domain.PackageSource
+// directly.
+type PackageSource = domain.PackageSource
 
 // PackageSourceFetcher downloads and extracts a package's source
 // distribution from its registry. Per-ecosystem implementations live
