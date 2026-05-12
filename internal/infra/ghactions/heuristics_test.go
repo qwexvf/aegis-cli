@@ -299,6 +299,66 @@ jobs:
 	})
 }
 
+func TestAnalyze_CachePoisoning_RestoreSubpath(t *testing.T) {
+	// actions/cache/restore is the dedicated restore-only action under
+	// the same repo as actions/cache. checkCachePoisoning matches on
+	// Owner=="actions" && Repo=="cache", which covers both the full
+	// actions/cache and the actions/cache/restore subpath (parsed as
+	// Path=="restore" on the same Repo). Verify the subpath fires too.
+	body := []byte(`on: pull_request_target
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v3
+        with:
+          path: ~/.npm
+          key: node
+      - run: npm ci
+`)
+	wf, err := ParseBytes("build.yml", body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	findings := Analyze(wf)
+	hit := false
+	for _, f := range findings {
+		if f.Kind == domain.FindingCachePoisoning {
+			if f.Severity != domain.SevHigh {
+				t.Errorf("severity: got %q want high", f.Severity)
+			}
+			hit = true
+		}
+	}
+	if !hit {
+		t.Errorf("expected cache_poisoning finding for actions/cache/restore; got %+v", findings)
+	}
+}
+
+func TestAnalyze_CachePoisoning_OnPush_NoFire(t *testing.T) {
+	// actions/cache on a push workflow (not pull_request_target) should NOT fire.
+	body := []byte(`on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v3
+        with:
+          path: ~/.npm
+          key: node
+      - run: npm ci
+`)
+	wf, err := ParseBytes("build.yml", body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	for _, f := range Analyze(wf) {
+		if f.Kind == domain.FindingCachePoisoning {
+			t.Errorf("unexpected cache_poisoning on push workflow: %+v", f)
+		}
+	}
+}
+
 func TestAnalyze_CleanWorkflow(t *testing.T) {
 	body := []byte(`on: push
 permissions:

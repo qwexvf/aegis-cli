@@ -26,6 +26,7 @@ func ciCommand(uc *usecase.CI, actions *usecase.Actions, presenter *presentercli
 		failOnStr        string
 		jsonOut          bool
 		sarifOut         bool
+		suggestOut       bool
 		quiet            bool
 		noEnrich         bool
 		baselinePath     string
@@ -91,6 +92,15 @@ deps incur AST scan cost.`,
 			cmd.SilenceUsage = true
 			if runErr != nil {
 				return &exitCodeError{code: 2, err: runErr, silent: true}
+			}
+
+			// Suggest mode: print remediation hints, then return.
+			if suggestOut {
+				renderSuggestions(cmd.OutOrStdout(), result)
+				if !result.Passed {
+					return &exitCodeError{code: 1, err: fmt.Errorf("ci: %d finding(s) ≥ %s", len(result.Findings), failOn), silent: true}
+				}
+				return nil
 			}
 
 			// SARIF output: emit package findings, then return.
@@ -175,6 +185,8 @@ deps incur AST scan cost.`,
 		"also scan .github/workflows/ and fail if Actions findings ≥ --actions-fail-on")
 	cmd.Flags().StringVar(&actionsFailOnStr, "actions-fail-on", "high",
 		"min severity for --scan-actions: low|medium|high|critical")
+	cmd.Flags().BoolVar(&suggestOut, "suggest", false,
+		"print remediation commands for each blocked dep (upgrade hints)")
 	cmd.Flags().StringVar(&baselinePath, "baseline", "",
 		"path to a saved aegis.lock to diff against (drift mode — catches "+
 			"version-changed deps that grew new capabilities; doesn't touch your aegis.lock)")
