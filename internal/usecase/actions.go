@@ -1,8 +1,11 @@
 package usecase
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/ghactions"
@@ -27,8 +30,20 @@ func NewActions() *Actions { return &Actions{} }
 // ActionsScanRequest is the input to Actions.Scan.
 type ActionsScanRequest struct {
 	// ProjectDir is the repo root. `.github/workflows/` is resolved
-	// underneath it.
+	// underneath it. Ignored when Repo is set.
 	ProjectDir string
+
+	// Repo is an optional "owner/repo" string for remote scanning via
+	// the GitHub Contents API. When set, ProjectDir is ignored.
+	Repo string
+
+	// Token is an optional GitHub personal access token. Without a token
+	// the GitHub API allows 60 requests/hour; with one it allows 5000/hour.
+	Token string
+
+	// HTTPClient is the HTTP client to use for remote requests.
+	// Defaults to http.DefaultClient when nil.
+	HTTPClient *http.Client
 
 	// FailOn is the minimum severity that flips Passed to false. Zero
 	// value means any finding fails.
@@ -53,17 +68,37 @@ type ActionsScanResult struct {
 // not-exist, YAML parse failures, etc); a workflow-free project is
 // reported as Passed=true with zero findings.
 func (a *Actions) Scan(req ActionsScanRequest) (ActionsScanResult, error) {
-	paths, err := ghactions.FindWorkflows(req.ProjectDir)
-	if err != nil {
-		return ActionsScanResult{}, err
-	}
-	var all []domain.WorkflowFinding
-	for _, p := range paths {
-		wf, err := ghactions.Parse(p)
-		if err != nil {
-			return ActionsScanResult{}, fmt.Errorf("actions: parse %s: %w", p, err)
+	var workflows []ghactions.ParsedWorkflow
+	var numWorkflows int
+
+	if req.Repo != "" {
+		owner, repo, ok := strings.Cut(req.Repo, "/")
+		if !ok {
+			return ActionsScanResult{}, fmt.Errorf("actions: --repo must be owner/repo, got %q", req.Repo)
 		}
-		all = append(all, ghactions.Analyze(wf)...)
+		wfs, err := ghactions.FetchRemoteWorkflows(context.Background(), owner, repo, req.Token, req.HTTPClient)
+		if err != nil {
+			return ActionsScanResult{}, fmt.Errorf("actions: remote fetch %s: %w", req.Repo, err)
+		}
+		workflows = wfs
+	} else {
+		paths, err := ghactions.FindWorkflows(req.ProjectDir)
+		if err != nil {
+			return ActionsScanResult{}, err
+		}
+		for _, p := range paths {
+			wf, err := ghactions.Parse(p)
+			if err != nil {
+				return ActionsScanResult{}, fmt.Errorf("actions: parse %s: %w", p, err)
+			}
+			workflows = append(workflows, ghactions.ParsedWorkflow{Workflow: wf})
+		}
+	}
+	numWorkflows = len(workflows)
+
+	var all []domain.WorkflowFinding
+	for _, pw := range workflows {
+		all = append(all, ghactions.Analyze(pw.Workflow)...)
 	}
 	sort.SliceStable(all, func(i, j int) bool {
 		if all[i].File != all[j].File {
@@ -76,7 +111,7 @@ func (a *Actions) Scan(req ActionsScanRequest) (ActionsScanResult, error) {
 	})
 	all = req.Ignore.Suppress(all)
 	res := ActionsScanResult{
-		Workflows: len(paths),
+		Workflows: numWorkflows,
 		Findings:  all,
 		Passed:    !exceedsThreshold(all, req.FailOn),
 	}

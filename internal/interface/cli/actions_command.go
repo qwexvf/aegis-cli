@@ -47,13 +47,15 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 		failOnStr  string
 		jsonOut    bool
 		projectDir string
+		repo       string
+		token      string
 	)
 	cmd := &cobra.Command{
 		Use:   "scan",
-		Short: "Scan .github/workflows/ in the current project",
+		Short: "Scan .github/workflows/ in the current project or a remote GitHub repo",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if projectDir == "" {
+			if projectDir == "" && repo == "" {
 				cwd, err := os.Getwd()
 				if err != nil {
 					return err
@@ -64,12 +66,21 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ignore, err := allowlist.LoadActionsIgnore(projectDir)
-			if err != nil {
-				return fmt.Errorf("actions allowlist: %w", err)
+			var ignore domain.ActionsIgnoreSet
+			if projectDir != "" {
+				ignore, err = allowlist.LoadActionsIgnore(projectDir)
+				if err != nil {
+					return fmt.Errorf("actions allowlist: %w", err)
+				}
+			}
+			// Fall back to $GITHUB_TOKEN when --token is not set.
+			if token == "" {
+				token = os.Getenv("GITHUB_TOKEN")
 			}
 			result, err := uc.Scan(usecase.ActionsScanRequest{
 				ProjectDir: projectDir,
+				Repo:       repo,
+				Token:      token,
 				FailOn:     failOn,
 				Ignore:     ignore,
 			})
@@ -100,7 +111,11 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 	cmd.Flags().BoolVar(&jsonOut, "json", false,
 		"emit findings as JSON")
 	cmd.Flags().StringVar(&projectDir, "dir", "",
-		"project root (default: cwd)")
+		"project root (default: cwd); ignored when --repo is set")
+	cmd.Flags().StringVar(&repo, "repo", "",
+		"remote GitHub repository to scan (owner/repo); fetches workflows via GitHub API")
+	cmd.Flags().StringVar(&token, "token", "",
+		"GitHub personal access token for --repo (default: $GITHUB_TOKEN)")
 	return cmd
 }
 

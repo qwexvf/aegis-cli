@@ -8,49 +8,13 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
-// Analyze runs all heuristics against a parsed workflow and returns
-// findings in deterministic order (file walk → job order → step order →
-// heuristic order). Heuristics are pure: no I/O, no external state.
+// Analyze runs all heuristics against a parsed workflow and returns findings.
+// Delegates to defaultWorkflowChecks; add new checks there, not here.
+// Heuristics are pure: no I/O, no external state.
 func Analyze(wf domain.Workflow) []domain.WorkflowFinding {
 	var findings []domain.WorkflowFinding
-
-	// Workflow-level checks first.
-	findings = append(findings, checkWriteAllPermissions(wf.Permissions, wf.Path, 0)...)
-	prTarget := hasEvent(wf.On, "pull_request_target")
-
-	for _, job := range wf.Jobs {
-		// Job-level permissions override workflow-level. Re-check.
-		if job.Permissions.Mode != "" {
-			findings = append(findings, checkWriteAllPermissions(job.Permissions, wf.Path, job.Line)...)
-		}
-
-		findings = append(findings, checkOIDCNpmPublish(job, wf.Permissions, wf.Path)...)
-
-		jobHasCheckout := false
-		for _, step := range job.Steps {
-			if step.Uses != nil {
-				findings = append(findings, checkUnpinnedRef(*step.Uses)...)
-				if isCheckoutWithRef(step) {
-					jobHasCheckout = true
-				}
-				if prTarget {
-					findings = append(findings, checkCachePoisoning(step, wf.Path)...)
-				}
-			}
-			if step.Run != nil {
-				findings = append(findings, checkSuspiciousRun(*step.Run)...)
-				findings = append(findings, checkScriptInjection(*step.Run)...)
-			}
-		}
-		if prTarget && jobHasCheckout {
-			findings = append(findings, domain.WorkflowFinding{
-				Kind:     domain.FindingPullRequestTargetCheckout,
-				Severity: domain.SevCritical,
-				File:     wf.Path,
-				Line:     job.Line,
-				Message:  "job " + job.ID + ": pull_request_target + actions/checkout of PR head — runs untrusted PR code with write permissions",
-			})
-		}
+	for _, check := range defaultWorkflowChecks {
+		findings = append(findings, check(wf)...)
 	}
 	return findings
 }
