@@ -41,11 +41,11 @@ type Driver struct {
 
 // Rule describes one detector. Rules are referenced by results.
 type Rule struct {
-	ID               string                 `json:"id"`
-	ShortDescription Message                `json:"shortDescription"`
-	FullDescription  *Message               `json:"fullDescription,omitempty"`
-	DefaultConfig    *RuleDefaultConfig     `json:"defaultConfiguration,omitempty"`
-	Properties       map[string]interface{} `json:"properties,omitempty"`
+	ID               string             `json:"id"`
+	ShortDescription Message            `json:"shortDescription"`
+	FullDescription  *Message           `json:"fullDescription,omitempty"`
+	DefaultConfig    *RuleDefaultConfig `json:"defaultConfiguration,omitempty"`
+	Properties       map[string]any     `json:"properties,omitempty"`
 }
 
 // RuleDefaultConfig sets the default level for a rule.
