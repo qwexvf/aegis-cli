@@ -1,6 +1,10 @@
 package heuristics
 
-import "github.com/qwexvf/aegis-cli/internal/domain"
+import (
+	"slices"
+
+	"github.com/qwexvf/aegis-cli/internal/domain"
+)
 
 // checkGoRetract fires when the installed version of a Go module appears in
 // that module's own retract list. A retract directive in go.mod is the
@@ -13,10 +17,8 @@ func checkGoRetract(pkg NormalizedPackage) []domain.Capability {
 	if pkg.Version == "" || len(pkg.RetractedVersions) == 0 {
 		return nil
 	}
-	for _, v := range pkg.RetractedVersions {
-		if v == pkg.Version {
-			return []domain.Capability{domain.CapVersionUnpublished}
-		}
+	if slices.Contains(pkg.RetractedVersions, pkg.Version) {
+		return []domain.Capability{domain.CapVersionUnpublished}
 	}
 	return nil
 }
