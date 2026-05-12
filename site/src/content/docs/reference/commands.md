@@ -221,7 +221,8 @@ aegis ci --sarif > packages.sarif             # SARIF 2.1.0 output
 | `--baseline <path>` | (none) | Drift mode: diff against this saved snapshot, only fail on *newly-introduced* findings. Doesn't touch your `aegis.lock`. |
 | `--scan-actions` | off | Also scan `.github/workflows/`. Threshold controlled by `--actions-fail-on`. Respects `.aegis-actions-allowlist.yaml`. |
 | `--actions-fail-on` | `high` | Minimum severity for `--scan-actions`: `low\|medium\|high\|critical` |
-| `--sarif` | off | Emit package findings as SARIF 2.1.0 instead of human/JSON output. For upload to GitHub Code Scanning. |
+| `--sarif` | off | Emit SARIF 2.1.0. When combined with `--scan-actions`, both package and workflow findings are emitted as two `runs[]` in one SARIF file. |
+| `--suggest` | off | Print per-ecosystem upgrade commands for each blocked dep (`npm install pkg@latest`, `pip install --upgrade pkg`, etc.). |
 
 The fingerprint cache (`~/.aegis/cache/fingerprints/`) persists across runs — a warm CI is fast. Only newly-added or version-changed deps incur AST scan cost.
 

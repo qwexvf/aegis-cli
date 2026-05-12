@@ -103,9 +103,37 @@ deps incur AST scan cost.`,
 				return nil
 			}
 
-			// SARIF output: emit package findings, then return.
+			// SARIF output: emit package (+ optionally actions) findings, then return.
 			if sarifOut {
-				log := sarif.CIToSARIF(result, Version)
+				var log sarif.Log
+				if scanActions {
+					// Run actions scan first, then merge both into one SARIF.
+					ignore, err := allowlist.LoadActionsIgnore(cwd)
+					if err != nil {
+						return &exitCodeError{code: 2, err: fmt.Errorf("actions allowlist: %w", err), silent: false}
+					}
+					actionsFailOn, aErr := parseSeverity(actionsFailOnStr)
+					if aErr != nil {
+						return aErr
+					}
+					aResult, aErr := actions.Scan(cmd.Context(), usecase.ActionsScanRequest{
+						ProjectDir: cwd,
+						FailOn:     actionsFailOn,
+						Ignore:     ignore,
+					})
+					if aErr != nil {
+						return &exitCodeError{code: 2, err: fmt.Errorf("actions scan: %w", aErr), silent: false}
+					}
+					log = sarif.MergedToSARIF(result, aResult, Version, cwd)
+					if !result.Passed || !aResult.Passed {
+						b, _ := sarif.Marshal(log)
+						_, _ = cmd.OutOrStdout().Write(b)
+						_, _ = fmt.Fprintln(cmd.OutOrStdout())
+						return &exitCodeError{code: 1, err: fmt.Errorf("ci: findings ≥ threshold"), silent: true}
+					}
+				} else {
+					log = sarif.CIToSARIF(result, Version)
+				}
 				b, err := sarif.Marshal(log)
 				if err != nil {
 					return &exitCodeError{code: 2, err: err, silent: false}
