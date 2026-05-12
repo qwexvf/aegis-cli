@@ -1,6 +1,8 @@
 package sarif
 
 import (
+	"strings"
+
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
@@ -54,9 +56,12 @@ var actionsRules = []Rule{
 
 // ActionsToSARIF converts an ActionsScanResult to a SARIF 2.1.0 Log.
 // toolVersion is the aegis-cli version string stamped at build time.
-func ActionsToSARIF(result usecase.ActionsScanResult, toolVersion string) Log {
+// baseDir is stripped from finding file paths to produce repo-relative URIs
+// that GitHub Code Scanning can resolve (pass the project root; "" = no strip).
+func ActionsToSARIF(result usecase.ActionsScanResult, toolVersion, baseDir string) Log {
 	results := make([]Result, 0, len(result.Findings))
 	for _, f := range result.Findings {
+		uri := relativeURI(f.File, baseDir)
 		r := Result{
 			RuleID:  f.Kind.String(),
 			Level:   severityToSARIFLevel(f.Severity),
@@ -64,7 +69,7 @@ func ActionsToSARIF(result usecase.ActionsScanResult, toolVersion string) Log {
 			Locations: []Location{{
 				PhysicalLocation: PhysicalLocation{
 					ArtifactLocation: ArtifactLocation{
-						URI:       f.File,
+						URI:       uri,
 						URIBaseID: "%SRCROOT%",
 					},
 					Region: &Region{StartLine: max(f.Line, 1)},
@@ -97,6 +102,21 @@ func ActionsToSARIF(result usecase.ActionsScanResult, toolVersion string) Log {
 
 // severityToSARIFLevel maps aegis severity to the SARIF level vocabulary.
 // SARIF uses: error > warning > note > none.
+// relativeURI strips baseDir prefix from path to produce a repo-relative URI.
+// Ensures forward slashes and no leading slash so consumers resolve correctly.
+func relativeURI(filePath, baseDir string) string {
+	if baseDir == "" {
+		return filePath
+	}
+	// Normalise: ensure baseDir ends with /
+	if len(baseDir) > 0 && baseDir[len(baseDir)-1] != '/' {
+		baseDir += "/"
+	}
+	rel := strings.TrimPrefix(filePath, baseDir)
+	// If no prefix was stripped, return as-is (already relative or different root)
+	return rel
+}
+
 func severityToSARIFLevel(s domain.Severity) string {
 	switch s {
 	case domain.SevCritical, domain.SevHigh:
@@ -107,11 +127,4 @@ func severityToSARIFLevel(s domain.Severity) string {
 		return "note"
 	}
 	return "warning"
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
