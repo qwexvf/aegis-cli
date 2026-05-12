@@ -45,10 +45,6 @@ type ActionsScanRequest struct {
 	// Defaults to http.DefaultClient when nil.
 	HTTPClient *http.Client
 
-	// Context is used for remote API requests. Defaults to context.Background()
-	// when nil; callers should pass cobra's cmd.Context() for SIGINT propagation.
-	Context context.Context
-
 	// FailOn is the minimum severity that flips Passed to false. Zero
 	// value means any finding fails.
 	FailOn domain.Severity
@@ -71,7 +67,9 @@ type ActionsScanResult struct {
 // I/O failures (workflows dir unreadable for reasons other than
 // not-exist, YAML parse failures, etc); a workflow-free project is
 // reported as Passed=true with zero findings.
-func (a *Actions) Scan(req ActionsScanRequest) (ActionsScanResult, error) {
+// Scan walks workflows and returns findings. ctx is used for remote API
+// requests — pass cmd.Context() from cobra so SIGINT cancels in-flight calls.
+func (a *Actions) Scan(ctx context.Context, req ActionsScanRequest) (ActionsScanResult, error) {
 	var workflows []ghactions.ParsedWorkflow
 	var numWorkflows int
 
@@ -79,10 +77,6 @@ func (a *Actions) Scan(req ActionsScanRequest) (ActionsScanResult, error) {
 		owner, repo, ok := strings.Cut(req.Repo, "/")
 		if !ok {
 			return ActionsScanResult{}, fmt.Errorf("actions: --repo must be owner/repo, got %q", req.Repo)
-		}
-		ctx := req.Context
-		if ctx == nil {
-			ctx = context.Background()
 		}
 		wfs, err := ghactions.FetchRemoteWorkflows(ctx, owner, repo, req.Token, req.HTTPClient)
 		if err != nil {

@@ -79,11 +79,10 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 			if token == "" {
 				token = os.Getenv("GITHUB_TOKEN")
 			}
-			result, err := uc.Scan(usecase.ActionsScanRequest{
+			result, err := uc.Scan(cmd.Context(), usecase.ActionsScanRequest{
 				ProjectDir: projectDir,
 				Repo:       repo,
 				Token:      token,
-				Context:    cmd.Context(),
 				FailOn:     failOn,
 				Ignore:     ignore,
 			})
