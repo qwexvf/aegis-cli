@@ -104,7 +104,7 @@ func TestActionsToSARIF_ValidJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(b, &raw); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}

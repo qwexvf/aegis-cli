@@ -86,7 +86,7 @@ type ParsedWorkflow struct {
 	Raw      []byte
 }
 
-func githubGet(ctx context.Context, client *http.Client, token, url string, out interface{}) error {
+func githubGet(ctx context.Context, client *http.Client, token, url string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
