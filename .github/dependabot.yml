@@ -1,5 +1,14 @@
 version: 2
 
+# Note: examples/ contains intentionally-vulnerable fixtures for testing
+# aegis detection capabilities — not production dependencies. Dependabot
+# security alerts from those paths should be dismissed as "not_used".
+# New alerts from examples/ can be dismissed via:
+#   gh api repos/qwexvf/aegis-cli/dependabot/alerts --paginate \
+#     -q '.[] | select(.state=="open") | .number' | \
+#     xargs -I{} gh api repos/qwexvf/aegis-cli/dependabot/alerts/{} \
+#       --method PATCH -f state=dismissed -f dismissed_reason=not_used
+
 updates:
   - package-ecosystem: gomod
     directory: /
@@ -7,6 +16,16 @@ updates:
       interval: weekly
     groups:
       go-deps:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  # npm: track only the docs site, not examples/ fixtures
+  - package-ecosystem: npm
+    directory: /site
+    schedule:
+      interval: weekly
+    groups:
+      npm-deps:
         update-types: [minor, patch]
     open-pull-requests-limit: 5
 
