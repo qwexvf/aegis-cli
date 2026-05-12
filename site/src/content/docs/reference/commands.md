@@ -208,6 +208,8 @@ aegis ci --fail-on=review                     # tightest (warn-level fails)
 aegis ci --json | jq '.findings[] | .name'    # machine-readable
 aegis ci --baseline=baseline.lock             # drift mode
 aegis ci --no-enrich                          # score on existing fingerprints only
+aegis ci --scan-actions                       # also scan .github/workflows/
+aegis ci --sarif > packages.sarif             # SARIF 2.1.0 output
 ```
 
 | Flag | Default | Description |
@@ -217,10 +219,25 @@ aegis ci --no-enrich                          # score on existing fingerprints o
 | `--quiet` | off | Print only the summary line. |
 | `--no-enrich` | off | Skip the AST scan; score on existing fingerprints. Faster, thinner. |
 | `--baseline <path>` | (none) | Drift mode: diff against this saved snapshot, only fail on *newly-introduced* findings. Doesn't touch your `aegis.lock`. |
+| `--scan-actions` | off | Also scan `.github/workflows/` for risky patterns (same checks as `aegis actions scan --fail-on high`). Respects `.aegis-actions-allowlist.yaml`. |
+| `--sarif` | off | Emit package findings as SARIF 2.1.0 instead of human/JSON output. For upload to GitHub Code Scanning. |
 
 The fingerprint cache (`~/.aegis/cache/fingerprints/`) persists across runs — a warm CI is fast. Only newly-added or version-changed deps incur AST scan cost.
 
 **Exit codes**: `0` if no findings ≥ `--fail-on`, `1` if any, `2` on config / network errors.
+
+**GitHub Actions — full audit in one step:**
+
+```yaml
+- name: Audit dependencies + workflows
+  run: aegis ci --scan-actions --sarif > aegis.sarif
+
+- name: Upload to GitHub Security
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: aegis.sarif
+  if: always()
+```
 
 ---
 

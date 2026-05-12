@@ -175,6 +175,26 @@ Drop-in templates in [`examples/ci/`](examples/ci/) for GitHub Actions, GitLab C
 | `1`       | findings ≥ `--fail-on` |
 | `2`       | verdict failed (config / network error) |
 
+**One-step full audit (packages + GitHub Actions workflows):**
+
+```yaml
+- name: aegis full audit
+  run: aegis ci --scan-actions --sarif > aegis.sarif
+
+- name: Upload SARIF to GitHub Security
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: aegis.sarif
+  if: always()
+```
+
+| Flag | Description |
+|---|---|
+| `--scan-actions` | Also scan `.github/workflows/` (same checks as `aegis actions scan`) |
+| `--sarif` | Emit SARIF 2.1.0 for GitHub Code Scanning |
+| `--fail-on` | Threshold: `safe\|review\|prompt\|block` (default: `block`) |
+| `--baseline` | Drift mode — only fail on newly-introduced findings |
+
 `aegis ci --json` output is stable for tooling — see [`examples/ci/README.md`](examples/ci/README.md).
 
 ## Docs
