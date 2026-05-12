@@ -1,9 +1,11 @@
 package heuristics
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // TestDetectSuspiciousInstallHook hits the canonical malware patterns
@@ -233,11 +235,20 @@ func TestDetectSuspiciousInstallHook(t *testing.T) {
 		},
 	}
 
+	p := &npmParser{}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := DetectSuspiciousInstallHook([]byte(tc.manifest))
-			if got != tc.want {
-				t.Errorf("DetectSuspiciousInstallHook = %v, want %v", got, tc.want)
+			manifestRaw := []byte(tc.manifest)
+			pkg := p.Parse("", manifestRaw, usecase.PackageSource{Manifest: manifestRaw})
+			got := checkInstallHooks(pkg)
+			if tc.want == 0 {
+				if len(got) != 0 {
+					t.Errorf("checkInstallHooks = %v, want []", got)
+				}
+			} else {
+				if !slices.Contains(got, tc.want) {
+					t.Errorf("checkInstallHooks = %v, want %v", got, tc.want)
+				}
 			}
 		})
 	}

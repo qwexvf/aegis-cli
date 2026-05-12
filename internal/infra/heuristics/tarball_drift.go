@@ -7,7 +7,6 @@ import (
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/tarballdrift"
-	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // DetectTarballDriftFromSources runs the pure tarballdrift.Diff over
@@ -25,7 +24,7 @@ import (
 // the second is the list of evidence paths for the explain renderer.
 func DetectTarballDriftFromSources(
 	manifestRaw []byte,
-	src usecase.PackageSource,
+	src domain.PackageSource,
 	repoFiles []string,
 	repoSubdir string,
 ) (domain.Capability, []tarballdrift.DriftEvidence) {

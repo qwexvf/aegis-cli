@@ -1,9 +1,11 @@
 package heuristics
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 func TestDetectGitDepInOptional(t *testing.T) {
@@ -15,8 +17,10 @@ func TestDetectGitDepInOptional(t *testing.T) {
 				"@tanstack/setup": "github:tanstack/router#79ac49eedf774dd4b0cfa308722bc463cfe5885c"
 			}
 		}`)
-		got := DetectGitDepInOptional(manifest)
-		if got != domain.CapGitDepInOptionalDep {
+		p := &npmParser{}
+		pkg := p.Parse("", manifest, usecase.PackageSource{Manifest: manifest})
+		got := checkOptionalGitDep(pkg)
+		if !slices.Contains(got, domain.CapGitDepInOptionalDep) {
 			t.Fatalf("want CapGitDepInOptionalDep, got %v", got)
 		}
 	})
@@ -27,8 +31,10 @@ func TestDetectGitDepInOptional(t *testing.T) {
 				"evil": "git+https://github.com/attacker/evil.git#aabbcc1122334455667788990011223344556677"
 			}
 		}`)
-		got := DetectGitDepInOptional(manifest)
-		if got != domain.CapGitDepInOptionalDep {
+		p := &npmParser{}
+		pkg := p.Parse("", manifest, usecase.PackageSource{Manifest: manifest})
+		got := checkOptionalGitDep(pkg)
+		if !slices.Contains(got, domain.CapGitDepInOptionalDep) {
 			t.Fatalf("want CapGitDepInOptionalDep, got %v", got)
 		}
 	})
@@ -39,8 +45,10 @@ func TestDetectGitDepInOptional(t *testing.T) {
 				"priv": "git+ssh://git@github.com/org/repo.git#aabbcc1122334455667788990011223344556677"
 			}
 		}`)
-		got := DetectGitDepInOptional(manifest)
-		if got != domain.CapGitDepInOptionalDep {
+		p := &npmParser{}
+		pkg := p.Parse("", manifest, usecase.PackageSource{Manifest: manifest})
+		got := checkOptionalGitDep(pkg)
+		if !slices.Contains(got, domain.CapGitDepInOptionalDep) {
 			t.Fatalf("want CapGitDepInOptionalDep, got %v", got)
 		}
 	})
@@ -51,8 +59,10 @@ func TestDetectGitDepInOptional(t *testing.T) {
 				"x": "gitlab:org/repo#aabbcc1122334455667788990011223344556677"
 			}
 		}`)
-		got := DetectGitDepInOptional(manifest)
-		if got != domain.CapGitDepInOptionalDep {
+		p := &npmParser{}
+		pkg := p.Parse("", manifest, usecase.PackageSource{Manifest: manifest})
+		got := checkOptionalGitDep(pkg)
+		if !slices.Contains(got, domain.CapGitDepInOptionalDep) {
 			t.Fatalf("want CapGitDepInOptionalDep, got %v", got)
 		}
 	})
@@ -63,8 +73,10 @@ func TestDetectGitDepInOptional(t *testing.T) {
 				"x": "bitbucket:org/repo#aabbcc1122334455667788990011223344556677"
 			}
 		}`)
-		got := DetectGitDepInOptional(manifest)
-		if got != domain.CapGitDepInOptionalDep {
+		p := &npmParser{}
+		pkg := p.Parse("", manifest, usecase.PackageSource{Manifest: manifest})
+		got := checkOptionalGitDep(pkg)
+		if !slices.Contains(got, domain.CapGitDepInOptionalDep) {
 			t.Fatalf("want CapGitDepInOptionalDep, got %v", got)
 		}
 	})
@@ -77,8 +89,10 @@ func TestDetectGitDepInOptional(t *testing.T) {
 				"fsevents": "^2.3.2"
 			}
 		}`)
-		got := DetectGitDepInOptional(manifest)
-		if got != 0 {
+		p := &npmParser{}
+		pkg := p.Parse("", manifest, usecase.PackageSource{Manifest: manifest})
+		got := checkOptionalGitDep(pkg)
+		if len(got) != 0 {
 			t.Errorf("want 0 (no signal), got %v", got)
 		}
 	})
@@ -89,8 +103,10 @@ func TestDetectGitDepInOptional(t *testing.T) {
 			"version": "1.0.0",
 			"dependencies": { "lodash": "^4.17.21" }
 		}`)
-		got := DetectGitDepInOptional(manifest)
-		if got != 0 {
+		p := &npmParser{}
+		pkg := p.Parse("", manifest, usecase.PackageSource{Manifest: manifest})
+		got := checkOptionalGitDep(pkg)
+		if len(got) != 0 {
 			t.Errorf("want 0 (no signal), got %v", got)
 		}
 	})
@@ -101,22 +117,29 @@ func TestDetectGitDepInOptional(t *testing.T) {
 				"some-pkg": "org/repo#v1.2.3"
 			}
 		}`)
-		got := DetectGitDepInOptional(manifest)
-		if got != 0 {
+		p := &npmParser{}
+		pkg := p.Parse("", manifest, usecase.PackageSource{Manifest: manifest})
+		got := checkOptionalGitDep(pkg)
+		if len(got) != 0 {
 			t.Errorf("want 0 (tag pin is not flagged), got %v", got)
 		}
 	})
 
 	t.Run("clean — empty manifest", func(t *testing.T) {
-		got := DetectGitDepInOptional(nil)
-		if got != 0 {
+		p := &npmParser{}
+		pkg := p.Parse("", nil, usecase.PackageSource{Manifest: nil})
+		got := checkOptionalGitDep(pkg)
+		if len(got) != 0 {
 			t.Errorf("want 0 on empty input, got %v", got)
 		}
 	})
 
 	t.Run("clean — malformed JSON", func(t *testing.T) {
-		got := DetectGitDepInOptional([]byte(`{not json`))
-		if got != 0 {
+		manifest := []byte(`{not json`)
+		p := &npmParser{}
+		pkg := p.Parse("", manifest, usecase.PackageSource{Manifest: manifest})
+		got := checkOptionalGitDep(pkg)
+		if len(got) != 0 {
 			t.Errorf("want 0 on malformed JSON, got %v", got)
 		}
 	})

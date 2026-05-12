@@ -4,37 +4,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
-
-	"github.com/qwexvf/aegis-cli/internal/domain"
 )
-
-// DetectSuspiciousInstallHook parses the package's manifest (npm
-// package.json) and inspects every install-time script for known
-// malware patterns:
-//
-//   - download-and-execute: `curl … | sh`, `wget … | bash`
-//   - inline node: `node -e "…"`, `python -c "…"`, `ruby -e "…"`
-//   - base64-piped-to-shell: `echo <b64> | base64 -d | sh`
-//   - eval / Function on decoded strings (caught here for hook scripts;
-//     CapObfuscatedPayload covers source code)
-//   - fetching from typical exfil hosts (Pastebin, Discord webhook)
-//
-// Returns CapInstallHookSuspicious when any pattern fires; 0 otherwise.
-// A standalone install hook (CapInstallHookExec) is detected
-// separately by the manifest parser; this function escalates that to
-// "actively malicious-looking".
-func DetectSuspiciousInstallHook(manifestRaw []byte) domain.Capability {
-	scripts := extractNpmScripts(manifestRaw)
-	if len(scripts) == 0 {
-		return 0
-	}
-	for _, body := range scripts {
-		if scriptMatchesMalwarePattern(body) {
-			return domain.CapInstallHookSuspicious
-		}
-	}
-	return 0
-}
 
 // extractNpmScripts pulls every install-time script out of an npm
 // package.json. Returns the script bodies (verbatim) for
