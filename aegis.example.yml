@@ -1,0 +1,33 @@
+# aegis.yml — project-level configuration for aegis CLI
+# Place this file at the repository root alongside aegis.lock.
+# CLI flags always take precedence over values set here.
+# All fields are optional; omit to use the built-in CLI defaults.
+#
+# Also recognised as: .aegis.yml
+
+version: 1
+
+ci:
+  # Default --fail-on threshold for `aegis ci`.
+  # Values: safe | review | prompt | block  (default: block)
+  fail_on: block
+
+  # Run `aegis actions scan` automatically as part of `aegis ci`.
+  # Equivalent to always passing --scan-actions.
+  scan_actions: true
+
+  # Emit SARIF 2.1.0 by default.
+  # Equivalent to always passing --sarif.
+  # sarif: false
+
+  # Disable AST enrichment by default (--no-enrich).
+  # no_enrich: false
+
+actions:
+  # Default --fail-on severity for `aegis actions scan`.
+  # Values: low | medium | high | critical  (default: high)
+  fail_on: high
+
+  # Default remote repository for `aegis actions scan --repo`.
+  # Useful for scanning a central infra repo from any project.
+  # repo: org/infra

@@ -14,6 +14,7 @@ import (
 
 	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
 	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
+	"github.com/qwexvf/aegis-cli/internal/infra/config"
 	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis-cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis-cli/internal/infra/pmwrapper"
@@ -21,6 +22,18 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
 )
+
+// contextKeyConfig is the unexported context key for the loaded Config.
+type contextKeyConfig struct{}
+
+// configFromContext retrieves the Config stored by PersistentPreRunE.
+// Returns a zero Config if not set (e.g. in tests).
+func configFromContext(ctx context.Context) config.Config {
+	if v := ctx.Value(contextKeyConfig{}); v != nil {
+		return v.(config.Config)
+	}
+	return config.Config{}
+}
 
 // Command groups for `aegis --help`. Order here is the order they
 // render in.
@@ -112,10 +125,22 @@ func NewRoot(d Deps) *cobra.Command {
 		Short:         "Aegis supply-chain CLI — install gate for npm, bun, yarn, pnpm",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			if verbose {
 				LogLevel.Set(slog.LevelDebug)
 			}
+			// Load aegis.yml from cwd and store in context so sub-commands
+			// can apply config defaults for flags not explicitly set.
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			cfg, err := config.Load(cwd)
+			if err != nil {
+				return fmt.Errorf("aegis.yml: %w", err)
+			}
+			cmd.SetContext(context.WithValue(cmd.Context(), contextKeyConfig{}, cfg))
+			return nil
 		},
 	}
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false,
