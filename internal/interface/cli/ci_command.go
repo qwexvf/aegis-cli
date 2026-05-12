@@ -55,6 +55,21 @@ deps incur AST scan cost.`,
 			if err != nil {
 				return err
 			}
+			// Apply aegis.yml defaults for flags not set on the command line.
+			cfg := configFromContext(cmd.Context())
+			if !cmd.Flags().Changed("fail-on") && cfg.CI.FailOn != "" {
+				failOnStr = cfg.CI.FailOn
+			}
+			if !cmd.Flags().Changed("scan-actions") && cfg.CI.ScanActions {
+				scanActions = true
+			}
+			if !cmd.Flags().Changed("sarif") && cfg.CI.SARIF {
+				sarifOut = true
+			}
+			if !cmd.Flags().Changed("no-enrich") && cfg.CI.NoEnrich {
+				noEnrich = true
+			}
+
 			failOn, err := parseFailOn(failOnStr)
 			if err != nil {
 				return err

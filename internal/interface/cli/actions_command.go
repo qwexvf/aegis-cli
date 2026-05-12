@@ -67,6 +67,15 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 		Short: "Scan .github/workflows/ in the current project or a remote GitHub repo",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Apply aegis.yml defaults for flags not set on the command line.
+			cfg := configFromContext(cmd.Context())
+			if !cmd.Flags().Changed("fail-on") && cfg.Actions.FailOn != "" {
+				failOnStr = cfg.Actions.FailOn
+			}
+			if !cmd.Flags().Changed("repo") && cfg.Actions.Repo != "" {
+				repo = cfg.Actions.Repo
+			}
+
 			if projectDir == "" && repo == "" {
 				cwd, err := os.Getwd()
 				if err != nil {
