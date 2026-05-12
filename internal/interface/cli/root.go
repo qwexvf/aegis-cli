@@ -77,6 +77,10 @@ type Deps struct {
 	// Hook wires `aegis hook install` / `uninstall`.
 	Hook *usecase.Hook
 
+	// Sbom wires `aegis sbom`. When nil, the subcommand is not
+	// registered.
+	Sbom *usecase.Sbom
+
 	// AllowlistLoader is a factory so each invocation of an allowlist
 	// subcommand picks up the cwd at run time (matters for project-
 	// scoped operations). When nil, the allowlist subcommand is not
@@ -148,6 +152,9 @@ func NewRoot(d Deps) *cobra.Command {
 	if d.Hook != nil {
 		add(hookCommand(d.Hook), groupConfigure)
 	}
+	if d.Sbom != nil {
+		add(sbomCommand(d.Sbom), groupInspect)
+	}
 	if d.AllowlistLoader != nil && d.AllowlistPresenter != nil {
 		add(allowlistCommand(d.AllowlistLoader, d.AllowlistPresenter), groupConfigure)
 	}
@@ -205,6 +212,7 @@ func NewDocsRoot() *cobra.Command {
 		Recheck:            &usecase.Recheck{},
 		Explain:            &usecase.Explain{},
 		Hook:               &usecase.Hook{},
+		Sbom:               &usecase.Sbom{},
 		AnalyzePresenter:   &presentercli.AnalyzePresenter{},
 		CIPresenter:        &presentercli.CIPresenter{},
 		RecheckPresenter:   &presentercli.RecheckPresenter{},
