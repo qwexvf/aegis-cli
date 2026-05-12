@@ -33,6 +33,14 @@ const (
 	EcoGleam     Ecosystem = "hex"
 )
 
+// AllEcosystems returns every ecosystem the CLI recognises.
+func AllEcosystems() []Ecosystem {
+	return []Ecosystem{
+		EcoNpm, EcoPyPI, EcoCrates, EcoGo, EcoMaven,
+		EcoRubyGems, EcoPackagist, EcoNuGet, EcoGleam,
+	}
+}
+
 // PackageSpec is one parsed install target. Version is the literal
 // string the user wrote (exact pin, range, tag, or empty); the use case
 // resolves it to a concrete version through the registry adapter.

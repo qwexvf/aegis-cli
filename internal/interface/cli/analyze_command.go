@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -122,20 +123,11 @@ func parsePkgSpec(s string) (domain.Ecosystem, string, string, error) {
 	return eco, name, version, nil
 }
 
-// isKnownEcosystem returns true for the ecosystem strings the analyzer
-// recognises. The registry-fetch path only supports npm today; the
-// other ecosystems are accepted so `--local` can scan their on-disk
-// source via the AST scanners (pyscan / rbscan / ...).
-//
-// TODO(ecosystems): derive this from the set of registered fetchers
-// + scanners in the composition root rather than a hand-maintained
-// switch.
+// isKnownEcosystem reports whether s is one of the ecosystems the CLI
+// recognises. Registry-fetch only supports npm; others are valid for
+// --local AST scans (pyscan / rbscan / gleamscan / ...).
 func isKnownEcosystem(s string) bool {
-	switch s {
-	case "npm", "pypi", "rubygems", "crates", "go", "maven", "packagist", "nuget":
-		return true
-	}
-	return false
+	return slices.Contains(domain.AllEcosystems(), domain.Ecosystem(s))
 }
 
 // exitCodeError lets RunE return a specific exit code. Execute() is

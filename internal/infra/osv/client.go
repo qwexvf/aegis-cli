@@ -25,6 +25,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -374,23 +375,97 @@ func severityFromOSV(sevs []osvSeverityIn, dbSpecific string) domain.Severity {
 	return domain.SevInfo
 }
 
-// cvssBaseScore extracts the base score from a CVSS v3 vector string.
-// Returns -1 when the vector is unparseable. We only care about the
-// base, not temporal/environmental — that's what every "X is High"
-// table renders.
+// cvssBaseScore computes the CVSS v3.x base score from a vector string
+// (e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"). Returns -1
+// when the vector is absent or unparseable.
 func cvssBaseScore(vector string) float64 {
-	// OSV stores scores as the canonical CVSS vector string. The
-	// base score isn't in the vector itself — it's derived. Rather
-	// than ship a full CVSS calculator, we honor the database's
-	// own bucketing (database_specific.severity) and only treat
-	// the vector as a presence signal here. -1 means "no vector".
 	if !strings.HasPrefix(vector, "CVSS:") {
 		return -1
 	}
-	// TODO: parse vector → base score. Until then we let the
-	// database_specific.severity fallback do the work — most
-	// ecosystems already provide a bucketed severity.
-	return -1
+	parts := strings.Split(vector, "/")
+	if len(parts) < 9 { // version + 8 base metrics
+		return -1
+	}
+	m := make(map[string]string, len(parts)-1)
+	for _, p := range parts[1:] {
+		k, v, ok := strings.Cut(p, ":")
+		if !ok {
+			return -1
+		}
+		m[k] = v
+	}
+
+	get := func(key string, table map[string]float64) (float64, bool) {
+		v, ok := table[m[key]]
+		return v, ok
+	}
+
+	av, ok := get("AV", map[string]float64{"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.20})
+	if !ok {
+		return -1
+	}
+	ac, ok := get("AC", map[string]float64{"L": 0.77, "H": 0.44})
+	if !ok {
+		return -1
+	}
+	ui, ok := get("UI", map[string]float64{"N": 0.85, "R": 0.62})
+	if !ok {
+		return -1
+	}
+
+	scope := m["S"]
+	scopeChanged := scope == "C"
+	if !scopeChanged && scope != "U" {
+		return -1
+	}
+
+	var prVals map[string]float64
+	if scopeChanged {
+		prVals = map[string]float64{"N": 0.85, "L": 0.68, "H": 0.50}
+	} else {
+		prVals = map[string]float64{"N": 0.85, "L": 0.62, "H": 0.27}
+	}
+	pr, ok := get("PR", prVals)
+	if !ok {
+		return -1
+	}
+
+	impactVals := map[string]float64{"N": 0.00, "L": 0.22, "H": 0.56}
+	conf, ok := get("C", impactVals)
+	if !ok {
+		return -1
+	}
+	integ, ok := get("I", impactVals)
+	if !ok {
+		return -1
+	}
+	avail, ok := get("A", impactVals)
+	if !ok {
+		return -1
+	}
+
+	iss := 1 - (1-conf)*(1-integ)*(1-avail)
+
+	var impact float64
+	if scopeChanged {
+		impact = 7.52*(iss-0.029) - 3.25*math.Pow(iss-0.02, 15)
+	} else {
+		impact = 6.42 * iss
+	}
+	if impact <= 0 {
+		return 0
+	}
+
+	exploitability := 8.22 * av * ac * pr * ui
+
+	var raw float64
+	if scopeChanged {
+		raw = math.Min(1.08*(impact+exploitability), 10)
+	} else {
+		raw = math.Min(impact+exploitability, 10)
+	}
+	// CVSS roundup: smallest value to 1 decimal place >= input
+	return math.Ceil(raw*10) / 10
 }
 
 // bucketCVSS maps a CVSS v3 base score onto our Severity enum per
