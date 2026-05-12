@@ -32,6 +32,11 @@ var defaultPipeline = NewPipeline(
 		&pypiParser{},
 		&cargoParser{},
 		&rubyParser{},
+		&goParser{},
+		&mavenParser{},
+		&composerParser{},
+		&nugetParser{},
+		&gleamParser{},
 	},
 	[]Check{
 		checkInstallHooks,    // hook body × malware patterns → CapInstallHookSuspicious
