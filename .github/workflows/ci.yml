@@ -100,6 +100,28 @@ jobs:
       - name: scan for known vulnerabilities
         run: govulncheck ./...
 
+  sbom-validate:
+    name: sbom validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.3"
+          cache: true
+      - name: build aegis
+        run: make build-release
+      - name: generate SBOM from examples/demo
+        working-directory: examples/demo
+        run: ../../bin/aegis sbom -o /tmp/aegis-demo.cdx.json
+      - name: install cyclonedx-cli
+        run: |
+          curl -sSL https://github.com/CycloneDX/cyclonedx-cli/releases/latest/download/cyclonedx-linux-x64 \
+            -o /usr/local/bin/cyclonedx
+          chmod +x /usr/local/bin/cyclonedx
+      - name: validate CycloneDX 1.5 schema
+        run: cyclonedx validate --input-file /tmp/aegis-demo.cdx.json --input-version v1_5 --fail-on-errors
+
   ci:
     name: ci
     if: always()
@@ -109,6 +131,7 @@ jobs:
       - build-matrix
       - goreleaser-check
       - govulncheck
+      - sbom-validate
     runs-on: ubuntu-latest
     steps:
       - name: aggregate
