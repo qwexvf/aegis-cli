@@ -69,7 +69,7 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Apply aegis.yml defaults for flags not set on the command line.
 			cfg := configFromContext(cmd.Context())
-			if !cmd.Flags().Changed("fail-on") && cfg.Actions.FailOn != "" {
+			if !cmd.Flags().Changed("min-severity") && !cmd.Flags().Changed("fail-on") && cfg.Actions.FailOn != "" {
 				failOnStr = cfg.Actions.FailOn
 			}
 			if !cmd.Flags().Changed("repo") && cfg.Actions.Repo != "" {
@@ -127,8 +127,11 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&failOnStr, "fail-on", "high",
-		"min severity to fail on: low|medium|high|critical")
+	cmd.Flags().StringVar(&failOnStr, "min-severity", "high",
+		"minimum severity to fail on: low|medium|high|critical")
+	// --fail-on is the legacy name; kept for backward compatibility.
+	cmd.Flags().StringVar(&failOnStr, "fail-on", "high", "")
+	_ = cmd.Flags().MarkDeprecated("fail-on", "use --min-severity instead")
 	cmd.Flags().BoolVar(&jsonOut, "json", false,
 		"emit findings as JSON")
 	cmd.Flags().BoolVar(&sarifOut, "sarif", false,

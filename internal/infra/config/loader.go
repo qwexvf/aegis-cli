@@ -37,6 +37,10 @@ type CIConfig struct {
 
 	// NoEnrich disables AST enrichment by default (--no-enrich).
 	NoEnrich bool `yaml:"no_enrich"`
+
+	// ActionsFailOn sets the --actions-fail-on severity when --scan-actions is used.
+	// Values: low|medium|high|critical  (default: high)
+	ActionsFailOn string `yaml:"actions_fail_on"`
 }
 
 // ActionsConfig holds defaults for `aegis actions scan`.
@@ -82,6 +86,13 @@ func (c Config) validate(path string) error {
 		case "safe", "review", "prompt", "block":
 		default:
 			return fmt.Errorf("%s: ci.fail_on %q invalid — want safe|review|prompt|block", path, c.CI.FailOn)
+		}
+	}
+	if c.CI.ActionsFailOn != "" {
+		switch c.CI.ActionsFailOn {
+		case "low", "medium", "high", "critical":
+		default:
+			return fmt.Errorf("%s: ci.actions_fail_on %q invalid — want low|medium|high|critical", path, c.CI.ActionsFailOn)
 		}
 	}
 	if c.Actions.FailOn != "" {
