@@ -23,8 +23,8 @@ func sbomCommand(uc *usecase.Sbom) *cobra.Command {
 		Use:   "sbom",
 		Short: "Emit a CycloneDX 1.5 JSON SBOM from the saved snapshot",
 		Long: "Emit a CycloneDX 1.5 JSON Software Bill of Materials built from " +
-			"aegis.lock. License, supplier, and download-URL fields are left as " +
-			"NOASSERTION in V1 (those fields are not currently collected). Pass " +
+			"aegis.lock. License, supplier, and download-URL component fields are " +
+			"omitted in V1 (not yet collected by the scanners). Pass " +
 			"--include-vulns for a live re-query against the configured " +
 			"vulnerability sources (OSV / GHSA / deps.dev / aegis, per config).",
 		Args: cobra.NoArgs,
