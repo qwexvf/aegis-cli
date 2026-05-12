@@ -2,6 +2,7 @@ package ghactions
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -50,12 +51,7 @@ func Analyze(wf domain.Workflow) []domain.WorkflowFinding {
 }
 
 func hasEvent(events []string, want string) bool {
-	for _, e := range events {
-		if e == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(events, want)
 }
 
 // checkUnpinnedRef flags any remote action ref that isn't pinned to a
