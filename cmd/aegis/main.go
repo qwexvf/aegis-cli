@@ -29,10 +29,12 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/ghsalookup"
 	"github.com/qwexvf/aegis-cli/internal/infra/hookfs"
 	"github.com/qwexvf/aegis-cli/internal/infra/httpx"
+	"github.com/qwexvf/aegis-cli/internal/infra/licensefetch"
 	"github.com/qwexvf/aegis-cli/internal/infra/locksnap"
 	"github.com/qwexvf/aegis-cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/osv"
+	"github.com/qwexvf/aegis-cli/internal/infra/pypiregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/ttyprompt"
 	"github.com/qwexvf/aegis-cli/internal/infra/vulnlookup"
 	"github.com/qwexvf/aegis-cli/internal/presenter/cli"
@@ -260,6 +262,14 @@ func main() {
 	}
 	if vulnLookup != nil {
 		snapshot.WithVulnLookup(vulnLookup)
+	}
+
+	// License fetcher: disabled when AEGIS_NO_VULN_LOOKUP=1 (same offline
+	// flag as vuln lookup — both hit external registries).
+	if os.Getenv("AEGIS_NO_VULN_LOOKUP") == "" {
+		npmLicense := npmregistry.New(npmregistry.WithHTTPClient(httpClient))
+		pypiLicense := pypiregistry.New(pypiregistry.WithHTTPClient(httpClient))
+		snapshot.WithLicenseFetcher(licensefetch.New(npmLicense, pypiLicense))
 	}
 
 	// Behaviour-based malware heuristics: suspicious install hooks,

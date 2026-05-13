@@ -42,6 +42,9 @@ type Dependency struct {
 	// distinction matters: nil triggers a lookup on next enrich,
 	// empty slice doesn't.
 	Advisories []Advisory `json:",omitempty"`
+	// License is the SPDX identifier (or raw license string) from the
+	// package registry. Empty when not yet fetched or unavailable.
+	License string `json:",omitempty"`
 	// Reachability records whether user code imports this dep. Tri-state
 	// because "couldn't tell" (unsupported language, parse error) is
 	// real information. Old snapshots load with the zero value

@@ -122,6 +122,12 @@ func componentFromDep(d domain.Dependency) cdx.Component {
 		c.Hashes = &[]cdx.Hash{*h}
 	}
 
+	if d.License != "" {
+		c.Licenses = &cdx.Licenses{
+			cdx.LicenseChoice{Expression: d.License},
+		}
+	}
+
 	if props := aegisProperties(d); len(props) > 0 {
 		c.Properties = &props
 	}

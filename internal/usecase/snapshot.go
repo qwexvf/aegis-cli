@@ -67,6 +67,10 @@ type Snapshot struct {
 	// vulnerabilities, only on local AST findings.
 	vulnLookup VulnLookup
 
+	// Optional registry license fetcher. When set, Enrich populates
+	// Dependency.License for deps that don't already have one.
+	licenseFetcher LicenseFetcher
+
 	// Optional behavior-based malware heuristics. When set, every
 	// per-dep AST scan is followed by a Run() call that may add
 	// extra Capability values (CapInstallHookSuspicious,
@@ -156,6 +160,14 @@ func (s *Snapshot) WithPublishedAtResolver(r PublishedAtResolver) *Snapshot {
 // falls back to AST-only behaviour. Useful when running offline.
 func (s *Snapshot) WithVulnLookup(v VulnLookup) *Snapshot {
 	s.vulnLookup = v
+	return s
+}
+
+// WithLicenseFetcher attaches a registry license fetcher. nil is safe (skips
+// license population). Fetcher is called during Enrich for deps with no
+// License already set.
+func (s *Snapshot) WithLicenseFetcher(f LicenseFetcher) *Snapshot {
+	s.licenseFetcher = f
 	return s
 }
 
@@ -351,6 +363,7 @@ func (s *Snapshot) Enrich(ctx context.Context, projectDir string) error {
 	// failed lookup logs an info line but doesn't fail Enrich —
 	// the AST findings already on disk are the floor.
 	s.lookupAdvisories(ctx, snap.Deps)
+	s.lookupLicenses(ctx, snap.Deps)
 
 	if err := s.store.Save(projectDir, snap); err != nil {
 		s.presenter.OnSnapshotError(err)
@@ -1150,4 +1163,33 @@ func (s *Snapshot) Rescan(ctx context.Context, projectDir string) (RescanResult,
 		NewCount: len(findings),
 		Findings: findings,
 	}, nil
+}
+
+// lookupLicenses populates Dependency.License for deps that don't already
+// have one. Best-effort: failures are logged but don't abort Enrich.
+func (s *Snapshot) lookupLicenses(ctx context.Context, deps []domain.Dependency) {
+	if s.licenseFetcher == nil {
+		return
+	}
+	filled := 0
+	for i, d := range deps {
+		if d.License != "" {
+			continue
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		lic, err := s.licenseFetcher.FetchLicense(ctx, d.Ecosystem, d.Name, d.Version)
+		if err != nil {
+			s.presenter.OnSnapshotInfo(fmt.Sprintf("license lookup %s@%s: %v", d.Name, d.Version, err))
+			continue
+		}
+		if lic != "" {
+			deps[i].License = lic
+			filled++
+		}
+	}
+	if filled > 0 {
+		s.presenter.OnSnapshotInfo(fmt.Sprintf("licenses fetched for %d package(s)", filled))
+	}
 }
