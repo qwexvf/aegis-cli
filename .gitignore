@@ -2,8 +2,13 @@ bin/
 
 dist/
 
-# stray gendocs binary if built at root (cmd/gendocs/ is the source)
+# built binaries at repo root
+/aegis
 /gendocs
+
+# claude code skills (local dev tooling)
+skills/
+skills-lock.json
 
 # Backup of authored markdown (canonical lives in site/src/content/docs)
 docs/content/
