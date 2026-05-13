@@ -1,0 +1,37 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-snapshot-rescan - Re-query the vulnerability feed for all saved deps and report newly-disclosed advisories
+
+
+.SH SYNOPSIS
+\fBaegis snapshot rescan [flags]\fP
+
+
+.SH DESCRIPTION
+rescan re-queries OSV/GHSA for every dep in aegis.lock regardless of
+when it was last enriched. It then diffs against the previously stored
+advisories and reports any that are new since the last run.
+
+.PP
+Exits 1 when new advisories are found — suitable for a daily cron job
+that pages on fresh CVEs affecting already-installed deps.
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for rescan
+
+.PP
+\fB--json\fP[=false]
+	emit machine-readable JSON
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis-snapshot(1)\fP

@@ -1,0 +1,47 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-sbom - Emit a CycloneDX JSON SBOM from the saved snapshot
+
+
+.SH SYNOPSIS
+\fBaegis sbom [flags]\fP
+
+
+.SH DESCRIPTION
+Emit a CycloneDX JSON Software Bill of Materials built from aegis.lock. Pass --include-vulns for a live re-query against the configured vulnerability sources (OSV / GHSA / deps.dev / aegis, per config). Use --cdx-version=1.6 for the CycloneDX 1.6 spec (adds lifecycles metadata; default is 1.5 for wider consumer support).
+
+
+.SH OPTIONS
+\fB--cdx-version\fP="1.5"
+	CycloneDX spec version to emit: 1.5 or 1.6
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for sbom
+
+.PP
+\fB--include-vulns\fP[=false]
+	live re-query of configured vulnerability sources
+
+.PP
+\fB-o\fP, \fB--output\fP=""
+	write SBOM to this path (default: stdout)
+
+.PP
+\fB--pretty\fP[=false]
+	pretty-print the JSON output
+
+.PP
+\fB--project\fP=""
+	override the root component name (default: snapshot.project)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis(1)\fP

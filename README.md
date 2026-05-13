@@ -13,7 +13,7 @@ Supply-chain security scanner for 9 package ecosystems and GitHub Actions workfl
 - **Behavior heuristics** — postinstall hooks doing `curl|sh`, obfuscated payloads, typosquat names (Levenshtein distance 2), maintainer hijack patterns, patch-version capability drift, git-SHA optional deps (worm propagation vector), unlisted large files (smuggled payloads), yanked-version detection
 - **Transitive deps included** — lockfile-based; every resolved package is scanned, not just direct deps
 - **Polyglot monorepo** — finds all lockfiles, merges into a single `aegis.lock`
-- **CycloneDX 1.5 SBOM** — `aegis sbom` emits a standards-compliant BOM from the snapshot; `--include-vulns` attaches OSV advisories
+- **CycloneDX SBOM** — `aegis sbom` emits a standards-compliant BOM (1.5 or 1.6 via `--cdx-version`); `--include-vulns` attaches OSV advisories; package licenses populated from registries
 - **GitHub Actions scanner** — `aegis actions scan` walks `.github/workflows/*.yml` (or fetches from a remote repo with `--repo owner/repo`); flags unpinned action refs, `pull_request_target` + checkout escalation, OIDC + npm publish worm vector, `actions/cache` poisoning, script injection, `curl|sh` in `run:` blocks, and `permissions: write-all`; outputs SARIF 2.1.0 with `--sarif` for GitHub Code Scanning
 - **Offline capable** — `AEGIS_NO_VULN_LOOKUP=1` for air-gapped use; self-hosted OSV mirror via `AEGIS_OSV_URL`
 
@@ -59,6 +59,7 @@ aegis snapshot enrich                # AST scan + CVE lookup
 aegis snapshot show                  # direct deps
 aegis snapshot show --all            # + transitive
 aegis snapshot diff baseline.lock    # drift between two snapshots
+aegis snapshot rescan                # re-query OSV for new CVEs on saved deps
 
 # CI gate — exits 1 on findings ≥ threshold
 aegis ci --fail-on=block
@@ -72,10 +73,10 @@ aegis analyze --evidence ua-parser-js@0.7.29
 aegis analyze rubygems/rest-client@1.6.13 \
     --local examples/incidents/rubygems/rest-client-1.6.13/
 
-# SBOM export (CycloneDX 1.5 JSON)
+# SBOM export (CycloneDX JSON)
 aegis sbom > sbom.json
 aegis sbom --pretty --include-vulns -o sbom.json
-aegis sbom --project=my-service -o sbom.json
+aegis sbom --project=my-service --cdx-version=1.6 -o sbom.json
 
 # allowlist
 aegis allowlist add lodash \

@@ -34,6 +34,10 @@ deps incur AST scan cost.
 
 
 .SH OPTIONS
+\fB--actions-fail-on\fP="high"
+	min severity for --scan-actions: low|medium|high|critical
+
+.PP
 \fB--baseline\fP=""
 	path to a saved aegis.lock to diff against (drift mode — catches version-changed deps that grew new capabilities; doesn't touch your aegis.lock)
 
@@ -56,6 +60,18 @@ deps incur AST scan cost.
 .PP
 \fB--quiet\fP[=false]
 	print only the summary line (no per-finding detail)
+
+.PP
+\fB--sarif\fP[=false]
+	emit package findings as SARIF 2.1.0 (for GitHub Code Scanning)
+
+.PP
+\fB--scan-actions\fP[=false]
+	also scan .github/workflows/ and fail if Actions findings ≥ --actions-fail-on
+
+.PP
+\fB--suggest\fP[=false]
+	print remediation commands for each blocked dep (upgrade hints)
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS

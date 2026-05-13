@@ -15,10 +15,17 @@ AST risk scanner over its source, applies the allowlist, and prints
 a verdict. Spec is [ecosystem/]name@version. Default ecosystem is npm.
 
 .PP
+With --local , the registry fetch is skipped and the source is
+read from the on-disk directory at  instead. The spec is still
+required as a label for the result. Useful for fixture-based testing
+(examples/incidents/...) and for analysing a tree before publish.
+
+.PP
 Examples:
   aegis analyze lodash@4.17.21
   aegis analyze @solana/web3.js@1.95.4
   aegis analyze npm/event-stream@3.3.6
+  aegis analyze rubygems/rest-client@1.6.13 --local examples/incidents/rubygems/rest-client-1.6.13/
 
 
 .SH OPTIONS
@@ -32,6 +39,10 @@ Examples:
 .PP
 \fB--json\fP[=false]
 	emit a machine-readable JSON object to stdout (suppresses human output)
+
+.PP
+\fB--local\fP=""
+	read package source from this on-disk directory instead of fetching from the registry
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS
