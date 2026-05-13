@@ -131,6 +131,13 @@ var suspiciousRunPatterns = []struct {
 		hint:    "base64 decode in run script — common obfuscation primitive",
 	},
 	{
+		// eval(atob(...)) and Buffer.from(...,'base64') — JavaScript in-process
+		// decode-and-eval; used to hide payloads from static grep tools.
+		pattern: regexp.MustCompile(`(?i)\beval\s*\(\s*(atob\s*\(|Buffer\.from\s*\()`),
+		sev:     domain.SevHigh,
+		hint:    "eval(atob(...)) / eval(Buffer.from(...,'base64')) — in-process base64 decode-and-eval; payload hidden from static analysis",
+	},
+	{
 		pattern: regexp.MustCompile(`https?://\d+\.\d+\.\d+\.\d+(:\d+)?(/|$|\s)`),
 		sev:     domain.SevHigh,
 		hint:    "raw IPv4 in URL — legitimate scripts use hostnames",
