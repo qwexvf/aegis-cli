@@ -1087,3 +1087,67 @@ func (s *Snapshot) lookupAdvisories(ctx context.Context, deps []domain.Dependenc
 			"%d advisories across %d packages", totalAdvs, withAdvs))
 	}
 }
+
+// Rescan re-queries the vulnerability feed for every dep in the saved
+// snapshot regardless of whether it was already enriched, then diffs
+// against the previously stored advisories to surface newly-disclosed
+// CVEs/GHSAs. The updated snapshot is saved before returning.
+//
+// Returns RescanResult.NewCount > 0 when new advisories were found; the
+// caller should exit 1 so a daily cron job can page on new findings.
+func (s *Snapshot) Rescan(ctx context.Context, projectDir string) (RescanResult, error) {
+	if s.vulnLookup == nil {
+		s.presenter.OnSnapshotInfo("no vulnerability source configured — rescan skipped")
+		return RescanResult{}, nil
+	}
+	snap, ok, err := s.store.Load(projectDir)
+	if err != nil {
+		s.presenter.OnSnapshotError(err)
+		return RescanResult{}, err
+	}
+	if !ok {
+		s.presenter.OnSnapshotEmpty("no snapshot saved — run 'aegis snapshot save' first")
+		return RescanResult{}, nil
+	}
+
+	// Capture the advisory IDs already known for each dep.
+	prevIDs := make([]map[string]struct{}, len(snap.Deps))
+	for i, d := range snap.Deps {
+		set := make(map[string]struct{}, len(d.Advisories))
+		for _, a := range d.Advisories {
+			set[a.ID] = struct{}{}
+		}
+		prevIDs[i] = set
+	}
+
+	s.lookupAdvisories(ctx, snap.Deps)
+
+	var findings []RescanFinding
+	for i, d := range snap.Deps {
+		var newAdvs []domain.Advisory
+		for _, a := range d.Advisories {
+			if _, seen := prevIDs[i][a.ID]; !seen {
+				newAdvs = append(newAdvs, a)
+			}
+		}
+		if len(newAdvs) > 0 {
+			findings = append(findings, RescanFinding{
+				Ecosystem:     d.Ecosystem,
+				Name:          d.Name,
+				Version:       d.Version,
+				NewAdvisories: newAdvs,
+			})
+		}
+	}
+
+	if err := s.store.Save(projectDir, snap); err != nil {
+		s.presenter.OnSnapshotError(err)
+		return RescanResult{}, err
+	}
+
+	return RescanResult{
+		Total:    len(snap.Deps),
+		NewCount: len(findings),
+		Findings: findings,
+	}, nil
+}

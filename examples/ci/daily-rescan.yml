@@ -1,0 +1,44 @@
+name: daily vulnerability rescan
+
+# Re-queries OSV/GHSA for every dep in the saved aegis.lock and exits 1
+# when new advisories appear. Wire the "on failure" path to a Slack
+# webhook, email, or GitHub issue to get paged on fresh CVEs.
+
+on:
+  schedule:
+    - cron: '0 7 * * *'  # 07:00 UTC daily
+  workflow_dispatch:      # allow manual trigger
+
+permissions:
+  contents: read
+
+jobs:
+  rescan:
+    name: rescan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: install aegis
+        run: go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
+
+      - name: rescan for new advisories
+        # exits 1 when new CVEs/GHSAs are found since last enrich
+        run: aegis snapshot rescan --json
+
+      # Optional: post to Slack on new findings.
+      # Uncomment and set SLACK_WEBHOOK_URL in repo secrets.
+      #
+      # - name: notify Slack on new advisories
+      #   if: failure()
+      #   run: |
+      #     curl -sSX POST "$SLACK_WEBHOOK_URL" \
+      #       -H 'Content-type: application/json' \
+      #       --data '{"text":"aegis rescan found new advisories in ${{ github.repository }}"}'
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

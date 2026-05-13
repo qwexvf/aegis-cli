@@ -306,6 +306,23 @@ func (e DiffEntry) Name() string {
 	return ""
 }
 
+// RescanResult is returned by Snapshot.Rescan. NewCount > 0 means new
+// advisories were found since the last lookup; the caller should exit 1.
+type RescanResult struct {
+	Total    int             // total deps queried
+	NewCount int             // deps that gained at least one new advisory
+	Findings []RescanFinding // one entry per dep with new advisories
+}
+
+// RescanFinding records which advisories appeared for a dep since the
+// previous lookup.
+type RescanFinding struct {
+	Ecosystem     domain.Ecosystem
+	Name          string
+	Version       string
+	NewAdvisories []domain.Advisory
+}
+
 // DiffReport is the use case's verdict over a whole diff.
 type DiffReport struct {
 	Entries    []DiffEntry
