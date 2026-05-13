@@ -1,0 +1,41 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-actions - Scan GitHub Actions workflows for supply-chain risks
+
+
+.SH SYNOPSIS
+\fBaegis actions [flags]\fP
+
+
+.SH DESCRIPTION
+actions scans .github/workflows/*.yml for known risky patterns:
+.IP \(bu 2
+unpinned action refs (tag/branch instead of commit SHA)
+.IP \(bu 2
+suspicious run-script bodies (curl|sh, base64 decode, raw IPs)
+.IP \(bu 2
+pull_request_target jobs that check out PR code
+.IP \(bu 2
+permissions: write-all
+.IP \(bu 2
+attacker-controlled GitHub-context interpolation in run scripts
+
+.PP
+This is heuristic, not exhaustive — designed to catch the patterns
+behind real-world incidents (tj-actions/changed-files 2025-03 etc).
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for actions
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis(1)\fP, \fBaegis-actions-scan(1)\fP

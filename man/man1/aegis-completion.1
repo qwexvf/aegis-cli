@@ -1,0 +1,51 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-completion - Generate shell completion script
+
+
+.SH SYNOPSIS
+\fBaegis completion [bash|zsh|fish|powershell]\fP
+
+
+.SH DESCRIPTION
+Generate a shell completion script for aegis.
+
+.PP
+Bash:
+  source <(aegis completion bash)
+
+.PP
+# persistent (Linux):
+  aegis completion bash > /etc/bash_completion.d/aegis
+
+.PP
+Zsh:
+  # persistent:
+  aegis completion zsh > "${fpath[1]}/_aegis"
+  # then restart your shell
+
+.PP
+Fish:
+  aegis completion fish | source
+  # persistent:
+  aegis completion fish > ~/.config/fish/completions/aegis.fish
+
+.PP
+PowerShell:
+  aegis completion powershell | Out-String | Invoke-Expression
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for completion
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis(1)\fP

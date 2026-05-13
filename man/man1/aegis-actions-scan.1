@@ -1,0 +1,51 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-actions-scan - Scan .github/workflows/ in the current project or a remote GitHub repo
+
+
+.SH SYNOPSIS
+\fBaegis actions scan [flags]\fP
+
+
+.SH DESCRIPTION
+Scan .github/workflows/ in the current project or a remote GitHub repo
+
+
+.SH OPTIONS
+\fB--dir\fP=""
+	project root (default: cwd); ignored when --repo is set
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for scan
+
+.PP
+\fB--json\fP[=false]
+	emit findings as JSON
+
+.PP
+\fB--min-severity\fP="high"
+	minimum severity to fail on: low|medium|high|critical
+
+.PP
+\fB--repo\fP=""
+	remote GitHub repository to scan (owner/repo); fetches workflows via GitHub API
+
+.PP
+\fB--sarif\fP[=false]
+	emit findings as SARIF 2.1.0 (for GitHub Code Scanning / VS Code)
+
+.PP
+\fB--token\fP=""
+	GitHub personal access token for --repo; prefer $GITHUB_TOKEN env var (CLI args are visible in process list)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis-actions(1)\fP

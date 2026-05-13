@@ -4,6 +4,91 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.18.0](https://github.com/qwexvf/aegis-cli/compare/v0.17.1...v0.18.0) (2026-05-13)
+
+
+### Added
+
+* **sbom:** `--cdx-version` flag — emit CycloneDX 1.5 or 1.6 (1.5 default for wider consumer support; 1.6 adds lifecycles metadata)
+* **sbom:** extract package licenses from npm and PyPI registries and embed in SBOM components
+* **snapshot:** `aegis snapshot rescan` — retroactive OSV re-query against all saved deps; exits 1 on newly-disclosed advisories (suitable for daily cron)
+* **heuristics:** Go retract range support in retract detection, SARIF findings merge, `--suggest` flag on `aegis docs`
+
+
+### Fixed
+
+* block-form retract parsing, PyPI URL encoding fix, dynamic-eval hint text
+* **actions:** add `eval(atob(...))` pattern to suspicious `run:` block checks
+* **heuristics:** extend `nonStandardRuntimePattern` to cover `deno run`
+
+
+### CI
+
+* validate CycloneDX 1.5 output against official JSON schema in CI
+
+
+## [0.17.1](https://github.com/qwexvf/aegis-cli/compare/v0.17.0...v0.17.1) (2026-05-12)
+
+
+### Added
+
+* **heuristics:** Go `retract` directive detection with version propagation — flags packages pinning a retracted version
+
+
+### Fixed
+
+* **security:** upgrade Go toolchain to 1.26.3 — resolves 2 stdlib CVEs
+* **lint:** use `slices.Contains` in `checkGoRetract`
+
+
+## [0.17.0](https://github.com/qwexvf/aegis-cli/compare/v0.16.0...v0.17.0) (2026-05-12)
+
+
+### Added
+
+* **config:** `aegis.yml` project-level config file — set `fail-on`, `scan-actions`, `min-severity`, allowlist paths, and more without CLI flags
+* **ci:** `--sarif` output and `--scan-actions` flag on `aegis ci` — one command for full package + Actions audit with SARIF upload
+* **ci:** `--min-severity` and `--actions-fail-on` threshold flags
+* **ci:** `--suggest` flag — prints remediation hints alongside findings
+* **actions:** `actions/cache/restore` poisoning test
+
+
+### Fixed
+
+* **sarif:** enum validation, suppressed error on empty result, `PhysicalLocation` omitempty
+
+
+## [0.16.0](https://github.com/qwexvf/aegis-cli/compare/v0.15.2...v0.16.0) (2026-05-12)
+
+
+### Added
+
+* **actions:** `aegis actions scan` — GitHub Actions workflow scanner; flags unpinned refs, `pull_request_target` + checkout escalation, OIDC + npm publish worm vector, `actions/cache` poisoning, script injection, `curl|sh` in `run:` blocks, `permissions: write-all`
+* **actions:** SARIF 2.1.0 output via `--sarif` for GitHub Code Scanning
+* **actions:** remote repo scanning via `--repo owner/repo`
+* **actions:** allowlist support for suppressing known-safe findings
+* **sbom:** CycloneDX 1.5 SBOM emission (`aegis sbom`)
+* **heuristics:** VCS dep detection, OIDC worm vector, and `actions/cache` poisoning checks
+* **heuristics:** Mini Shai-Hulud / TanStack-style worm attack detection
+* **heuristics:** `EcosystemParser` + `Check` pipeline architecture
+* **heuristics:** parsers for Go, Maven, Composer, NuGet, Gleam
+* CVSS v3.1 scoring; unified ecosystem list across all commands
+
+
+### Fixed
+
+* **security:** HTTP timeout, input validation, ANSI injection guard, GitHub token warning
+* **sarif:** strip project-dir prefix from artifact URIs for correct GitHub Code Scanning links
+* context propagation: pass `ctx` as first param to `Scan()` rather than storing in struct
+* actions scan: file-match suffix collision, suppressed count in error messages
+
+
+### Docs
+
+* document `aegis actions scan` and new worm-detection heuristics in README
+* add `RELEASING.md` for the tag-and-goreleaser release flow
+
+
 ## [0.15.2](https://github.com/qwexvf/aegis-cli/compare/v0.15.1...v0.15.2) (2026-05-11)
 
 
