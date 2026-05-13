@@ -46,6 +46,8 @@ type SbomOptions struct {
 	IncludeVulnerabilities bool
 	// Pretty toggles indented JSON output.
 	Pretty bool
+	// CdxVersion selects the CycloneDX spec version: "1.5" (default) or "1.6".
+	CdxVersion string
 }
 
 // Generate loads the snapshot at projectDir, optionally enriches with
@@ -70,11 +72,17 @@ func (s *Sbom) Generate(ctx context.Context, projectDir string, out io.Writer, o
 		}
 	}
 
+	specVersion := cdx.SpecVersion1_5
+	if opts.CdxVersion == "1.6" {
+		specVersion = cdx.SpecVersion1_6
+	}
+
 	bom := sbomcdx.Build(snap, sbomcdx.Options{
 		AegisVersion:           s.aegisVersion,
 		Project:                opts.Project,
 		Timestamp:              time.Now().UTC(),
 		IncludeVulnerabilities: opts.IncludeVulnerabilities,
+		SpecVersion:            specVersion,
 	})
 
 	// Encode into a buffer first so a write failure to disk doesn't
@@ -85,7 +93,7 @@ func (s *Sbom) Generate(ctx context.Context, projectDir string, out io.Writer, o
 	if opts.Pretty {
 		enc.SetPretty(true)
 	}
-	if err := enc.EncodeVersion(bom, cdx.SpecVersion1_5); err != nil {
+	if err := enc.EncodeVersion(bom, specVersion); err != nil {
 		return 0, 0, fmt.Errorf("encode bom: %w", err)
 	}
 	if _, err := out.Write(buf.Bytes()); err != nil {

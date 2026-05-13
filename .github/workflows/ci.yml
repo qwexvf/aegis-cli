@@ -111,16 +111,20 @@ jobs:
           cache: true
       - name: build aegis
         run: make build-release
-      - name: generate SBOM from examples/demo
+      - name: generate SBOMs from examples/demo
         working-directory: examples/demo
-        run: ../../bin/aegis sbom -o /tmp/aegis-demo.cdx.json
+        run: |
+          ../../bin/aegis sbom -o /tmp/aegis-demo-1.5.cdx.json
+          ../../bin/aegis sbom --cdx-version=1.6 -o /tmp/aegis-demo-1.6.cdx.json
       - name: install cyclonedx-cli
         run: |
           curl -sSL https://github.com/CycloneDX/cyclonedx-cli/releases/latest/download/cyclonedx-linux-x64 \
             -o /usr/local/bin/cyclonedx
           chmod +x /usr/local/bin/cyclonedx
       - name: validate CycloneDX 1.5 schema
-        run: cyclonedx validate --input-file /tmp/aegis-demo.cdx.json --input-version v1_5 --fail-on-errors
+        run: cyclonedx validate --input-file /tmp/aegis-demo-1.5.cdx.json --input-version v1_5 --fail-on-errors
+      - name: validate CycloneDX 1.6 schema
+        run: cyclonedx validate --input-file /tmp/aegis-demo-1.6.cdx.json --input-version v1_6 --fail-on-errors
 
   ci:
     name: ci

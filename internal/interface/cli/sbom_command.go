@@ -18,25 +18,30 @@ func sbomCommand(uc *usecase.Sbom) *cobra.Command {
 		outputPath   string
 		project      string
 		pretty       bool
+		cdxVersion   string
 	)
 	c := &cobra.Command{
 		Use:   "sbom",
-		Short: "Emit a CycloneDX 1.5 JSON SBOM from the saved snapshot",
-		Long: "Emit a CycloneDX 1.5 JSON Software Bill of Materials built from " +
-			"aegis.lock. License, supplier, and download-URL component fields are " +
-			"omitted in V1 (not yet collected by the scanners). Pass " +
-			"--include-vulns for a live re-query against the configured " +
-			"vulnerability sources (OSV / GHSA / deps.dev / aegis, per config).",
+		Short: "Emit a CycloneDX JSON SBOM from the saved snapshot",
+		Long: "Emit a CycloneDX JSON Software Bill of Materials built from " +
+			"aegis.lock. Pass --include-vulns for a live re-query against the " +
+			"configured vulnerability sources (OSV / GHSA / deps.dev / aegis, " +
+			"per config). Use --cdx-version=1.6 for the CycloneDX 1.6 spec " +
+			"(adds lifecycles metadata; default is 1.5 for wider consumer support).",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
 			}
+			if cdxVersion != "1.5" && cdxVersion != "1.6" {
+				return fmt.Errorf("--cdx-version: unsupported value %q (use 1.5 or 1.6)", cdxVersion)
+			}
 			opts := usecase.SbomOptions{
 				Project:                project,
 				IncludeVulnerabilities: includeVulns,
 				Pretty:                 pretty,
+				CdxVersion:             cdxVersion,
 			}
 
 			if outputPath == "" {
@@ -65,5 +70,6 @@ func sbomCommand(uc *usecase.Sbom) *cobra.Command {
 	c.Flags().StringVarP(&outputPath, "output", "o", "", "write SBOM to this path (default: stdout)")
 	c.Flags().StringVar(&project, "project", "", "override the root component name (default: snapshot.project)")
 	c.Flags().BoolVar(&pretty, "pretty", false, "pretty-print the JSON output")
+	c.Flags().StringVar(&cdxVersion, "cdx-version", "1.5", "CycloneDX spec version to emit: 1.5 or 1.6")
 	return c
 }

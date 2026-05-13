@@ -31,14 +31,21 @@ type Options struct {
 	// into the BOM's vulnerabilities section. Off by default — the
 	// caller decides whether the snapshot has been enriched.
 	IncludeVulnerabilities bool
+	// SpecVersion selects the CycloneDX spec to emit. Defaults to 1.5
+	// when zero. Accepted values: cdx.SpecVersion1_5, cdx.SpecVersion1_6.
+	SpecVersion cdx.SpecVersion
 }
 
-// Build turns a snapshot into a CycloneDX 1.5 BOM document. Pure
+// Build turns a snapshot into a CycloneDX BOM document. Pure
 // function — no I/O, no goroutines, deterministic given a fixed
 // SerialNumber + Timestamp.
 func Build(snap domain.Snapshot, opts Options) *cdx.BOM {
+	specVersion := opts.SpecVersion
+	if specVersion == 0 {
+		specVersion = cdx.SpecVersion1_5
+	}
 	bom := cdx.NewBOM()
-	bom.SpecVersion = cdx.SpecVersion1_5
+	bom.SpecVersion = specVersion
 	bom.SerialNumber = opts.SerialNumber
 	if bom.SerialNumber == "" {
 		bom.SerialNumber = newSerial()
@@ -59,7 +66,7 @@ func Build(snap domain.Snapshot, opts Options) *cdx.BOM {
 	}
 	rootRef := "aegis:root:" + rootName
 
-	bom.Metadata = &cdx.Metadata{
+	meta := &cdx.Metadata{
 		Timestamp: ts.Format(time.RFC3339),
 		Tools: &cdx.ToolsChoice{
 			Components: &[]cdx.Component{{
@@ -74,6 +81,10 @@ func Build(snap domain.Snapshot, opts Options) *cdx.BOM {
 			Name:   rootName,
 		},
 	}
+	if specVersion >= cdx.SpecVersion1_6 {
+		meta.Lifecycles = &[]cdx.Lifecycle{{Phase: cdx.LifecyclePhaseBuild}}
+	}
+	bom.Metadata = meta
 
 	components := make([]cdx.Component, 0, len(snap.Deps))
 	for _, d := range snap.Deps {
