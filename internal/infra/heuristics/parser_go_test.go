@@ -87,6 +87,43 @@ retract [v1.0.0, v1.2.0]
 		}
 	})
 
+	t.Run("block-form retract single versions", func(t *testing.T) {
+		gomod := `module example.com/mymod
+go 1.22
+retract (
+	v1.0.0 // first bad version
+	v1.1.0 // second bad version
+)
+`
+		p := &goParser{}
+		n := p.Parse("example.com/mymod", nil, domain.PackageSource{
+			Files: map[string][]byte{"go.mod": []byte(gomod)},
+		})
+		n.Version = "v1.1.0"
+		got := checkGoRetract(n)
+		if !hasCap(got, domain.CapVersionUnpublished) {
+			t.Errorf("block-form retract v1.1.0: want CapVersionUnpublished, got %v", got)
+		}
+	})
+
+	t.Run("block-form retract range", func(t *testing.T) {
+		gomod := `module example.com/mymod
+go 1.22
+retract (
+	[v1.2.0, v1.4.0] // range in block
+)
+`
+		p := &goParser{}
+		n := p.Parse("example.com/mymod", nil, domain.PackageSource{
+			Files: map[string][]byte{"go.mod": []byte(gomod)},
+		})
+		n.Version = "v1.3.0"
+		got := checkGoRetract(n)
+		if !hasCap(got, domain.CapVersionUnpublished) {
+			t.Errorf("block-form retract range [v1.2.0, v1.4.0]: want CapVersionUnpublished for v1.3.0, got %v", got)
+		}
+	})
+
 	t.Run("via Run() pipeline with matching version", func(t *testing.T) {
 		gomod := `module example.com/vuln
 go 1.22

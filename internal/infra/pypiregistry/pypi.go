@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"github.com/qwexvf/aegis-cli/internal/infra/httpx"
@@ -65,7 +66,7 @@ func (c *Client) FetchLicense(ctx context.Context, name, version string) (string
 	}
 	c.mu.Unlock()
 
-	reqURL := fmt.Sprintf("%s/pypi/%s/%s/json", c.baseURL, name, version)
+	reqURL := fmt.Sprintf("%s/pypi/%s/%s/json", c.baseURL, url.PathEscape(name), url.PathEscape(version))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return "", err
