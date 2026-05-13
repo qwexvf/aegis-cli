@@ -263,6 +263,13 @@ type VulnLookup interface {
 	Lookup(ctx context.Context, queries []domain.AdvisoryQuery) (map[string][]domain.Advisory, error)
 }
 
+// LicenseFetcher fetches an SPDX license identifier for a single package
+// version from the upstream registry. Returns "" when unavailable.
+// Implementations are expected to cache results in-memory.
+type LicenseFetcher interface {
+	FetchLicense(ctx context.Context, eco domain.Ecosystem, name, version string) (string, error)
+}
+
 // FingerprintCache stores AST scan results keyed by
 // (ecosystem, name, version). Implementation: infra/diskcache.
 //

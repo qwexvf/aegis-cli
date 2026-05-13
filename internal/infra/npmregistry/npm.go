@@ -92,6 +92,7 @@ type packument struct {
 	DistTags map[string]string `json:"dist-tags"`
 	Versions map[string]struct {
 		Version string `json:"version"`
+		License string `json:"license"`
 	} `json:"versions"`
 }
 
@@ -470,4 +471,19 @@ func (c *Client) fetchPackumentLocked(ctx context.Context, pkg string) (*packume
 	c.cache[pkg] = &p
 	c.mu.Unlock()
 	return &p, nil
+}
+
+// FetchLicense returns the SPDX license identifier for a specific version
+// from the npm registry. Returns "" when the packument has no license field.
+// The packument is cached in-memory so concurrent calls for the same package
+// pay only one network round-trip.
+func (c *Client) FetchLicense(ctx context.Context, name, version string) (string, error) {
+	p, err := c.fetchPackument(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	if v, ok := p.Versions[version]; ok {
+		return v.License, nil
+	}
+	return "", nil
 }
