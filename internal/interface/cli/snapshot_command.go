@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
@@ -24,6 +25,7 @@ func snapshotCommand(uc *usecase.Snapshot) *cobra.Command {
 	cmd.AddCommand(snapshotEnrichCommand(uc))
 	cmd.AddCommand(snapshotVerifyCommand(uc))
 	cmd.AddCommand(snapshotSubmitCommand(uc))
+	cmd.AddCommand(snapshotRescanCommand(uc))
 	return cmd
 }
 
@@ -143,5 +145,66 @@ func snapshotVerifyCommand(uc *usecase.Snapshot) *cobra.Command {
 			}
 			return uc.Verify(cwd)
 		},
+	}
+}
+
+func snapshotRescanCommand(uc *usecase.Snapshot) *cobra.Command {
+	var jsonOut bool
+	c := &cobra.Command{
+		Use:   "rescan",
+		Short: "Re-query the vulnerability feed for all saved deps and report newly-disclosed advisories",
+		Long: `rescan re-queries OSV/GHSA for every dep in aegis.lock regardless of
+when it was last enriched. It then diffs against the previously stored
+advisories and reports any that are new since the last run.
+
+Exits 1 when new advisories are found — suitable for a daily cron job
+that pages on fresh CVEs affecting already-installed deps.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			result, err := uc.Rescan(cmd.Context(), cwd)
+			if err != nil {
+				return err
+			}
+			if jsonOut {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(result)
+			}
+			renderRescanResult(cmd, result)
+			if result.NewCount > 0 {
+				return &exitCodeError{
+					code:   1,
+					err:    fmt.Errorf("rescan: %d dep(s) have new advisories", result.NewCount),
+					silent: true,
+				}
+			}
+			return nil
+		},
+	}
+	c.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
+	return c
+}
+
+func renderRescanResult(cmd *cobra.Command, r usecase.RescanResult) {
+	w := cmd.OutOrStdout()
+	fmt.Fprintf(w, "rescan: queried %d dep(s)\n", r.Total)
+	if r.NewCount == 0 {
+		fmt.Fprintln(w, "rescan: no new advisories found")
+		return
+	}
+	fmt.Fprintf(w, "rescan: %d dep(s) have new advisories\n\n", r.NewCount)
+	for _, f := range r.Findings {
+		fmt.Fprintf(w, "  %s@%s (%s)\n", f.Name, f.Version, f.Ecosystem)
+		for _, a := range f.NewAdvisories {
+			line := fmt.Sprintf("    [%s] %s — %s", strings.ToUpper(string(a.Severity)), a.ID, a.Summary)
+			if a.URL != "" {
+				line += "\n      " + a.URL
+			}
+			fmt.Fprintln(w, line)
+		}
 	}
 }
