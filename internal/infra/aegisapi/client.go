@@ -276,6 +276,104 @@ func (c *Client) SubmitReport(ctx context.Context, r usecase.PackageReportReques
 	return ack, nil
 }
 
+// sandboxTriggerResponse is the wire shape returned by POST /api/v1/supply-chain/sandbox.
+type sandboxTriggerResponse struct {
+	JobID     string `json:"job_id"`
+	StreamURL string `json:"stream_url"`
+}
+
+// sandboxStatusResponse is the wire shape returned by GET /api/v1/supply-chain/sandbox/{job_id}/status.
+type sandboxStatusResponse struct {
+	Status        string `json:"status"`
+	FindingsCount int    `json:"findings_count"`
+}
+
+// TriggerSandbox submits a package for cloud sandbox analysis.
+// Returns the job_id and stream_url from the API response.
+// Requires AEGIS_API_KEY.
+func (c *Client) TriggerSandbox(ctx context.Context, ecosystem, name, version string) (string, string, error) {
+	if c.apiKey == "" {
+		return "", "", fmt.Errorf("aegis api: AEGIS_API_KEY is required for cloud sandbox analysis")
+	}
+	body, err := json.Marshal(map[string]string{
+		"ecosystem": ecosystem,
+		"name":      name,
+		"version":   version,
+	})
+	if err != nil {
+		return "", "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/api/v1/supply-chain/sandbox", bytes.NewReader(body))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := httpx.Do(ctx, c.http, req, c.retry)
+	if err != nil {
+		return "", "", fmt.Errorf("aegis api: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", "", fmt.Errorf("aegis api: 401 — check AEGIS_API_KEY")
+	}
+	if resp.StatusCode >= 400 {
+		return "", "", fmt.Errorf("aegis api: sandbox trigger returned %d", resp.StatusCode)
+	}
+
+	raw, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return "", "", fmt.Errorf("read sandbox trigger response: %w", err)
+	}
+	var dto sandboxTriggerResponse
+	if err := json.Unmarshal(raw, &dto); err != nil {
+		return "", "", fmt.Errorf("decode sandbox trigger response: %w", err)
+	}
+	return dto.JobID, dto.StreamURL, nil
+}
+
+// SandboxStatus polls for sandbox job completion.
+// Returns (status, findingsCount, error) where status is one of
+// "pending", "complete", or "failed".
+// Requires AEGIS_API_KEY.
+func (c *Client) SandboxStatus(ctx context.Context, jobID string) (string, int, error) {
+	if c.apiKey == "" {
+		return "", 0, fmt.Errorf("aegis api: AEGIS_API_KEY is required for cloud sandbox status")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/api/v1/supply-chain/sandbox/"+jobID+"/status", nil)
+	if err != nil {
+		return "", 0, err
+	}
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := httpx.Do(ctx, c.http, req, c.retry)
+	if err != nil {
+		return "", 0, fmt.Errorf("aegis api: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", 0, fmt.Errorf("aegis api: 401 — check AEGIS_API_KEY")
+	}
+	if resp.StatusCode >= 400 {
+		return "", 0, fmt.Errorf("aegis api: sandbox status returned %d", resp.StatusCode)
+	}
+
+	raw, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return "", 0, fmt.Errorf("read sandbox status response: %w", err)
+	}
+	var dto sandboxStatusResponse
+	if err := json.Unmarshal(raw, &dto); err != nil {
+		return "", 0, fmt.Errorf("decode sandbox status response: %w", err)
+	}
+	return dto.Status, dto.FindingsCount, nil
+}
+
 func (d decisionDTO) toDomain() domain.Decision {
 	out := domain.Decision{
 		Kind:     domain.DecisionKind(d.Decision),
