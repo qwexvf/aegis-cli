@@ -190,6 +190,9 @@ func NewRoot(d Deps) *cobra.Command {
 	if d.AllowlistLoader != nil && d.AllowlistPresenter != nil {
 		add(allowlistCommand(d.AllowlistLoader, d.AllowlistPresenter), groupConfigure)
 	}
+	if d.API != nil {
+		add(cloudCommand(d.API), groupInspect)
+	}
 	for _, m := range d.Managers {
 		add(pmCommand(m, d.Gate), groupGate)
 	}
@@ -246,6 +249,7 @@ func NewDocsRoot() *cobra.Command {
 		Hook:               &usecase.Hook{},
 		Sbom:               &usecase.Sbom{},
 		Actions:            &usecase.Actions{},
+		API:                new(aegisapi.Client),
 		AnalyzePresenter:   &presentercli.AnalyzePresenter{},
 		CIPresenter:        &presentercli.CIPresenter{},
 		RecheckPresenter:   &presentercli.RecheckPresenter{},
