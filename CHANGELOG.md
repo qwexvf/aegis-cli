@@ -4,6 +4,25 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.20.0](https://github.com/qwexvf/aegis-cli/compare/v0.19.0...v0.20.0) (2026-05-15)
+
+
+### Added
+
+* **ecosystems:** CocoaPods (`Podfile.lock`) — iOS/macOS, 16th ecosystem
+* **licensefetch:** Cargo (crates.io), RubyGems, NuGet registry clients; SBOM license data now populated for 5 ecosystems (was 2)
+* **heuristics:** R (`.r`/`.rmd`), Haskell (`.hs`/`.lhs`), Perl (`.pl`/`.pm`), Dart (`.dart`), Swift (`.swift`), Elixir (`.ex`/`.exs`) source files now scanned for suspicious URLs and shell-fetcher patterns
+* **heuristics:** R obfuscation patterns (`eval(parse(text=url(...)))`, `source(url(...))`)
+* **heuristics:** Perl obfuscation patterns (`eval(decode_base64(...))`)
+* **heuristics:** Typosquat detection for CRAN, Hackage, CPAN (30 top packages each)
+* **incidents:** 5 new e2e fixture packages — `cran/ggplott2`, `hackage/textt`, `cpan/Moosee`, `pub/dart-exfil`, `hex/ex-aws-mock`
+
+
+### Fixed
+
+* AST scanner now degrades gracefully for ecosystems without a language scanner (heuristics + CVE lookup still run); previously returned a hard error
+* `npx payload.js` and `deno payload.ts` (Deno 2.x, no `run` subcommand) now detected by `nonStandardRuntimePattern` (closes #77)
+
 ## [0.19.0](https://github.com/qwexvf/aegis-cli/compare/v0.18.0...v0.19.0) (2026-05-15)
 
 
