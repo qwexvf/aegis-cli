@@ -4,11 +4,11 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/qwexvf/aegis-cli)](https://goreportcard.com/report/github.com/qwexvf/aegis-cli)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Supply-chain security scanner for 9 package ecosystems and GitHub Actions workflows. No account, no API key, no backend.
+Supply-chain security scanner for 15 package ecosystems and GitHub Actions workflows. No account, no API key, no backend.
 
 ![demo](docs/demo.gif)
 
-- **CVE / GHSA lookup** — batch query against [OSV.dev](https://osv.dev), all 9 ecosystems in one shot
+- **CVE / GHSA lookup** — batch query against [OSV.dev](https://osv.dev), all 15 ecosystems in one shot
 - **AST capability scan** — tree-sitter walks every package source; surfaces `shell-spawn`, `net-egress`, `dynamic-eval`, `fs-write-outside-root` and more, even on packages with no advisory yet
 - **Behavior heuristics** — postinstall hooks doing `curl|sh`, obfuscated payloads, typosquat names (Levenshtein distance 2), maintainer hijack patterns, patch-version capability drift, git-SHA optional deps (worm propagation vector), unlisted large files (smuggled payloads), yanked-version detection
 - **Transitive deps included** — lockfile-based; every resolved package is scanned, not just direct deps
@@ -19,17 +19,22 @@ Supply-chain security scanner for 9 package ecosystems and GitHub Actions workfl
 
 ## Ecosystems
 
-| Ecosystem     | Lockfiles                                                             | OSV | AST scan      |
-|---------------|-----------------------------------------------------------------------|-----|---------------|
-| **npm**       | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`       | ✅  | ✅ `jsscan`   |
-| **PyPI**      | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `requirements.txt`         | ✅  | ✅ `pyscan`   |
-| **RubyGems**  | `Gemfile.lock`                                                        | ✅  | ✅ `rbscan`   |
-| **crates.io** | `Cargo.lock`                                                          | ✅  | ✅ `rsscan`   |
-| **Go**        | `go.sum` / `go.mod`                                                   | ✅  | ✅ `goscan`   |
-| **Maven**     | `pom.xml`, `gradle.lockfile`                                          | ✅  | ✅ `jvscan`   |
-| **Packagist** | `composer.lock`                                                       | ✅  | ✅ `phpscan`  |
-| **NuGet**     | `packages.lock.json`                                                  | ✅  | ✅ `csscan`   |
-| **Gleam**     | `manifest.toml`                                                       | ✅  | ✅ `gleamscan`|
+| Ecosystem     | Lockfiles                                                             | OSV | AST scan       |
+|---------------|-----------------------------------------------------------------------|-----|----------------|
+| **npm**       | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`       | ✅  | ✅ `jsscan`    |
+| **PyPI**      | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `requirements.txt`         | ✅  | ✅ `pyscan`    |
+| **RubyGems**  | `Gemfile.lock`                                                        | ✅  | ✅ `rbscan`    |
+| **crates.io** | `Cargo.lock`                                                          | ✅  | ✅ `rsscan`    |
+| **Go**        | `go.sum` / `go.mod`                                                   | ✅  | ✅ `goscan`    |
+| **Maven**     | `pom.xml`, `gradle.lockfile`                                          | ✅  | ✅ `jvscan`    |
+| **Packagist** | `composer.lock`                                                       | ✅  | ✅ `phpscan`   |
+| **NuGet**     | `packages.lock.json`                                                  | ✅  | ✅ `csscan`    |
+| **Hex**       | `manifest.toml` (Gleam), `mix.lock` (Elixir)                         | ✅  | ✅ `gleamscan` |
+| **Pub**       | `pubspec.lock`                                                        | ✅  | ✅             |
+| **SwiftURL**  | `Package.resolved`                                                    | ✅  | ✅             |
+| **CRAN**      | `renv.lock`                                                           | ✅  | ✅             |
+| **Hackage**   | `cabal.project.freeze`, `stack.yaml.lock`                             | ✅  | ✅             |
+| **CPAN**      | `cpanfile.snapshot`                                                   | ✅  | ✅             |
 
 ## Install
 
