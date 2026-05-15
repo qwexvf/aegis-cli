@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: read
+  security-events: write  # SARIF upload from self-audit
 
 jobs:
   test:
@@ -126,6 +127,50 @@ jobs:
       - name: validate CycloneDX 1.6 schema
         run: cyclonedx validate --input-file /tmp/aegis-demo-1.6.cdx.json --input-version v1_6 --fail-on-errors
 
+  supply-chain:
+    name: supply-chain self-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.3"
+          cache: true
+
+      # Build from source — scan with the exact binary under test.
+      - name: build aegis
+        run: make build-release
+
+      # Cache AST + CVE results; invalidated when go.sum changes.
+      - name: cache aegis data
+        uses: actions/cache@v4
+        with:
+          path: ~/.aegis
+          key: aegis-self-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: aegis-self-${{ runner.os }}-
+
+      - name: snapshot save
+        run: ./bin/aegis snapshot save
+
+      - name: snapshot enrich
+        run: ./bin/aegis snapshot enrich
+
+      # Deps gate + Actions workflow scan in one pass.
+      - name: aegis ci gate
+        run: |
+          ./bin/aegis ci \
+            --fail-on=block \
+            --scan-actions \
+            --sarif > aegis-self.sarif
+
+      - name: upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: aegis-self.sarif
+          category: aegis-self-audit
+
   ci:
     name: ci
     if: always()
@@ -136,6 +181,7 @@ jobs:
       - goreleaser-check
       - govulncheck
       - sbom-validate
+      - supply-chain
     runs-on: ubuntu-latest
     steps:
       - name: aggregate
