@@ -92,16 +92,20 @@ func TestRegister_ReplacesExisting(t *testing.T) {
 // pairs are checked against the documented set.
 func TestRegistered_IncludesBuiltins(t *testing.T) {
 	want := map[string]domain.Ecosystem{
-		"package-lock.json": domain.EcoNpm,
-		"pnpm-lock.yaml":    domain.EcoNpm,
-		"poetry.lock":       domain.EcoPyPI,
-		"requirements.txt":  domain.EcoPyPI,
-		"Cargo.lock":        domain.EcoCrates,
-		"go.sum":            domain.EcoGo,
-		"Gemfile.lock":      domain.EcoRubyGems,
-		"pubspec.lock":      domain.EcoPub,
-		"Package.resolved":  domain.EcoSwiftPM,
-		"mix.lock":          domain.EcoGleam,
+		"package-lock.json":    domain.EcoNpm,
+		"pnpm-lock.yaml":       domain.EcoNpm,
+		"poetry.lock":          domain.EcoPyPI,
+		"requirements.txt":     domain.EcoPyPI,
+		"Cargo.lock":           domain.EcoCrates,
+		"go.sum":               domain.EcoGo,
+		"Gemfile.lock":         domain.EcoRubyGems,
+		"pubspec.lock":         domain.EcoPub,
+		"Package.resolved":     domain.EcoSwiftPM,
+		"mix.lock":             domain.EcoGleam,
+		"renv.lock":            domain.EcoCRAN,
+		"cabal.project.freeze": domain.EcoHackage,
+		"stack.yaml.lock":      domain.EcoHackage,
+		"cpanfile.snapshot":    domain.EcoCPAN,
 	}
 	have := map[string]domain.Ecosystem{}
 	for _, p := range Registered() {
