@@ -135,17 +135,19 @@ if [ "${AEGIS_REAL_INCIDENTS:-}" = "1" ]; then
         echo ""
         echo "=== real fixtures ==="
         # Same format: ecosystem|name|version|caps
+        # Capabilities verified against real downloaded packages (2026-05-15).
+        # Only packages still on registry — see scripts/fetch-real-incidents.sh
+        # for packages removed from registries (obtain from OSSF archive).
         REAL_CASES=(
-            "npm|event-stream|3.3.6|install-hook-suspicious,obfuscated-payload,suspicious-url,dynamic-eval"
-            "npm|ua-parser-js|0.7.29|install-hook-suspicious,binary-dropper"
-            "npm|coa|2.0.3|install-hook-suspicious"
-            "npm|rc|1.2.9|install-hook-suspicious"
-            "npm|node-ipc|11.0.0|net-egress,fs-write-outside-root,suspicious-url"
-            "pypi|ctx|0.2.2|net-egress,suspicious-url"
-            "pypi|colourama|0.1.6|typosquat-risk,shell-spawn,net-egress"
-            "rubygems|rest-client|1.6.13|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
-            "rubygems|strong_password|0.0.7|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
-            "rubygems|bootstrap-sass|3.2.0.3|dynamic-eval,base64-decode"
+            # npm — still on registry
+            "npm|node-ipc|11.0.0|net-egress,fs-write-outside-root,install-hook-exec"
+            "npm|@solana/web3.js|1.95.5|base64-decode,net-egress,env-read"
+
+            # Packages removed from registries — skip if not manually downloaded:
+            # "npm|event-stream|3.3.6|install-hook-suspicious,obfuscated-payload,suspicious-url,dynamic-eval"
+            # "npm|ua-parser-js|0.7.29|install-hook-suspicious,binary-dropper"
+            # "pypi|ctx|0.2.2|net-egress,suspicious-url"
+            # "rubygems|rest-client|1.6.13|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
         )
         for row in "${REAL_CASES[@]}"; do
             IFS='|' read -r eco name ver caps <<<"$row"

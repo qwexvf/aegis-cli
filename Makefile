@@ -86,6 +86,17 @@ test-e2e-real:                  ## run e2e tests including real downloaded fixtu
 fetch-real-incidents:           ## download + neutralize real malicious packages into examples/incidents-real/
 	@bash scripts/fetch-real-incidents.sh
 
+.PHONY: fetch-real-incidents-docker
+fetch-real-incidents-docker:    ## same as above but fully isolated inside Docker (recommended)
+	@mkdir -p examples/incidents-real
+	docker build -f scripts/Dockerfile.fetch-incidents -t aegis-fetch-incidents scripts/ --quiet
+	docker run --rm \
+		--network=bridge \
+		--cap-drop=ALL \
+		--security-opt=no-new-privileges \
+		-v "$(PWD)/examples/incidents-real:/incidents-real" \
+		aegis-fetch-incidents
+
 .PHONY: precommit
 precommit: fmt-check vet test-race test-e2e  ## run before every commit/push (CI parity)
 	@echo "precommit OK"
