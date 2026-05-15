@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/qwexvf/aegis-cli)](https://goreportcard.com/report/github.com/qwexvf/aegis-cli)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Supply-chain security scanner for 15 package ecosystems and GitHub Actions workflows. No account, no API key, no backend.
+Supply-chain security scanner for 16 package ecosystems and GitHub Actions workflows. No account, no API key, no backend.
 
 ![demo](docs/demo.gif)
 
@@ -35,6 +35,7 @@ Supply-chain security scanner for 15 package ecosystems and GitHub Actions workf
 | **CRAN**      | `renv.lock`                                                           | ✅  | ✅             |
 | **Hackage**   | `cabal.project.freeze`, `stack.yaml.lock`                             | ✅  | ✅             |
 | **CPAN**      | `cpanfile.snapshot`                                                   | ✅  | ✅             |
+| **CocoaPods** | `Podfile.lock`                                                        | ✅  | ✅             |
 
 ## Install
 
