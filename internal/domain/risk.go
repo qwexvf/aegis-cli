@@ -126,6 +126,10 @@ const (
 	// is anomalous; weight pushes to Prompt alone, Block in combination
 	// with install-hook or obfuscation signals.
 	WeightVCSDependency = 45
+	// WeightProvenanceMissing — npm package lacks a SLSA provenance
+	// attestation. Informational: most packages lack it today, so this
+	// is a low-weight signal that pairs with others to escalate verdict.
+	WeightProvenanceMissing = 10
 )
 
 // credentialEnvVarRoots is the list of env var name prefixes that, when
@@ -507,6 +511,22 @@ func PatchVersionDriftFlag(prevVer, nextVer string, addedCaps CapabilitySet) (Ri
 		Code:   CapPatchVersionDrift.String(),
 		Detail: "patch bump " + prevVer + "→" + nextVer + " grew " + capListString(addedCaps) + " — semver says patches don't change behaviour",
 		Weight: WeightPatchVersionDrift,
+	}, true
+}
+
+// ProvenanceRiskFlag returns a RiskFlag (and true) when dep is an npm
+// package whose attestation lookup found no provenance record. Weight 10:
+// informational signal that pairs with other findings to raise verdict, but
+// does not reach VerdictReview alone. Returns (zero, false) for non-npm
+// deps, unqueried deps (ProvenanceStatus == ""), or attested packages.
+func ProvenanceRiskFlag(dep Dependency) (RiskFlag, bool) {
+	if dep.Ecosystem != EcoNpm || dep.ProvenanceStatus != "missing" {
+		return RiskFlag{}, false
+	}
+	return RiskFlag{
+		Code:   "provenance-missing",
+		Detail: "no SLSA provenance attestation in npm registry for " + dep.Name + "@" + dep.Version,
+		Weight: WeightProvenanceMissing,
 	}, true
 }
 

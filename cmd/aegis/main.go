@@ -33,6 +33,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/licensefetch"
 	"github.com/qwexvf/aegis-cli/internal/infra/locksnap"
 	"github.com/qwexvf/aegis-cli/internal/infra/ndjsonaudit"
+	"github.com/qwexvf/aegis-cli/internal/infra/npmattestations"
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/nugetregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/osv"
@@ -277,6 +278,13 @@ func main() {
 			rubygemsregistry.New(rubygemsregistry.WithHTTPClient(httpClient)),
 			nugetregistry.New(nugetregistry.WithHTTPClient(httpClient)),
 		))
+
+		// npm provenance attestation fetcher. Checks SLSA/publish attestations
+		// during enrich and flags npm packages with no attestation record.
+		// Same offline gate as vuln/license — requires registry network access.
+		snapshot.WithProvenanceFetcher(
+			npmattestations.New(npmattestations.WithHTTPClient(httpClient)),
+		)
 	}
 
 	// Behaviour-based malware heuristics: suspicious install hooks,

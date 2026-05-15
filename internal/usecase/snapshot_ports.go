@@ -270,6 +270,24 @@ type LicenseFetcher interface {
 	FetchLicense(ctx context.Context, eco domain.Ecosystem, name, version string) (string, error)
 }
 
+// ProvenanceResult is the structured outcome of one npm attestation lookup.
+// Status is always populated; SourceURI and Commit are only non-empty when
+// Status == "attested" and a SLSA v1 provenance predicate was found.
+type ProvenanceResult struct {
+	// Status: "attested", "missing", or "error".
+	Status    string
+	SourceURI string // upstream git repo (from SLSA v1 predicate), may be empty
+	Commit    string // git commit SHA (from SLSA v1 predicate), may be empty
+}
+
+// ProvenanceFetcher fetches npm provenance attestations for a single package
+// version. MVP scope: DSSE decode + JSON parse only (no sigstore crypto).
+// Non-npm ecosystems are not called — the use case skips them before dispatch.
+// Returns ProvenanceResult{Status:"missing"} on HTTP 404 or empty attestations.
+type ProvenanceFetcher interface {
+	FetchProvenance(ctx context.Context, name, version string) (ProvenanceResult, error)
+}
+
 // FingerprintCache stores AST scan results keyed by
 // (ecosystem, name, version). Implementation: infra/diskcache.
 //
