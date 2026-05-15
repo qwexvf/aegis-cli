@@ -78,6 +78,14 @@ fmt-check:                      ## fail if any .go file is unformatted (mirrors 
 test-e2e:                       ## run end-to-end CLI tests (examples/incidents)
 	@bash tests/e2e/incidents.sh
 
+.PHONY: test-e2e-real
+test-e2e-real:                  ## run e2e tests including real downloaded fixtures (AEGIS_REAL_INCIDENTS=1)
+	@AEGIS_REAL_INCIDENTS=1 bash tests/e2e/incidents.sh
+
+.PHONY: fetch-real-incidents
+fetch-real-incidents:           ## download + neutralize real malicious packages into examples/incidents-real/
+	@bash scripts/fetch-real-incidents.sh
+
 .PHONY: precommit
 precommit: fmt-check vet test-race test-e2e  ## run before every commit/push (CI parity)
 	@echo "precommit OK"
