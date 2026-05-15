@@ -4,6 +4,23 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.21.0](https://github.com/qwexvf/aegis-cli/compare/v0.20.0...v0.21.0) (2026-05-15)
+
+
+### Added
+
+* **jsscan:** constant folding — evaluates `String.fromCharCode([numeric array])` to detect obfuscated C2 hostnames (xn-- IDN homoglyphs, suspicious host fragments)
+* **jsscan:** taint variable tracking — marks variables assigned from `atob()`, `Buffer.from(...,'base64')`, `String.fromCharCode()` as tainted; detects when they reach `eval`/`fetch`/`exec` sinks
+* **provenance (#75):** npm SLSA attestation lookup during `snapshot enrich` — populates `ProvenanceStatus`/`ProvenanceSourceURI`/`ProvenanceCommit` on each npm dep; flags missing attestation as informational risk signal (weight 10)
+* **incidents:** `tanstack-router-1.169.5` e2e fixture with `router_init.js` stub (closes #78)
+* **goreleaser:** attach CycloneDX SBOM per release archive via syft (closes #76)
+* **site:** pin all npm deps to exact versions (remove `^`)
+
+
+### Fixed
+
+* AST scanner returns empty fingerprint (not error) for ecosystems without a language scanner — heuristics + CVE lookup continue unaffected
+
 ## [0.20.0](https://github.com/qwexvf/aegis-cli/compare/v0.19.0...v0.20.0) (2026-05-15)
 
 
