@@ -2,7 +2,6 @@ package astscan
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -45,13 +44,18 @@ func TestDispatcher_RoutesByEcosystem(t *testing.T) {
 	}
 }
 
-func TestDispatcher_UnsupportedEcosystemErrors(t *testing.T) {
+func TestDispatcher_UnsupportedEcosystemReturnsEmpty(t *testing.T) {
 	d := NewDispatcher()
 	d.Register(domain.EcoNpm, &fakeLanguageScanner{})
 
-	_, err := d.Analyze(context.Background(), domain.EcoPyPI, usecase.PackageSource{})
-	if err == nil || !strings.Contains(err.Error(), "no scanner for ecosystem") {
-		t.Errorf("expected no-scanner error, got %v", err)
+	// Ecosystems without a registered scanner degrade gracefully so
+	// heuristics and CVE lookup can still run on the same source.
+	fp, err := d.Analyze(context.Background(), domain.EcoPyPI, usecase.PackageSource{})
+	if err != nil {
+		t.Errorf("want nil error for unregistered ecosystem, got %v", err)
+	}
+	if fp.Analyzed || len(fp.Capabilities) != 0 {
+		t.Errorf("want zero fingerprint for unregistered ecosystem, got %+v", fp)
 	}
 }
 

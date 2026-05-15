@@ -19,7 +19,6 @@ package astscan
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -158,7 +157,11 @@ func (d *Dispatcher) AnalyzeWithEvidence(ctx context.Context, eco domain.Ecosyst
 func (d *Dispatcher) analyze(eco domain.Ecosystem, src usecase.PackageSource, withEvidence bool) (domain.Fingerprint, []domain.Evidence, error) {
 	scanner, ok := d.scanners[eco]
 	if !ok {
-		return domain.Fingerprint{}, nil, fmt.Errorf("astscan: no scanner for ecosystem %q", eco)
+		// No AST scanner for this ecosystem — return an empty fingerprint
+		// so heuristics and CVE lookup can still run. New ecosystems
+		// (CRAN, Hackage, CPAN, Pub, SwiftURL, CocoaPods) rely on
+		// heuristic-only analysis until language-specific scanners land.
+		return domain.Fingerprint{}, nil, nil
 	}
 
 	var findings *Findings
