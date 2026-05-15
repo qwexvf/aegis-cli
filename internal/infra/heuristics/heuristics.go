@@ -39,6 +39,9 @@ var defaultPipeline = NewPipeline(
 		&gleamParser{},
 		&dartParser{},
 		&swiftParser{},
+		&rParser{},
+		&haskellParser{},
+		&perlParser{},
 	},
 	[]Check{
 		checkInstallHooks,    // hook body × malware patterns → CapInstallHookSuspicious

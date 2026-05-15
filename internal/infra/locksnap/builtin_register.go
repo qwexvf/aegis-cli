@@ -67,4 +67,15 @@ func init() {
 	// Swift / SwiftPM — Package.resolved produced by `swift package resolve`.
 	// Both v1 and v2 schema formats are supported.
 	Register(newFuncParser("Package.resolved", domain.EcoSwiftPM, parseSwiftPackageResolved))
+
+	// R — renv.lock produced by `renv::snapshot()`. JSON format.
+	Register(newFuncParser("renv.lock", domain.EcoCRAN, parseRenvLock))
+
+	// Haskell — cabal.project.freeze (cabal) or stack.yaml.lock (stack).
+	// Both enumerate exact pinned versions from Hackage.
+	Register(newFuncParser("cabal.project.freeze", domain.EcoHackage, parseCabalFreeze))
+	Register(newFuncParser("stack.yaml.lock", domain.EcoHackage, parseStackYamlLock))
+
+	// Perl — cpanfile.snapshot produced by Carton (`carton install`).
+	Register(newFuncParser("cpanfile.snapshot", domain.EcoCPAN, parseCpanfileSnapshot))
 }
