@@ -75,6 +75,21 @@ CASES=(
     # NuGet (.NET) — module-initializer-time RAT shape
     "nuget|Rougeit|1.0.0|shell-spawn,dynamic-eval,base64-decode,net-egress,fs-write-outside-root,suspicious-url"
     "nuget|SqlMapper|1.0.0|shell-spawn,dynamic-eval,base64-decode,net-egress,fs-write-outside-root,suspicious-url"
+
+    # CRAN (R) — .onLoad typosquat with eval(parse(text=url(...))) + curl|sh exfil
+    "cran|ggplott2|1.0.0|obfuscated-payload,suspicious-url,install-hook-suspicious,typosquat-risk"
+
+    # Hackage (Haskell) — Setup.hs curl|sh in custom build phase
+    "hackage|textt|0.7.0|suspicious-url,install-hook-suspicious,typosquat-risk"
+
+    # CPAN (Perl) — Makefile.PL curl|sh at configure time
+    "cpan|Moosee|1.0.0|suspicious-url,install-hook-suspicious,typosquat-risk"
+
+    # Pub (Dart) — library-level HTTP exfil + Process.run curl|sh
+    "pub|dart-exfil|1.0.0|suspicious-url,install-hook-suspicious"
+
+    # Hex (Elixir) — Application.start/2 :os.cmd curl|sh + :httpc exfil
+    "hex|ex-aws-mock|0.9.0|suspicious-url,install-hook-suspicious"
 )
 
 pass=0
