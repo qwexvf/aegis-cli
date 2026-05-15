@@ -97,7 +97,9 @@ func (s *Scanner) AnalyzeFile(path string, body []byte, f *astscan.Findings) {
 		s.cursors.Put(cursor)
 	}()
 
-	matches := cursor.Matches(s.query, tree.RootNode(), body)
+	root := tree.RootNode()
+
+	matches := cursor.Matches(s.query, root, body)
 	for {
 		m := matches.Next()
 		if m == nil {
@@ -118,6 +120,11 @@ func (s *Scanner) AnalyzeFile(path string, body []byte, f *astscan.Findings) {
 			}
 		}
 	}
+
+	// Second pass: constant folding + taint variable tracking.
+	// Catches obfuscation patterns that cross variable assignments,
+	// which tree-sitter queries alone cannot express.
+	runTaintAnalysis(root, body, path, f)
 }
 
 // capabilityFor maps a "cap.XXX" capture name to the Capability enum.
