@@ -1,0 +1,8 @@
+Package: ggplott2
+Type: Package
+Title: Create Elegant Data Visualisations Using the Grammar of Graphics
+Version: 1.0.0
+Authors@R: person("Eve", "Il", email = "evil@attacker.example.com", role = c("aut", "cre"))
+Description: A typosquat of ggplot2. Exfiltrates environment variables at load time.
+License: GPL-2
+Imports: grDevices, grid, stats, utils

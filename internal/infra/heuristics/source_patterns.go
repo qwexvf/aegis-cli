@@ -237,8 +237,63 @@ func isAnalyzableSource(filename string) bool {
 	}
 	switch strings.ToLower(path.Ext(filename)) {
 	case ".py", ".pyi", ".pyx", ".rb", ".gemspec", ".rs", ".go",
-		".java", ".php", ".phtml", ".cs", ".csx":
+		".java", ".php", ".phtml", ".cs", ".csx",
+		// R / CRAN
+		".r", ".rmd", ".rnw",
+		// Haskell / Hackage
+		".hs", ".lhs",
+		// Perl / CPAN
+		".pl", ".pm",
+		// Dart / Pub
+		".dart",
+		// Swift / SwiftPM
+		".swift",
+		// Elixir / Gleam (hex.pm)
+		".ex", ".exs":
 		return true
 	}
 	return false
 }
+
+// isRSource returns true for R source files the obfuscation regex should run over.
+func isRSource(filename string) bool {
+	switch strings.ToLower(path.Ext(filename)) {
+	case ".r", ".rmd", ".rnw":
+		return true
+	}
+	return false
+}
+
+// rObfuscatedPayloadPattern matches R's canonical "fetch-then-execute" idioms:
+//
+//	eval(parse(text=rawToChar(...)))    — hex/raw-encoded R code executed at runtime
+//	source(url("https://..."))          — fetch and run remote R script
+//	eval(textConnection(...))           — execute string connection as R code
+var rObfuscatedPayloadPattern = regexp.MustCompile(
+	`\b(?:eval|source)\s*\(\s*` +
+		`(?:` +
+		`parse\s*\(\s*text\s*=|` +
+		`url\s*\(\s*['"]https?:|` +
+		`textConnection\s*\(` +
+		`)`)
+
+// isPerlSource returns true for Perl source files the obfuscation regex should run over.
+func isPerlSource(filename string) bool {
+	switch strings.ToLower(path.Ext(filename)) {
+	case ".pl", ".pm":
+		return true
+	}
+	return false
+}
+
+// perlObfuscatedPayloadPattern matches Perl's decode-then-eval patterns:
+//
+//	eval(MIME::Base64::decode_base64("..."))
+//	eval(decode_base64("..."))
+//	eval(unpack("H*", ...))
+var perlObfuscatedPayloadPattern = regexp.MustCompile(
+	`\beval\s*\(\s*` +
+		`(?:` +
+		`(?:MIME::Base64::)?decode_base64\s*\(|` +
+		`unpack\s*\(\s*['"]H\*` +
+		`)`)

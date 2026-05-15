@@ -1,0 +1,7 @@
+name: dart_exfil
+description: Environment variable exfiltration via HTTP (incident fixture).
+version: 1.0.0
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+dependencies:
+  http: ^1.2.0
