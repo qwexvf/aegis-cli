@@ -20,8 +20,12 @@ func (p *gleamParser) Parse(name string, manifestRaw []byte, src domain.PackageS
 		ManifestRaw: manifestRaw,
 	}
 	for filename, body := range src.Files {
-		if strings.ToLower(path.Base(filename)) == "gleam.toml" {
+		switch strings.ToLower(path.Base(filename)) {
+		case "gleam.toml":
 			pkg.Deps = append(pkg.Deps, parseGleamTOML(body)...)
+		case "mix.exs":
+			// Elixir packages share the hex.pm registry (EcoGleam).
+			pkg.Deps = append(pkg.Deps, parseMixExsDeps(body)...)
 		}
 	}
 	return pkg
@@ -33,6 +37,24 @@ var gleamGitDepPattern = regexp.MustCompile(`(?im)[{,]\s*git\s*=\s*"(https?://[^
 
 // gleamDepNamePattern tries to extract the dependency name (key before =).
 var gleamDepNamePattern = regexp.MustCompile(`(?m)^\s*(\w[\w_-]*)\s*=\s*\{[^}]*git\s*=`)
+
+// mixExsGitPattern matches `{:name, git: "url", ...}` in mix.exs.
+var mixExsGitPattern = regexp.MustCompile(`\{:(\w+),\s*(?:[^}]*,\s*)?git:\s*"([^"]+)"`)
+
+// mixExsPathPattern matches `{:name, path: "local/path"}` in mix.exs.
+var mixExsPathPattern = regexp.MustCompile(`\{:(\w+),\s*path:\s*"([^"]+)"`)
+
+func parseMixExsDeps(body []byte) []Dep {
+	var deps []Dep
+	src := string(body)
+	for _, m := range mixExsGitPattern.FindAllStringSubmatch(src, -1) {
+		deps = append(deps, Dep{Name: m[1], Spec: m[2], Source: DepSourceVCS})
+	}
+	for _, m := range mixExsPathPattern.FindAllStringSubmatch(src, -1) {
+		deps = append(deps, Dep{Name: m[1], Spec: m[2], Source: DepSourceLocal})
+	}
+	return deps
+}
 
 func parseGleamTOML(body []byte) []Dep {
 	if !gleamGitDepPattern.Match(body) {
