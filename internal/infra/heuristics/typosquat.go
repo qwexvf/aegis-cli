@@ -27,15 +27,27 @@ var topPyPIPackagesRaw string
 //go:embed top_crates_packages.txt
 var topCratesPackagesRaw string
 
+//go:embed top_cran_packages.txt
+var topCRANPackagesRaw string
+
+//go:embed top_hackage_packages.txt
+var topHackagePackagesRaw string
+
+//go:embed top_cpan_packages.txt
+var topCPANPackagesRaw string
+
 // topPackages is the per-ecosystem set of "real" names a typosquat
 // candidate is compared against. Adding a new ecosystem is a one-line
 // change here plus a top_<ecosystem>_packages.txt file. Ecosystems
 // without an entry get DetectTyposquat == 0 (no signal — better silent
 // than false-positive).
 var topPackages = map[domain.Ecosystem]map[string]bool{
-	domain.EcoNpm:    parseTopList(topNpmPackagesRaw),
-	domain.EcoPyPI:   parseTopList(topPyPIPackagesRaw),
-	domain.EcoCrates: parseTopList(topCratesPackagesRaw),
+	domain.EcoNpm:     parseTopList(topNpmPackagesRaw),
+	domain.EcoPyPI:    parseTopList(topPyPIPackagesRaw),
+	domain.EcoCrates:  parseTopList(topCratesPackagesRaw),
+	domain.EcoCRAN:    parseTopList(topCRANPackagesRaw),
+	domain.EcoHackage: parseTopList(topHackagePackagesRaw),
+	domain.EcoCPAN:    parseTopList(topCPANPackagesRaw),
 }
 
 func parseTopList(raw string) map[string]bool {
