@@ -71,6 +71,11 @@ type Snapshot struct {
 	// Dependency.License for deps that don't already have one.
 	licenseFetcher LicenseFetcher
 
+	// Optional npm provenance fetcher. When set, Enrich populates
+	// Dependency.ProvenanceStatus/SourceURI/Commit for npm deps after
+	// the AST workers drain. nil disables — no provenance data written.
+	provenanceFetcher ProvenanceFetcher
+
 	// Optional behavior-based malware heuristics. When set, every
 	// per-dep AST scan is followed by a Run() call that may add
 	// extra Capability values (CapInstallHookSuspicious,
@@ -168,6 +173,14 @@ func (s *Snapshot) WithVulnLookup(v VulnLookup) *Snapshot {
 // License already set.
 func (s *Snapshot) WithLicenseFetcher(f LicenseFetcher) *Snapshot {
 	s.licenseFetcher = f
+	return s
+}
+
+// WithProvenanceFetcher attaches an npm provenance attestation fetcher. nil
+// is safe (skips provenance population). Only npm deps are queried; other
+// ecosystems are skipped. Gated on AEGIS_NO_VULN_LOOKUP in the composition root.
+func (s *Snapshot) WithProvenanceFetcher(f ProvenanceFetcher) *Snapshot {
+	s.provenanceFetcher = f
 	return s
 }
 
@@ -364,6 +377,7 @@ func (s *Snapshot) Enrich(ctx context.Context, projectDir string) error {
 	// the AST findings already on disk are the floor.
 	s.lookupAdvisories(ctx, snap.Deps)
 	s.lookupLicenses(ctx, snap.Deps)
+	s.lookupProvenance(ctx, snap.Deps)
 
 	if err := s.store.Save(projectDir, snap); err != nil {
 		s.presenter.OnSnapshotError(err)
@@ -607,6 +621,10 @@ func (s *Snapshot) buildReportFromSnapshots(a, b domain.Snapshot) DiffReport {
 		entry.Risk = domain.RiskScore(dep.Fingerprint).
 			ApplyAllowlist(dep.Ecosystem, dep.Name, dep.Version, s.allowlist).
 			DowngradeUnused(dep.Reachability, unusedSuppressEnabled())
+		if flag, ok := domain.ProvenanceRiskFlag(dep); ok {
+			entry.Risk.Score += flag.Weight
+			entry.Risk.Flags = append(entry.Risk.Flags, flag)
+		}
 		entry.Verdict = domain.Verdict(entry.Risk, entry.Drift)
 		updateReportFlags(&report, entry.Verdict)
 		report.Entries = append(report.Entries, entry)
@@ -625,6 +643,10 @@ func (s *Snapshot) buildReportFromSnapshots(a, b domain.Snapshot) DiffReport {
 		entry.Risk = domain.RiskScore(newDep.Fingerprint).
 			ApplyAllowlist(newDep.Ecosystem, newDep.Name, newDep.Version, s.allowlist).
 			DowngradeUnused(newDep.Reachability, unusedSuppressEnabled())
+		if flag, ok := domain.ProvenanceRiskFlag(newDep); ok {
+			entry.Risk.Score += flag.Weight
+			entry.Risk.Flags = append(entry.Risk.Flags, flag)
+		}
 		entry.Drift = domain.DriftScore(oldDep.Fingerprint, newDep.Fingerprint).
 			ApplyAllowlist(newDep.Ecosystem, newDep.Name, newDep.Version, s.allowlist)
 
@@ -1191,5 +1213,45 @@ func (s *Snapshot) lookupLicenses(ctx context.Context, deps []domain.Dependency)
 	}
 	if filled > 0 {
 		s.presenter.OnSnapshotInfo(fmt.Sprintf("licenses fetched for %d package(s)", filled))
+	}
+}
+
+// lookupProvenance populates Dependency.ProvenanceStatus/SourceURI/Commit
+// for npm deps that haven't been queried yet. Best-effort: individual errors
+// are logged but don't abort Enrich. Non-npm deps are silently skipped.
+func (s *Snapshot) lookupProvenance(ctx context.Context, deps []domain.Dependency) {
+	if s.provenanceFetcher == nil {
+		return
+	}
+	attested, missing := 0, 0
+	for i, d := range deps {
+		if d.Ecosystem != domain.EcoNpm {
+			continue
+		}
+		if d.ProvenanceStatus != "" {
+			continue // already looked up in a previous enrich
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		result, err := s.provenanceFetcher.FetchProvenance(ctx, d.Name, d.Version)
+		if err != nil {
+			s.presenter.OnSnapshotInfo(fmt.Sprintf("provenance %s@%s: %v", d.Name, d.Version, err))
+			deps[i].ProvenanceStatus = "error"
+			continue
+		}
+		deps[i].ProvenanceStatus = result.Status
+		deps[i].ProvenanceSourceURI = result.SourceURI
+		deps[i].ProvenanceCommit = result.Commit
+		switch result.Status {
+		case "attested":
+			attested++
+		case "missing":
+			missing++
+		}
+	}
+	if attested+missing > 0 {
+		s.presenter.OnSnapshotInfo(fmt.Sprintf(
+			"provenance: %d attested, %d missing attestation", attested, missing))
 	}
 }

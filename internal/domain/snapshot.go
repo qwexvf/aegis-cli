@@ -45,6 +45,15 @@ type Dependency struct {
 	// License is the SPDX identifier (or raw license string) from the
 	// package registry. Empty when not yet fetched or unavailable.
 	License string `json:",omitempty"`
+	// ProvenanceStatus is the result of the npm attestation lookup during
+	// `aegis snapshot enrich`. One of: "attested", "missing", "error".
+	// Empty means not yet queried. Non-npm ecosystems always leave this empty.
+	ProvenanceStatus string `json:",omitempty"`
+	// ProvenanceSourceURI is the upstream source repository URI extracted
+	// from the SLSA v1 provenance predicate (when ProvenanceStatus == "attested").
+	ProvenanceSourceURI string `json:",omitempty"`
+	// ProvenanceCommit is the git commit SHA from the SLSA v1 predicate.
+	ProvenanceCommit string `json:",omitempty"`
 	// Reachability records whether user code imports this dep. Tri-state
 	// because "couldn't tell" (unsupported language, parse error) is
 	// real information. Old snapshots load with the zero value
