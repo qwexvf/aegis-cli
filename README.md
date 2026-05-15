@@ -8,12 +8,14 @@ Supply-chain security scanner for 16 package ecosystems and GitHub Actions workf
 
 ![demo](docs/demo.gif)
 
-- **CVE / GHSA lookup** — batch query against [OSV.dev](https://osv.dev), all 15 ecosystems in one shot
+- **CVE / GHSA lookup** — batch query against [OSV.dev](https://osv.dev), all 16 ecosystems in one shot
 - **AST capability scan** — tree-sitter walks every package source; surfaces `shell-spawn`, `net-egress`, `dynamic-eval`, `fs-write-outside-root` and more, even on packages with no advisory yet
+- **Taint analysis** — constant folding evaluates `String.fromCharCode([104,116,...])` arrays to detect obfuscated C2 hostnames; variable taint tracking catches `atob(x) → eval(x)` patterns that bypass simple pattern matching
 - **Behavior heuristics** — postinstall hooks doing `curl|sh`, obfuscated payloads, typosquat names (Levenshtein distance 2), maintainer hijack patterns, patch-version capability drift, git-SHA optional deps (worm propagation vector), unlisted large files (smuggled payloads), yanked-version detection
+- **npm provenance** — fetches SLSA attestations from the npm registry during `snapshot enrich`; extracts source repo + git commit from SLSA v1 predicates; flags packages with no attestation as an informational risk signal
 - **Transitive deps included** — lockfile-based; every resolved package is scanned, not just direct deps
 - **Polyglot monorepo** — finds all lockfiles, merges into a single `aegis.lock`
-- **CycloneDX SBOM** — `aegis sbom` emits a standards-compliant BOM (1.5 or 1.6 via `--cdx-version`); `--include-vulns` attaches OSV advisories; package licenses populated from registries
+- **CycloneDX SBOM** — `aegis sbom` emits a standards-compliant BOM (1.5 or 1.6 via `--cdx-version`); `--include-vulns` attaches OSV advisories; package licenses populated from registries (npm, PyPI, Cargo, RubyGems, NuGet)
 - **GitHub Actions scanner** — `aegis actions scan` walks `.github/workflows/*.yml` (or fetches from a remote repo with `--repo owner/repo`); flags unpinned action refs, `pull_request_target` + checkout escalation, OIDC + npm publish worm vector, `actions/cache` poisoning, script injection, `curl|sh` in `run:` blocks, and `permissions: write-all`; outputs SARIF 2.1.0 with `--sarif` for GitHub Code Scanning
 - **Offline capable** — `AEGIS_NO_VULN_LOOKUP=1` for air-gapped use; self-hosted OSV mirror via `AEGIS_OSV_URL`
 
