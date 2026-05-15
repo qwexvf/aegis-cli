@@ -31,6 +31,8 @@ const (
 	EcoPackagist Ecosystem = "packagist"
 	EcoNuGet     Ecosystem = "nuget"
 	EcoGleam     Ecosystem = "hex"
+	EcoPub       Ecosystem = "pub"
+	EcoSwiftPM   Ecosystem = "swifturl"
 )
 
 // AllEcosystems returns every ecosystem the CLI recognises.
@@ -38,6 +40,7 @@ func AllEcosystems() []Ecosystem {
 	return []Ecosystem{
 		EcoNpm, EcoPyPI, EcoCrates, EcoGo, EcoMaven,
 		EcoRubyGems, EcoPackagist, EcoNuGet, EcoGleam,
+		EcoPub, EcoSwiftPM,
 	}
 }
 
