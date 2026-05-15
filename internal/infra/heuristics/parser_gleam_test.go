@@ -42,4 +42,34 @@ gleam_stdlib = ">= 0.18.0 and < 2.0.0"
 			t.Errorf("unexpected deps: %v", pkg.Deps)
 		}
 	})
+
+	t.Run("elixir mix.exs git dep", func(t *testing.T) {
+		mixExs := []byte(`defmodule MyApp.MixProject do
+  def deps do
+    [
+      {:phoenix, "~> 1.7"},
+      {:evil_dep, git: "https://github.com/attacker/evil", branch: "main"},
+      {:local_dep, path: "../local"},
+    ]
+  end
+end
+`)
+		p := &gleamParser{}
+		pkg := p.Parse("my_app", nil, domain.PackageSource{
+			Files: map[string][]byte{"mix.exs": mixExs},
+		})
+
+		gitDeps := filterBySource(pkg.Deps, DepSourceVCS)
+		if len(gitDeps) != 1 {
+			t.Fatalf("want 1 git dep from mix.exs, got %d: %v", len(gitDeps), pkg.Deps)
+		}
+		if gitDeps[0].Name != "evil_dep" {
+			t.Errorf("dep name = %q; want evil_dep", gitDeps[0].Name)
+		}
+
+		localDeps := filterBySource(pkg.Deps, DepSourceLocal)
+		if len(localDeps) != 1 {
+			t.Fatalf("want 1 local dep from mix.exs, got %d: %v", len(localDeps), pkg.Deps)
+		}
+	})
 }

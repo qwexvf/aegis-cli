@@ -140,9 +140,9 @@ func parsePackageArg(arg string) (ecosystem, name, version string, err error) {
 	if rest == "" {
 		return "", "", "", fmt.Errorf("cloud analyze: argument must be ecosystem/name[@version], got %q", arg)
 	}
-	if atIdx := strings.IndexByte(rest, '@'); atIdx >= 0 {
-		name = rest[:atIdx]
-		version = rest[atIdx+1:]
+	if n, v, hasAt := strings.Cut(rest, "@"); hasAt {
+		name = n
+		version = v
 	} else {
 		name = rest
 	}

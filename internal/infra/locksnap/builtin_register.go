@@ -56,4 +56,15 @@ func init() {
 	// Gleam — manifest.toml is the post-resolution lockfile written by
 	// `gleam deps download`. All packages are sourced from hex.pm.
 	Register(newFuncParser("manifest.toml", domain.EcoGleam, parseGleamManifest))
+
+	// Elixir — mix.lock produced by `mix deps.get`. Packages resolve
+	// from hex.pm (same OSV ecosystem as Gleam: "Hex").
+	Register(newFuncParser("mix.lock", domain.EcoGleam, parseMixLock))
+
+	// Dart / Flutter — pubspec.lock produced by `dart pub get`.
+	Register(newFuncParser("pubspec.lock", domain.EcoPub, parsePubspecLock))
+
+	// Swift / SwiftPM — Package.resolved produced by `swift package resolve`.
+	// Both v1 and v2 schema formats are supported.
+	Register(newFuncParser("Package.resolved", domain.EcoSwiftPM, parseSwiftPackageResolved))
 }

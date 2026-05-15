@@ -99,6 +99,9 @@ func TestRegistered_IncludesBuiltins(t *testing.T) {
 		"Cargo.lock":        domain.EcoCrates,
 		"go.sum":            domain.EcoGo,
 		"Gemfile.lock":      domain.EcoRubyGems,
+		"pubspec.lock":      domain.EcoPub,
+		"Package.resolved":  domain.EcoSwiftPM,
+		"mix.lock":          domain.EcoGleam,
 	}
 	have := map[string]domain.Ecosystem{}
 	for _, p := range Registered() {
