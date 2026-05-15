@@ -1,0 +1,122 @@
+name: supply-chain self-audit
+
+# Dogfood: aegis scans its own dependencies and GitHub Actions workflows.
+# If aegis can't pass its own gate, nothing ships.
+#
+# Runs on:
+#   - every push / PR (catch new deps immediately)
+#   - daily at 06:00 UTC (catch newly-disclosed CVEs via snapshot rescan)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 6 * * *'
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write  # upload SARIF to GitHub Security tab
+
+jobs:
+  self-audit:
+    name: supply-chain self-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.3"
+          cache: true
+
+      # Build from source — we use the version under test, not a release binary.
+      # This ensures the scanner and the scanned code are always in sync.
+      - name: build aegis
+        run: make build-release
+
+      # Persist AST scan results and CVE lookups across runs.
+      # Cache key on go.sum so a lockfile change always triggers a fresh enrich.
+      - name: cache aegis data
+        uses: actions/cache@v4
+        with:
+          path: ~/.aegis
+          key: aegis-self-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: aegis-self-${{ runner.os }}-
+
+      # Parse go.sum → aegis.lock (lockfile snapshot).
+      - name: snapshot save
+        run: ./bin/aegis snapshot save
+
+      # AST capability scan + OSV CVE lookup for every resolved dep.
+      - name: snapshot enrich
+        run: ./bin/aegis snapshot enrich
+
+      # Gate: fail the job on any BLOCK-verdict finding.
+      # --scan-actions folds GitHub Actions workflow findings in.
+      # SARIF is emitted regardless of exit code (--sarif writes to stdout).
+      - name: aegis ci gate + SARIF
+        run: |
+          ./bin/aegis ci \
+            --fail-on=block \
+            --scan-actions \
+            --sarif > aegis-deps.sarif
+
+      - name: upload dep findings to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: aegis-deps.sarif
+          category: aegis-deps
+
+      # Dedicated Actions scan at a stricter threshold (high vs block).
+      # Separate upload so workflow findings appear under their own category.
+      - name: scan own GitHub Actions workflows
+        if: always()
+        run: |
+          ./bin/aegis actions scan \
+            --fail-on=high \
+            --sarif > aegis-actions.sarif
+
+      - name: upload Actions findings to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: aegis-actions.sarif
+          category: aegis-actions
+
+  # Retroactive CVE sweep: re-query OSV against the saved snapshot without
+  # re-running the full AST scan. Runs only on the daily schedule so it
+  # doesn't slow down PR feedback loops.
+  rescan:
+    name: retroactive CVE rescan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.3"
+          cache: true
+
+      - name: build aegis
+        run: make build-release
+
+      - name: restore aegis snapshot cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.aegis
+          key: aegis-self-${{ runner.os }}-
+          restore-keys: aegis-self-${{ runner.os }}-
+
+      # Re-query OSV for every dep already in aegis.lock.
+      # Exits 1 if any dep now has a newly-disclosed advisory.
+      - name: snapshot rescan
+        run: ./bin/aegis snapshot rescan
