@@ -1,0 +1,51 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-cloud-analyze - Submit a package for cloud sandbox analysis
+
+
+.SH SYNOPSIS
+\fBaegis cloud analyze  [flags]\fP
+
+
+.SH DESCRIPTION
+Submit a single package to the Aegis cloud sandbox for dynamic analysis.
+
+.PP
+The argument must be in the form ecosystem/name@version, e.g.:
+
+.PP
+aegis cloud analyze npm/lodash@4.17.21
+  aegis cloud analyze pypi/requests@2.31.0
+
+.PP
+Version may be omitted to analyze the latest published release:
+
+.PP
+aegis cloud analyze npm/lodash
+
+.PP
+Requires AEGIS_API_KEY to be set.
+
+.PP
+By default the command polls for completion (up to 5 minutes) and prints
+the findings count on success. Use --no-wait for fire-and-forget CI steps.
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for analyze
+
+.PP
+\fB--no-wait\fP[=false]
+	submit and exit without polling for results (prints job_id and stream URL)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis-cloud(1)\fP
