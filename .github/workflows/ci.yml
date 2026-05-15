@@ -115,6 +115,7 @@ jobs:
       - name: generate SBOMs from examples/demo
         working-directory: examples/demo
         run: |
+          ../../bin/aegis snapshot save
           ../../bin/aegis sbom -o /tmp/aegis-demo-1.5.cdx.json
           ../../bin/aegis sbom --cdx-version=1.6 -o /tmp/aegis-demo-1.6.cdx.json
       - name: install cyclonedx-cli
