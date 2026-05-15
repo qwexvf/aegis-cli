@@ -35,13 +35,12 @@ var pubspecDepNamePattern = regexp.MustCompile(`^  (\w[\w_-]*):\s*$`)
 
 func parsePubspecYAMLDeps(body []byte) []Dep {
 	var deps []Dep
-	lines := strings.Split(string(body), "\n")
 
 	inDepsSection := false
 	pendingName := ""
 	inGitBlock := false
 
-	for _, line := range lines {
+	for line := range strings.SplitSeq(string(body), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
