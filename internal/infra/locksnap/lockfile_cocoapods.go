@@ -69,7 +69,7 @@ func parseCocoaPodsLock(raw []byte, _ map[string]bool) ([]domain.Dependency, err
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("Podfile.lock scan (pass 1): %w", err)
+		return nil, fmt.Errorf("podfile.lock scan (pass 1): %w", err)
 	}
 
 	// Second pass: collect all resolved pods with exact versions.
@@ -113,7 +113,7 @@ func parseCocoaPodsLock(raw []byte, _ map[string]bool) ([]domain.Dependency, err
 		})
 	}
 	if err := sc2.Err(); err != nil {
-		return nil, fmt.Errorf("Podfile.lock scan (pass 2): %w", err)
+		return nil, fmt.Errorf("podfile.lock scan (pass 2): %w", err)
 	}
 	return out, nil
 }
