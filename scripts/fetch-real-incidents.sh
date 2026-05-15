@@ -15,7 +15,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST="$ROOT/examples/incidents-real"
+# DEST can be overridden by env (used by Docker where /incidents-real is mounted)
+DEST="${DEST:-$ROOT/examples/incidents-real}"
 
 mkdir -p "$DEST"
 
@@ -39,7 +40,10 @@ neutralize_dir() {
         sed -i \
             -e 's|pastebin\.com/raw/[A-Za-z0-9]*|pastebin.com/raw/NEUTRALIZED|g' \
             -e 's|hastebin\.com/[A-Za-z0-9]*|hastebin.com/NEUTRALIZED|g' \
-            -e 's|transfer\.sh/[A-Za-z0-9]*|transfer.sh/NEUTRALIZED|g' \
+            -e 's|transfer\.sh/[A-Za-z0-9/._-]*|transfer.sh/NEUTRALIZED|g' \
+            -e 's|getsession\.org/[A-Za-z0-9/._-]*|getsession.org/NEUTRALIZED|g' \
+            -e 's|discord\.com/api/webhooks/[0-9]*/[A-Za-z0-9_-]*|discord.com/api/webhooks/NEUTRALIZED|g' \
+            -e 's|api\.telegram\.org/bot[A-Za-z0-9_:]*/[A-Za-z0-9]*|api.telegram.org/bot/NEUTRALIZED|g' \
             "$f" 2>/dev/null || true
     done
 
@@ -127,20 +131,27 @@ fetch_gem() {
 # --------------------------------------------------------------------------
 
 echo "=== npm ==="
-fetch_npm "event-stream"       "3.3.6"
-fetch_npm "ua-parser-js"       "0.7.29"
-fetch_npm "coa"                "2.0.3"
-fetch_npm "rc"                 "1.2.9"
-fetch_npm "node-ipc"           "11.0.0"
+# Still on registry (verified 2026-05-15)
+fetch_npm "node-ipc"           "11.0.0"       # protestware: overwrites files on RU/BY IPs
+fetch_npm "@solana/web3.js"    "1.95.5"       # supply-chain hijack: exfil via session.org
+
+# Removed from registry — obtain from OSSF malicious-packages archive manually:
+#   https://github.com/ossf/malicious-packages
+# fetch_npm "event-stream"     "3.3.6"        # 404 — unpublished
+# fetch_npm "ua-parser-js"     "0.7.29"       # 404 — unpublished
+# fetch_npm "coa"              "2.0.3"        # 404 — unpublished
+# fetch_npm "rc"               "1.2.9"        # 404 — unpublished
 
 echo "=== pypi ==="
-fetch_pypi "ctx"               "0.2.2"
-fetch_pypi "colourama"         "0.1.6"
+# PyPI removed these; obtain from OSSF archive manually:
+# fetch_pypi "ctx"             "0.2.2"        # 404 — removed
+# fetch_pypi "colourama"       "0.1.6"        # 404 — removed
 
 echo "=== rubygems ==="
-fetch_gem  "rest-client"       "1.6.13"
-fetch_gem  "strong_password"   "0.0.7"
-fetch_gem  "bootstrap-sass"    "3.2.0.3"
+# RubyGems removed these; obtain from OSSF archive manually:
+# fetch_gem  "rest-client"     "1.6.13"       # 404 — removed
+# fetch_gem  "strong_password" "0.0.7"        # 404 — removed
+# fetch_gem  "bootstrap-sass"  "3.2.0.3"      # 404 — removed
 
 echo ""
 echo "Done. Run: AEGIS_REAL_INCIDENTS=1 make test-e2e"
