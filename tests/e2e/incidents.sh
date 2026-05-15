@@ -94,24 +94,15 @@ CASES=(
 
 pass=0
 fail=0
-for row in "${CASES[@]}"; do
-    IFS='|' read -r eco name ver caps <<<"$row"
-    fixture="$ROOT/examples/incidents/$eco/$name-$ver"
-    if [ ! -d "$fixture" ]; then
-        echo "FAIL  $eco/$name@$ver — fixture missing: $fixture"
-        fail=$((fail + 1))
-        continue
-    fi
-    out=$("$AEGIS" analyze "$eco/$name@$ver" --local "$fixture" --json 2>&1 || true)
 
-    miss=""
+run_case() {
+    local eco="$1" name="$2" ver="$3" caps="$4" fixture="$5"
+    local out miss=""
+    out=$("$AEGIS" analyze "$eco/$name@$ver" --local "$fixture" --json 2>&1 || true)
     IFS=',' read -r -a want <<<"$caps"
     for cap in "${want[@]}"; do
-        if ! grep -q "\"$cap\"" <<<"$out"; then
-            miss+=" $cap"
-        fi
+        grep -q "\"$cap\"" <<<"$out" || miss+=" $cap"
     done
-
     if [ -z "$miss" ]; then
         echo "ok    $eco/$name@$ver — caps: $caps"
         pass=$((pass + 1))
@@ -120,7 +111,53 @@ for row in "${CASES[@]}"; do
         echo "      output: $out"
         fail=$((fail + 1))
     fi
+}
+
+# Synthetic fixtures (always run)
+for row in "${CASES[@]}"; do
+    IFS='|' read -r eco name ver caps <<<"$row"
+    fixture="$ROOT/examples/incidents/$eco/$name-$ver"
+    if [ ! -d "$fixture" ]; then
+        echo "FAIL  $eco/$name@$ver — fixture missing: $fixture"
+        fail=$((fail + 1))
+        continue
+    fi
+    run_case "$eco" "$name" "$ver" "$caps" "$fixture"
 done
+
+# Real fixtures — only when AEGIS_REAL_INCIDENTS=1 and directory exists.
+# Download via scripts/fetch-real-incidents.sh (never committed to git).
+if [ "${AEGIS_REAL_INCIDENTS:-}" = "1" ]; then
+    REAL_DIR="$ROOT/examples/incidents-real"
+    if [ ! -d "$REAL_DIR" ]; then
+        echo "warn: AEGIS_REAL_INCIDENTS=1 but $REAL_DIR not found — run scripts/fetch-real-incidents.sh"
+    else
+        echo ""
+        echo "=== real fixtures ==="
+        # Same format: ecosystem|name|version|caps
+        REAL_CASES=(
+            "npm|event-stream|3.3.6|install-hook-suspicious,obfuscated-payload,suspicious-url,dynamic-eval"
+            "npm|ua-parser-js|0.7.29|install-hook-suspicious,binary-dropper"
+            "npm|coa|2.0.3|install-hook-suspicious"
+            "npm|rc|1.2.9|install-hook-suspicious"
+            "npm|node-ipc|11.0.0|net-egress,fs-write-outside-root,suspicious-url"
+            "pypi|ctx|0.2.2|net-egress,suspicious-url"
+            "pypi|colourama|0.1.6|typosquat-risk,shell-spawn,net-egress"
+            "rubygems|rest-client|1.6.13|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
+            "rubygems|strong_password|0.0.7|dynamic-eval,net-egress,obfuscated-payload,suspicious-url"
+            "rubygems|bootstrap-sass|3.2.0.3|dynamic-eval,base64-decode"
+        )
+        for row in "${REAL_CASES[@]}"; do
+            IFS='|' read -r eco name ver caps <<<"$row"
+            fixture="$REAL_DIR/$eco/${name//\//_}-$ver"
+            if [ ! -d "$fixture" ]; then
+                echo "skip  $eco/$name@$ver — not downloaded yet"
+                continue
+            fi
+            run_case "$eco" "$name" "$ver" "$caps" "$fixture"
+        done
+    fi
+fi
 
 echo
 echo "$pass passed, $fail failed (${#CASES[@]} total)"
