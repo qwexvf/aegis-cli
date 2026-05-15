@@ -38,6 +38,12 @@ func checkSourcePatterns(pkg NormalizedPackage) []domain.Capability {
 		if !found.obfuscation && isPythonSource(filename) && pythonObfuscatedPayloadPattern.Match(body) {
 			found.obfuscation = true
 		}
+		if !found.obfuscation && isRSource(filename) && rObfuscatedPayloadPattern.Match(body) {
+			found.obfuscation = true
+		}
+		if !found.obfuscation && isPerlSource(filename) && perlObfuscatedPayloadPattern.Match(body) {
+			found.obfuscation = true
+		}
 		if !found.shellFetcher && shellFetcherPattern.Match(body) {
 			found.shellFetcher = true
 		}
