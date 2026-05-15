@@ -76,6 +76,9 @@ CASES=(
     "nuget|Rougeit|1.0.0|shell-spawn,dynamic-eval,base64-decode,net-egress,fs-write-outside-root,suspicious-url"
     "nuget|SqlMapper|1.0.0|shell-spawn,dynamic-eval,base64-decode,net-egress,fs-write-outside-root,suspicious-url"
 
+    # npm — Mini Shai-Hulud / TanStack attack shape (2026)
+    "npm|tanstack-router|1.169.5|known-malware-ioc,install-hook-suspicious,git-dep-in-optional,base64-decode,net-egress,vcs-dependency"
+
     # CRAN (R) — .onLoad typosquat with eval(parse(text=url(...))) + curl|sh exfil
     "cran|ggplott2|1.0.0|obfuscated-payload,suspicious-url,install-hook-suspicious,typosquat-risk"
 
