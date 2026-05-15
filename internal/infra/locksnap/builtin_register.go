@@ -78,4 +78,7 @@ func init() {
 
 	// Perl — cpanfile.snapshot produced by Carton (`carton install`).
 	Register(newFuncParser("cpanfile.snapshot", domain.EcoCPAN, parseCpanfileSnapshot))
+
+	// CocoaPods (iOS/macOS) — Podfile.lock produced by `pod install`.
+	Register(newFuncParser("Podfile.lock", domain.EcoCocoaPods, parseCocoaPodsLock))
 }

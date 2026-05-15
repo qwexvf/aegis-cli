@@ -42,6 +42,7 @@ var defaultPipeline = NewPipeline(
 		&rParser{},
 		&haskellParser{},
 		&perlParser{},
+		&cocoaPodsParser{},
 	},
 	[]Check{
 		checkInstallHooks,    // hook body × malware patterns → CapInstallHookSuspicious
