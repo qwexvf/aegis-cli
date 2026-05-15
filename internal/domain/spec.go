@@ -36,6 +36,7 @@ const (
 	EcoCRAN      Ecosystem = "cran"
 	EcoHackage   Ecosystem = "hackage"
 	EcoCPAN      Ecosystem = "cpan"
+	EcoCocoaPods Ecosystem = "cocoapods"
 )
 
 // AllEcosystems returns every ecosystem the CLI recognises.
@@ -45,6 +46,7 @@ func AllEcosystems() []Ecosystem {
 		EcoRubyGems, EcoPackagist, EcoNuGet, EcoGleam,
 		EcoPub, EcoSwiftPM,
 		EcoCRAN, EcoHackage, EcoCPAN,
+		EcoCocoaPods,
 	}
 }
 

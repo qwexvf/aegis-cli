@@ -193,9 +193,16 @@ func scriptMatchesMalwarePattern(body string) bool {
 var silentExitRunnerPattern = regexp.MustCompile(
 	`(?i)\b(bun|npx|deno)\s+(run\s+)?\S+\.(js|ts|mjs|cjs|tsx|jsx)\s*&&\s*exit\s+[0-9]+`)
 
-// nonStandardRuntimePattern matches `bun run <localfile>` or `deno run
-// <localfile>` in isolation (without the && exit N suffix). Both are
-// non-standard runtimes for published npm packages; their presence alone
-// is anomalous enough to warrant inspection.
+// nonStandardRuntimePattern matches non-standard runtime invocations of local
+// script files without a required `&& exit N` suffix:
+//
+//	bun run payload.ts     — bun always requires `run`
+//	deno run payload.ts    — deno 1.x
+//	deno payload.ts        — deno 2.x (no `run` subcommand needed)
+//	npx payload.js         — npx executing a local file directly
+//
+// All four forms are anomalous in a published npm package's lifecycle
+// scripts. Presence alone warrants inspection even without the silent-exit
+// trick (which silentExitRunnerPattern covers separately).
 var nonStandardRuntimePattern = regexp.MustCompile(
-	`(?i)\b(bun|deno)\s+run\s+\S+\.(js|ts|mjs|cjs|tsx|jsx)`)
+	`(?i)\b(?:bun\s+run\s+|deno\s+(?:run\s+)?|npx\s+)\S+\.(js|ts|mjs|cjs|tsx|jsx)`)

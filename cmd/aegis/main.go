@@ -23,6 +23,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
 	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
+	"github.com/qwexvf/aegis-cli/internal/infra/cratesregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/depsdotdev"
 	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis-cli/internal/infra/envprobe"
@@ -33,8 +34,10 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/locksnap"
 	"github.com/qwexvf/aegis-cli/internal/infra/ndjsonaudit"
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
+	"github.com/qwexvf/aegis-cli/internal/infra/nugetregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/osv"
 	"github.com/qwexvf/aegis-cli/internal/infra/pypiregistry"
+	"github.com/qwexvf/aegis-cli/internal/infra/rubygemsregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/ttyprompt"
 	"github.com/qwexvf/aegis-cli/internal/infra/vulnlookup"
 	"github.com/qwexvf/aegis-cli/internal/presenter/cli"
@@ -267,9 +270,13 @@ func main() {
 	// License fetcher: disabled when AEGIS_NO_VULN_LOOKUP=1 (same offline
 	// flag as vuln lookup — both hit external registries).
 	if os.Getenv("AEGIS_NO_VULN_LOOKUP") == "" {
-		npmLicense := npmregistry.New(npmregistry.WithHTTPClient(httpClient))
-		pypiLicense := pypiregistry.New(pypiregistry.WithHTTPClient(httpClient))
-		snapshot.WithLicenseFetcher(licensefetch.New(npmLicense, pypiLicense))
+		snapshot.WithLicenseFetcher(licensefetch.New(
+			npmregistry.New(npmregistry.WithHTTPClient(httpClient)),
+			pypiregistry.New(pypiregistry.WithHTTPClient(httpClient)),
+			cratesregistry.New(cratesregistry.WithHTTPClient(httpClient)),
+			rubygemsregistry.New(rubygemsregistry.WithHTTPClient(httpClient)),
+			nugetregistry.New(nugetregistry.WithHTTPClient(httpClient)),
+		))
 	}
 
 	// Behaviour-based malware heuristics: suspicious install hooks,
