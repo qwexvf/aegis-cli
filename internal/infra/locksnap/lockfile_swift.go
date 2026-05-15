@@ -34,7 +34,7 @@ func parseSwiftPackageResolved(raw []byte, _ map[string]bool) ([]domain.Dependen
 		Version int `json:"version"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return nil, fmt.Errorf("Package.resolved: %w", err)
+		return nil, fmt.Errorf("package.resolved: %w", err)
 	}
 
 	switch envelope.Version {
@@ -57,7 +57,7 @@ func parseSwiftResolvedV2(raw []byte) ([]domain.Dependency, error) {
 		} `json:"pins"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, fmt.Errorf("Package.resolved v2: %w", err)
+		return nil, fmt.Errorf("package.resolved v2: %w", err)
 	}
 	out := make([]domain.Dependency, 0, len(doc.Pins))
 	for _, pin := range doc.Pins {
@@ -93,7 +93,7 @@ func parseSwiftResolvedV1(raw []byte) ([]domain.Dependency, error) {
 		} `json:"object"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, fmt.Errorf("Package.resolved v1: %w", err)
+		return nil, fmt.Errorf("package.resolved v1: %w", err)
 	}
 	out := make([]domain.Dependency, 0, len(doc.Object.Pins))
 	for _, pin := range doc.Object.Pins {
