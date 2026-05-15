@@ -4,6 +4,20 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [Unreleased]
+
+### Added
+
+* **ecosystems:** Dart/Pub (`pubspec.lock`), Swift/SwiftPM (`Package.resolved` v1+v2), Elixir (`mix.lock`) — 9→12 ecosystems
+* **ecosystems:** R/CRAN (`renv.lock`), Haskell/Hackage (`cabal.project.freeze`, `stack.yaml.lock`), Perl/CPAN (`cpanfile.snapshot`) — 12→15 ecosystems
+* **heuristics:** git/path dep detection for Dart (`pubspec.yaml`), Swift (`Package.swift`), Elixir (`mix.exs`), R (`DESCRIPTION` Remotes), Haskell (`cabal.project`, `package.yaml`), Perl (`cpanfile`)
+* **ci:** supply-chain self-audit — aegis scans its own dependencies on every PR/push via `ci.yml`; daily retroactive CVE rescan via `supply-chain.yml`
+* **security:** all GitHub Actions `uses:` references pinned to commit SHAs across all workflow files
+
+### Fixed
+
+* `pubspec.lock` parser double-flushed the last package when a `sdks:` section was present
+
 ## [0.18.0](https://github.com/qwexvf/aegis-cli/compare/v0.17.1...v0.18.0) (2026-05-13)
 
 
