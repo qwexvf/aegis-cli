@@ -134,21 +134,17 @@ cmd      → interface → usecase → domain
 │   │   └── allowlist_render.go    AllowlistPresenter
 │   │
 │   └── infra/                     concrete adapters
-│       ├── aegisapi/              HTTP DecisionChecker
-│       ├── allowlist/             YAML loader (user + project)
-│       ├── astscan/               LanguageScanner dispatcher
-│       │   ├── jsscan/            tree-sitter-javascript + queries.scm
-│       │   ├── pyscan/            tree-sitter-python + queries.scm
-│       │   ├── rbscan/            tree-sitter-ruby + queries.scm
-│       │   ├── rsscan/            tree-sitter-rust + queries.scm
-│       │   └── goscan/            tree-sitter-go + queries.scm
 │       ├── aegisapi/              HTTP DecisionChecker + VulnLookup
-│       ├── diskcache/             DecisionCache + FingerprintCache
+│       ├── allowlist/             YAML loader (builtin + user + project)
+│       ├── depsdotdev/            deps.dev client (VulnLookup + deprecation)
+│       ├── diskcache/             DecisionCache + FingerprintCache + KEV cache
 │       ├── envprobe/              CI markers + AEGIS_OVERRIDE/_REASON
-│       ├── heuristics/            install-hook regex, URL scan, typosquat,
-│       │                          binary-dropper, obfuscated-payload patterns
+│       ├── epss/                  FIRST.org EPSS API client
+│       ├── ghsalookup/            GitHub Security Advisories client
 │       ├── jspkgsource/           npm tarball fetch + extract
-│       ├── locksnap/              lockfile parsers + zstd snapshot store
+│       ├── kev/                   CISA Known Exploited Vulnerabilities catalog
+│       ├── licensefetch/          per-registry license lookup
+│       ├── locksnap/              lockfile parsers + snapshot store
 │       │   ├── lockfile_npm.go    package-lock.json v1/v2/v3
 │       │   ├── lockfile_pnpm.go   pnpm-lock.yaml
 │       │   ├── lockfile_yarn.go   yarn.lock classic + berry
@@ -158,13 +154,33 @@ cmd      → interface → usecase → domain
 │       │   ├── lockfile_cargo.go  Cargo.lock
 │       │   └── lockfile_go.go     go.mod / go.sum
 │       ├── ndjsonaudit/           AuditWriter (NDJSON to ~/.aegis/audit.jsonl)
+│       ├── npmattestations/       npm SLSA provenance lookup
 │       ├── npmregistry/           VersionResolver (npm registry)
+│       ├── openvex/               OpenVEX document parser
 │       ├── osv/                   VulnLookup against OSV.dev (default)
 │       ├── pmwrapper/             PackageManager: npm/bun/yarn/pnpm
+│       ├── sarif/                 SARIF 2.1.0 emitter
+│       ├── sbomcdx/               CycloneDX + SPDX SBOM builders
+│       ├── scan/                  scanner-shaped packages
+│       │   ├── ast/               LanguageScanner dispatcher
+│       │   │   ├── js/            tree-sitter-javascript + queries.scm
+│       │   │   ├── py/            tree-sitter-python
+│       │   │   ├── ruby/          tree-sitter-ruby
+│       │   │   ├── rust/          tree-sitter-rust
+│       │   │   ├── golang/        tree-sitter-go
+│       │   │   ├── java/          tree-sitter-java
+│       │   │   ├── php/           tree-sitter-php
+│       │   │   ├── csharp/        tree-sitter-c-sharp
+│       │   │   └── gleam/         tree-sitter-gleam
+│       │   ├── actions/           GitHub Actions workflow scanner
+│       │   ├── heuristics/        install-hook regex, URL scan, typosquat,
+│       │   │                      binary-dropper, hardcoded-secret patterns
+│       │   └── drift/             tarball vs upstream git tag drift
 │       ├── ttyprompt/             Confirmer (/dev/tty)
-│       └── vulnlookup/            Fallback composer (Aegis primary, OSV secondary)
+│       ├── vulnenrich/            post-lookup EPSS + KEV enrichment
+│       └── vulnlookup/            Fallback / MultiSource composers
 │
-├── Makefile                       build / build-release / build-core / size
+├── Makefile                       build / build-release / size
 ├── README.md                      user-facing entrypoint
 └── go.mod
 ```

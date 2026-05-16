@@ -7,13 +7,13 @@ sidebar:
 ---
 
 
-Every subcommand `aegis --help` lists, with flags, examples, exit codes, and output format. Authoritative as of `v0.1.0`.
+Every subcommand `aegis --help` lists, with flags, examples, exit codes, and output format. Authoritative as of the current main branch.
 
 > **Legend**: 🌐 marks commands that **require a reachable Aegis API
 > server** (set via `AEGIS_API_URL`). The hosted Aegis Cloud is not
 > yet available and the platform repo is currently private — these
 > commands are documented and shipped, but won't function for most
-> users in `v0.1.x`. Everything else works locally with no backend.
+> local users today. Everything else works locally with no backend.
 
 Global flags (apply to every subcommand):
 

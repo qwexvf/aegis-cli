@@ -8,36 +8,43 @@ Supply-chain security scanner for 16 package ecosystems and GitHub Actions workf
 
 ![demo](docs/demo.gif)
 
-- **CVE / GHSA lookup** — batch query against [OSV.dev](https://osv.dev), all 16 ecosystems in one shot
+- **CVE / GHSA lookup** — batch query against [OSV.dev](https://osv.dev), 16 ecosystems in one shot; every finding carries `FixedIn` (the smallest version that resolves it)
+- **EPSS + KEV enrichment** — every CVE gets the FIRST.org Exploit Prediction Scoring System probability; `[KEV]` badge when the CVE is in CISA's Known Exploited Vulnerabilities catalog (actively exploited right now)
 - **AST capability scan** — tree-sitter walks every package source; surfaces `shell-spawn`, `net-egress`, `dynamic-eval`, `fs-write-outside-root` and more, even on packages with no advisory yet
 - **Taint analysis** — constant folding evaluates `String.fromCharCode([104,116,...])` arrays to detect obfuscated C2 hostnames; variable taint tracking catches `atob(x) → eval(x)` patterns that bypass simple pattern matching
+- **Hardcoded secrets in dep source** — detects AWS AKIA/ASIA keys, GitHub tokens, npm tokens, PEM private keys, Stripe / SendGrid / Twilio keys, Slack bot tokens, Bearer tokens ≥ 40 chars embedded in package source — no legitimate dep ships real credentials
 - **Behavior heuristics** — postinstall hooks doing `curl|sh`, obfuscated payloads, typosquat names (Levenshtein distance 2), maintainer hijack patterns, patch-version capability drift, git-SHA optional deps (worm propagation vector), unlisted large files (smuggled payloads), yanked-version detection
+- **Symbol-level reachability** — when OSV publishes `affected[].ecosystem_specific.functions` for an advisory, aegis cross-references against the user code's `UsedSymbols` and suppresses advisories where the vulnerable function is provably never called
+- **OpenVEX suppression** — `aegis ci --vex project.vex` loads a VEX document and clears `not_affected` advisories from verdict scoring (still shown greyed-out in output, omitted from JSON)
+- **License policy gate** — `aegis ci --deny-licenses GPL-3.0,AGPL-3.0` or `--allow-licenses MIT,Apache-2.0` enforce SPDX policy; unknown license blocks under allow-list mode
+- **Package health** — `deprecated` flag fetched from deps.dev for npm / PyPI / Cargo / Go / Maven / NuGet; `aegis ci --fail-on-deprecated` opt-in gate
+- **Guided remediation** — `aegis fix` picks the highest `FixedIn` per dep (the smallest single upgrade that clears every resolvable CVE) and emits ecosystem-appropriate upgrade commands; `--script` pipes straight to `sh`
 - **npm provenance** — fetches SLSA attestations from the npm registry during `snapshot enrich`; extracts source repo + git commit from SLSA v1 predicates; flags packages with no attestation as an informational risk signal
 - **Transitive deps included** — lockfile-based; every resolved package is scanned, not just direct deps
 - **Polyglot monorepo** — finds all lockfiles, merges into a single `aegis.lock`
-- **CycloneDX SBOM** — `aegis sbom` emits a standards-compliant BOM (1.5 or 1.6 via `--cdx-version`); `--include-vulns` attaches OSV advisories; package licenses populated from registries (npm, PyPI, Cargo, RubyGems, NuGet)
+- **CycloneDX + SPDX SBOMs** — `aegis sbom` emits CycloneDX 1.5/1.6 or SPDX 2.3 JSON; `--include-vulns` attaches OSV advisories; package licenses populated from registries; `--attest` produces in-toto attestations via cosign
 - **GitHub Actions scanner** — `aegis actions scan` walks `.github/workflows/*.yml` (or fetches from a remote repo with `--repo owner/repo`); flags unpinned action refs, `pull_request_target` + checkout escalation, OIDC + npm publish worm vector, `actions/cache` poisoning, script injection, `curl|sh` in `run:` blocks, and `permissions: write-all`; outputs SARIF 2.1.0 with `--sarif` for GitHub Code Scanning
 - **Offline capable** — `AEGIS_NO_VULN_LOOKUP=1` for air-gapped use; self-hosted OSV mirror via `AEGIS_OSV_URL`
 
 ## Ecosystems
 
-| Ecosystem     | Lockfiles                                                             | OSV | AST scan       |
-|---------------|-----------------------------------------------------------------------|-----|----------------|
-| **npm**       | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`       | ✅  | ✅ `jsscan`    |
-| **PyPI**      | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `requirements.txt`         | ✅  | ✅ `pyscan`    |
-| **RubyGems**  | `Gemfile.lock`                                                        | ✅  | ✅ `rbscan`    |
-| **crates.io** | `Cargo.lock`                                                          | ✅  | ✅ `rsscan`    |
-| **Go**        | `go.sum` / `go.mod`                                                   | ✅  | ✅ `goscan`    |
-| **Maven**     | `pom.xml`, `gradle.lockfile`                                          | ✅  | ✅ `jvscan`    |
-| **Packagist** | `composer.lock`                                                       | ✅  | ✅ `phpscan`   |
-| **NuGet**     | `packages.lock.json`                                                  | ✅  | ✅ `csscan`    |
-| **Hex**       | `manifest.toml` (Gleam), `mix.lock` (Elixir)                         | ✅  | ✅ `gleamscan` |
-| **Pub**       | `pubspec.lock`                                                        | ✅  | ✅             |
-| **SwiftURL**  | `Package.resolved`                                                    | ✅  | ✅             |
-| **CRAN**      | `renv.lock`                                                           | ✅  | ✅             |
-| **Hackage**   | `cabal.project.freeze`, `stack.yaml.lock`                             | ✅  | ✅             |
-| **CPAN**      | `cpanfile.snapshot`                                                   | ✅  | ✅             |
-| **CocoaPods** | `Podfile.lock`                                                        | ✅  | ✅             |
+| Ecosystem     | Lockfiles                                                             | OSV | AST scanner  |
+|---------------|-----------------------------------------------------------------------|-----|--------------|
+| **npm**       | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`       | ✅  | ✅ `js`      |
+| **PyPI**      | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `requirements.txt`         | ✅  | ✅ `py`      |
+| **RubyGems**  | `Gemfile.lock`                                                        | ✅  | ✅ `ruby`    |
+| **crates.io** | `Cargo.lock`                                                          | ✅  | ✅ `rust`    |
+| **Go**        | `go.sum` / `go.mod`                                                   | ✅  | ✅ `golang`  |
+| **Maven**     | `pom.xml`, `gradle.lockfile`                                          | ✅  | ✅ `java`    |
+| **Packagist** | `composer.lock`                                                       | ✅  | ✅ `php`     |
+| **NuGet**     | `packages.lock.json`                                                  | ✅  | ✅ `csharp`  |
+| **Hex**       | `manifest.toml` (Gleam), `mix.lock` (Elixir)                         | ✅  | ✅ `gleam`   |
+| **Pub**       | `pubspec.lock`                                                        | ✅  | ✅           |
+| **SwiftURL**  | `Package.resolved`                                                    | ✅  | ✅           |
+| **CRAN**      | `renv.lock`                                                           | ✅  | ✅           |
+| **Hackage**   | `cabal.project.freeze`, `stack.yaml.lock`                             | ✅  | ✅           |
+| **CPAN**      | `cpanfile.snapshot`                                                   | ✅  | ✅           |
+| **CocoaPods** | `Podfile.lock`                                                        | ✅  | ✅           |
 
 ## Install
 
@@ -45,10 +52,13 @@ Supply-chain security scanner for 16 package ecosystems and GitHub Actions workf
 go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
 ```
 
-Pre-built binaries (cosign-signed, SLSA provenance): [Releases](https://github.com/qwexvf/aegis-cli/releases)
+One all-in-one binary — every PM wrapper and the AST scanner ship together.
+Requires Go 1.26+.
+
+Pre-built linux/amd64 binary on [Releases](https://github.com/qwexvf/aegis-cli/releases),
+cosign-signed with SLSA build provenance:
 
 ```sh
-# verify before running
 cosign verify-blob \
   --certificate-identity-regexp 'https://github.com/qwexvf/aegis-cli/.github/workflows/release.yml.*' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
@@ -71,7 +81,15 @@ aegis snapshot rescan                # re-query OSV for new CVEs on saved deps
 
 # CI gate — exits 1 on findings ≥ threshold
 aegis ci --fail-on=block
-aegis ci --fail-on=prompt --json     # machine-readable output
+aegis ci --fail-on=prompt --json                          # machine-readable
+aegis ci --deny-licenses=GPL-3.0,AGPL-3.0                 # license policy
+aegis ci --vex project.vex                                # suppress not_affected CVEs
+aegis ci --fail-on-deprecated                             # treat deprecated deps as findings
+
+# guided remediation — emit upgrade commands that clear every fixable CVE
+aegis fix                                                 # human-readable plan
+aegis fix --json                                          # tooling integration
+aegis fix --script | sh                                   # apply directly
 
 # analyze a package ad hoc (fetches from registry)
 aegis analyze lodash@4.17.21
@@ -81,10 +99,11 @@ aegis analyze --evidence ua-parser-js@0.7.29
 aegis analyze rubygems/rest-client@1.6.13 \
     --local examples/incidents/rubygems/rest-client-1.6.13/
 
-# SBOM export (CycloneDX JSON)
+# SBOM export — CycloneDX or SPDX, with optional in-toto attestation
 aegis sbom > sbom.json
-aegis sbom --pretty --include-vulns -o sbom.json
-aegis sbom --project=my-service --cdx-version=1.6 -o sbom.json
+aegis sbom --format=spdx -o sbom.spdx.json
+aegis sbom --include-vulns --pretty -o sbom.json
+aegis sbom --format=cyclonedx -o sbom.json --attest      # in-toto via cosign
 
 # allowlist
 aegis allowlist add lodash \
