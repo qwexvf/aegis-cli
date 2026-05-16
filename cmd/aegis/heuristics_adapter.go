@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/qwexvf/aegis-cli/internal/domain"
-	"github.com/qwexvf/aegis-cli/internal/infra/heuristics"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/heuristics"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 

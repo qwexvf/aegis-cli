@@ -101,7 +101,7 @@ type WorkflowFinding struct {
 }
 
 // WorkflowFindingKind enumerates the heuristic checks. Each kind maps
-// to one detector in internal/infra/ghactions/heuristics.go.
+// to one detector in internal/infra/scan/actions/heuristics.go.
 type WorkflowFindingKind int
 
 const (

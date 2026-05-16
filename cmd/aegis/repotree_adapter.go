@@ -7,11 +7,11 @@ import (
 	"os"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
-	"github.com/qwexvf/aegis-cli/internal/infra/tarballdrift"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/drift"
 )
 
 // repoTreeAdapter bridges the usecase.RepoTreeFetcher port to the
-// infra/tarballdrift package: parses package.json for the repository
+// infra/drift package: parses package.json for the repository
 // URL, picks the best matching tag from the candidate list, fetches
 // the recursive git tree, and surfaces the file paths.
 //
@@ -21,15 +21,15 @@ import (
 // verdict-pushing error. Errors are returned only for caller-side
 // programming bugs that aren't expected at runtime.
 type repoTreeAdapter struct {
-	client *tarballdrift.Client
+	client *drift.Client
 }
 
 func newRepoTreeAdapter() *repoTreeAdapter {
-	var opts []tarballdrift.Option
+	var opts []drift.Option
 	if t := os.Getenv("GITHUB_TOKEN"); t != "" {
-		opts = append(opts, tarballdrift.WithToken(t))
+		opts = append(opts, drift.WithToken(t))
 	}
-	return &repoTreeAdapter{client: tarballdrift.New(opts...)}
+	return &repoTreeAdapter{client: drift.New(opts...)}
 }
 
 // FetchRepoTree resolves the repo from package.json, walks the tag
@@ -58,19 +58,19 @@ func (a *repoTreeAdapter) FetchRepoTree(
 		return nil, "", nil
 	}
 
-	owner, repo, parseErr := tarballdrift.ParseRepository(field)
+	owner, repo, parseErr := drift.ParseRepository(field)
 	if parseErr != nil {
 		return nil, "", nil // unsupported host or invalid format — skip
 	}
 
 	// Walk candidate tags; first one that resolves wins.
-	for _, ref := range tarballdrift.TagCandidates(name, version) {
-		if !tarballdrift.LooksLikeVersion(ref) && !looksLikePkgScopedTag(ref) {
+	for _, ref := range drift.TagCandidates(name, version) {
+		if !drift.LooksLikeVersion(ref) && !looksLikePkgScopedTag(ref) {
 			continue
 		}
 		tree, fetchErr := a.client.Tree(ctx, owner, repo, ref)
 		if fetchErr != nil {
-			if errors.Is(fetchErr, tarballdrift.ErrTreeNotFound) {
+			if errors.Is(fetchErr, drift.ErrTreeNotFound) {
 				continue
 			}
 			// Rate-limit, network, or unexpected error — skip the
@@ -99,22 +99,22 @@ func (a *repoTreeAdapter) FetchRepoTree(
 
 // decodeRepositoryField accepts either the string form or the object
 // form npm allows for package.json "repository".
-func decodeRepositoryField(raw json.RawMessage) (tarballdrift.RepositoryField, bool) {
+func decodeRepositoryField(raw json.RawMessage) (drift.RepositoryField, bool) {
 	if len(raw) == 0 {
-		return tarballdrift.RepositoryField{}, false
+		return drift.RepositoryField{}, false
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
-		return tarballdrift.RepositoryField{Raw: s}, true
+		return drift.RepositoryField{Raw: s}, true
 	}
 	var obj struct {
 		Type string `json:"type"`
 		URL  string `json:"url"`
 	}
 	if err := json.Unmarshal(raw, &obj); err == nil && obj.URL != "" {
-		return tarballdrift.RepositoryField{Type: obj.Type, Raw: obj.URL}, true
+		return drift.RepositoryField{Type: obj.Type, Raw: obj.URL}, true
 	}
-	return tarballdrift.RepositoryField{}, false
+	return drift.RepositoryField{}, false
 }
 
 // repositorySubdir returns the optional "directory" field from the
@@ -135,7 +135,7 @@ func repositorySubdir(raw json.RawMessage) string {
 // the network only fires for plausible tag shapes.
 func looksLikePkgScopedTag(ref string) bool {
 	if i := lastByte(ref, '@'); i > 0 && i < len(ref)-1 {
-		return tarballdrift.LooksLikeVersion(ref[i+1:])
+		return drift.LooksLikeVersion(ref[i+1:])
 	}
 	return false
 }

@@ -125,7 +125,7 @@ func parsePkgSpec(s string) (domain.Ecosystem, string, string, error) {
 
 // isKnownEcosystem reports whether s is one of the ecosystems the CLI
 // recognises. Registry-fetch only supports npm; others are valid for
-// --local AST scans (pyscan / rbscan / gleamscan / ...).
+// --local AST scans (py / ruby / gleam / ...).
 func isKnownEcosystem(s string) bool {
 	return slices.Contains(domain.AllEcosystems(), domain.Ecosystem(s))
 }

@@ -17,20 +17,20 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/reporterid"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast"
-	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/csscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/gleamscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/goscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/jsscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/jvscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/phpscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/pyscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/rbscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/rsscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/csharp"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/gleam"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/golang"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/java"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/js"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/php"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/py"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/ruby"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/rust"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiClient *aegisapi.Client, httpClient *http.Client) {
-	jsScanner, err := jsscan.New()
+	jsScanner, err := js.New()
 	if err != nil {
 		// Embedded queries malformed = developer bug. Don't refuse to
 		// run; degrade to no risk engine and warn.
@@ -52,14 +52,14 @@ func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiC
 		}
 		dispatcher.Register(eco, s)
 	}
-	tryRegister("Python", domain.EcoPyPI, func() (ast.LanguageScanner, error) { return pyscan.New() })
-	tryRegister("Ruby", domain.EcoRubyGems, func() (ast.LanguageScanner, error) { return rbscan.New() })
-	tryRegister("Rust", domain.EcoCrates, func() (ast.LanguageScanner, error) { return rsscan.New() })
-	tryRegister("Go", domain.EcoGo, func() (ast.LanguageScanner, error) { return goscan.New() })
-	tryRegister("Java", domain.EcoMaven, func() (ast.LanguageScanner, error) { return jvscan.New() })
-	tryRegister("PHP", domain.EcoPackagist, func() (ast.LanguageScanner, error) { return phpscan.New() })
-	tryRegister("C#", domain.EcoNuGet, func() (ast.LanguageScanner, error) { return csscan.New() })
-	tryRegister("Gleam", domain.EcoGleam, func() (ast.LanguageScanner, error) { return gleamscan.New() })
+	tryRegister("Python", domain.EcoPyPI, func() (ast.LanguageScanner, error) { return py.New() })
+	tryRegister("Ruby", domain.EcoRubyGems, func() (ast.LanguageScanner, error) { return ruby.New() })
+	tryRegister("Rust", domain.EcoCrates, func() (ast.LanguageScanner, error) { return rust.New() })
+	tryRegister("Go", domain.EcoGo, func() (ast.LanguageScanner, error) { return golang.New() })
+	tryRegister("Java", domain.EcoMaven, func() (ast.LanguageScanner, error) { return java.New() })
+	tryRegister("PHP", domain.EcoPackagist, func() (ast.LanguageScanner, error) { return php.New() })
+	tryRegister("C#", domain.EcoNuGet, func() (ast.LanguageScanner, error) { return csharp.New() })
+	tryRegister("Gleam", domain.EcoGleam, func() (ast.LanguageScanner, error) { return gleam.New() })
 
 	fetcher := jspkgsource.New(jspkgsource.WithHTTPClient(httpClient))
 	snapshot.WithRiskEngine(

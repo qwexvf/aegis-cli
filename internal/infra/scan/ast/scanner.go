@@ -7,9 +7,9 @@
 //	    ▲
 //	Dispatcher (this file)
 //	    ▼
-//	┌── jsscan ── tdewolff/parse or tree-sitter-javascript queries
-//	├── pyscan ── (later) tree-sitter-python
-//	├── rbscan ── (later) tree-sitter-ruby
+//	┌── js ── tdewolff/parse or tree-sitter-javascript queries
+//	├── py ── (later) tree-sitter-python
+//	├── ruby ── (later) tree-sitter-ruby
 //	└── ...
 //
 // Per-language scanners produce a partial Fingerprint and a set of
@@ -27,7 +27,7 @@ import (
 )
 
 // LanguageScanner is the per-ecosystem analyzer interface. Today only
-// JS exists; pyscan/rbscan/etc. drop into the same shape.
+// JS exists; py/ruby/etc. drop into the same shape.
 type LanguageScanner interface {
 	// AnalyzeFile is called once per source file relevant to this
 	// language. Implementations accumulate Capabilities and
