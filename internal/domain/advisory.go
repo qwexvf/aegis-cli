@@ -43,6 +43,39 @@ type Advisory struct {
 	// today; "npm" / "ghsa" / "internal" planned. Used for dedup
 	// when multiple feeds return the same ID.
 	Source string
+
+	// FixedIn is the earliest version that resolves this advisory, as
+	// reported by the upstream feed's affected[].ranges events. Empty
+	// when the feed doesn't include fix metadata. Format matches the
+	// advisory's ecosystem (semver for npm/cargo/go, PEP 440 for PyPI).
+	FixedIn string `json:",omitempty"`
+
+	// EPSS is the Exploit Prediction Scoring System probability (0–1).
+	// Populated by the FIRST.org API during advisory enrichment. 0 means
+	// not scored (advisory has no CVE alias, or enrichment was skipped).
+	EPSS float64 `json:",omitempty"`
+
+	// EPSSPercentile is EPSS's relative rank among all CVEs (0–1). 0.99
+	// means this CVE is more likely to be exploited than 99% of all CVEs.
+	// 0 when EPSS is not set.
+	EPSSPercentile float64 `json:",omitempty"`
+
+	// InKEV is true when this advisory appears in CISA's Known Exploited
+	// Vulnerabilities catalog — actively exploited in the wild with a
+	// mandatory federal remediation deadline. Populated during enrichment.
+	InKEV bool `json:",omitempty"`
+
+	// AffectedFunctions lists specific function or method names that the
+	// advisory says are vulnerable (e.g. ["lodash.template", "_.template"]).
+	// Sourced from OSV's affected[].ecosystem_specific.functions when present.
+	// Empty means the entire package is considered affected, or the advisory
+	// doesn't carry function-level data (the common case).
+	AffectedFunctions []string `json:",omitempty"`
+
+	// VEXSuppressed is true when a VEX document with status "not_affected"
+	// was applied to suppress this advisory for the dep being scored.
+	// Populated only in CI run context; not persisted to the snapshot.
+	VEXSuppressed bool `json:"-"`
 }
 
 // AdvisoryQuery is a typed view of (eco, name, version) for batch

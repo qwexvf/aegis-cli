@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -39,10 +40,19 @@ func NewCI(snapshot *Snapshot, presenter CIPresenter) *CI {
 // in DriftScore — catches "this dep added a postinstall hook in
 // this version" attacks).
 type CIRequest struct {
-	ProjectDir   string
-	FailOn       domain.VerdictKind
-	Enrich       bool // when false, score only on existing/baseline fingerprints
-	BaselinePath string
+	ProjectDir    string
+	FailOn        domain.VerdictKind
+	Enrich        bool // when false, score only on existing/baseline fingerprints
+	BaselinePath  string
+	LicensePolicy domain.LicensePolicy
+	// SuppressedAdvisories is the set of advisory IDs (upper-cased) that a VEX
+	// "not_affected" document has cleared. Advisories in this set are excluded
+	// from verdict scoring. Build via openvex.SuppressedAdvisories.
+	SuppressedAdvisories map[string]struct{}
+	// FailOnDeprecated makes CI fail (at Review level) when a dep is marked
+	// deprecated by its registry. Default false — deprecated is shown but
+	// does not contribute to the verdict threshold.
+	FailOnDeprecated bool
 }
 
 // CIFinding is one dep that crossed the FailOn threshold. Both Risk
@@ -55,10 +65,13 @@ type CIRequest struct {
 // presenter checks `Drift.Score == 0` to decide whether to render
 // the second flag block.
 type CIFinding struct {
-	Dep     domain.Dependency
-	Risk    domain.RiskAssessment
-	Drift   domain.RiskAssessment
-	Verdict domain.VerdictKind
+	Dep              domain.Dependency
+	Risk             domain.RiskAssessment
+	Drift            domain.RiskAssessment
+	Verdict          domain.VerdictKind
+	LicenseViolation string // non-empty when dep's license violates the policy
+	Deprecated       bool   // true when registry marked this dep deprecated
+	DeprecatedReason string // registry-provided reason
 }
 
 // CISummary is the per-verdict tally over the full snapshot. Useful
@@ -160,7 +173,7 @@ func (c *CI) runFull(ctx context.Context, req CIRequest) (CIResult, error) {
 		c.presenter.OnCIResult(empty)
 		return empty, nil
 	}
-	result := c.scoreSnapshot(snap, req.FailOn)
+	result := c.scoreSnapshot(snap, req)
 	result.Enriched = req.Enrich
 	result.FailOn = req.FailOn
 	c.presenter.OnCIResult(result)
@@ -191,7 +204,7 @@ func (c *CI) runBaseline(ctx context.Context, req CIRequest) (CIResult, error) {
 	}
 
 	report := c.snapshot.BuildDiffReportFromSnapshots(baseline, live)
-	result := c.scoreDiff(report, req.FailOn, len(live.Deps))
+	result := c.scoreDiff(report, req, len(live.Deps))
 	result.Enriched = req.Enrich
 	result.FailOn = req.FailOn
 	c.presenter.OnCIResult(result)
@@ -244,7 +257,7 @@ func (c *CI) enrichInMemory(ctx context.Context, snap domain.Snapshot) (domain.S
 // the presenter. Findings are entries whose verdict ≥ failOn. The
 // summary counts every diff entry (added + upgraded — removed deps
 // are always safe so they're not bucketed).
-func (c *CI) scoreDiff(report DiffReport, failOn domain.VerdictKind, liveTotal int) CIResult {
+func (c *CI) scoreDiff(report DiffReport, req CIRequest, liveTotal int) CIResult {
 	out := CIResult{
 		Summary: CISummary{Total: liveTotal},
 		Passed:  true,
@@ -259,7 +272,15 @@ func (c *CI) scoreDiff(report DiffReport, failOn domain.VerdictKind, liveTotal i
 		} else if e.Old != nil {
 			dep = *e.Old
 		}
-		switch e.Verdict {
+		verdict := e.Verdict
+		licViolation := req.LicensePolicy.Check(dep.License)
+		if licViolation != "" && verdict < domain.VerdictBlock {
+			verdict = domain.VerdictBlock
+		}
+		if dep.Deprecated && req.FailOnDeprecated && verdict < domain.VerdictReview {
+			verdict = domain.VerdictReview
+		}
+		switch verdict {
 		case domain.VerdictSafe:
 			out.Summary.Safe++
 		case domain.VerdictReview:
@@ -269,12 +290,15 @@ func (c *CI) scoreDiff(report DiffReport, failOn domain.VerdictKind, liveTotal i
 		case domain.VerdictBlock:
 			out.Summary.Blocked++
 		}
-		if e.Verdict >= failOn {
+		if verdict >= req.FailOn {
 			out.Findings = append(out.Findings, CIFinding{
-				Dep:     dep,
-				Risk:    e.Risk,  // capability-level signal on the new version
-				Drift:   e.Drift, // change-vs-baseline signal
-				Verdict: e.Verdict,
+				Dep:              dep,
+				Risk:             e.Risk,
+				Drift:            e.Drift,
+				Verdict:          verdict,
+				LicenseViolation: licViolation,
+				Deprecated:       dep.Deprecated,
+				DeprecatedReason: dep.DeprecatedReason,
 			})
 			out.Passed = false
 		}
@@ -294,7 +318,7 @@ func projectBaseName(dir string) string {
 // scoreSnapshot scores every dep and partitions into summary buckets +
 // findings list (entries ≥ failOn). The allowlist is applied so
 // suppressed flags don't manufacture false-positive blocks.
-func (c *CI) scoreSnapshot(snap domain.Snapshot, failOn domain.VerdictKind) CIResult {
+func (c *CI) scoreSnapshot(snap domain.Snapshot, req CIRequest) CIResult {
 	out := CIResult{
 		ProjectName: snap.Project,
 		Summary:     CISummary{Total: len(snap.Deps)},
@@ -304,14 +328,33 @@ func (c *CI) scoreSnapshot(snap domain.Snapshot, failOn domain.VerdictKind) CIRe
 		risk := domain.RiskScore(d.Fingerprint).
 			ApplyAllowlist(d.Ecosystem, d.Name, d.Version, c.snapshot.allowlist).
 			DowngradeUnused(d.Reachability, unusedSuppressEnabled())
-		// Single-version score (no drift, no prior fingerprint to
-		// diff against — CI audits the current state, not changes).
 		astVerdict := domain.Verdict(risk, domain.RiskAssessment{})
-		// Fold in any known vulnerabilities from the public feed
-		// (OSV.dev). A Critical CVE outranks a clean AST every
-		// time — `max(ast, advisory)` is the right combinator.
-		advVerdict := domain.VerdictForAdvisories(d.Advisories)
+
+		// Annotate advisories with VEX suppression flags, then score
+		// only the active (non-suppressed) subset for verdict.
+		annotatedAdvs := annotateAdvisories(d.Advisories, req.SuppressedAdvisories)
+		activeAdvs := activeOnly(annotatedAdvs)
+		advVerdict := domain.VerdictForAdvisories(activeAdvs)
+
+		// Reachability downgrade: if dep is confirmed unused, advisory
+		// verdict drops one level (High→Medium, etc.) because the
+		// vulnerable code path is not on the critical path.
+		if d.Reachability == domain.ReachabilityUnused {
+			advVerdict = downgradeVerdict(advVerdict)
+		}
+
 		verdict := max(astVerdict, advVerdict)
+
+		// License policy gate.
+		licViolation := req.LicensePolicy.Check(d.License)
+		if licViolation != "" && verdict < domain.VerdictBlock {
+			verdict = domain.VerdictBlock
+		}
+
+		// Deprecated gate (opt-in via --fail-on-deprecated).
+		if d.Deprecated && req.FailOnDeprecated && verdict < domain.VerdictReview {
+			verdict = domain.VerdictReview
+		}
 
 		switch verdict {
 		case domain.VerdictSafe:
@@ -324,12 +367,78 @@ func (c *CI) scoreSnapshot(snap domain.Snapshot, failOn domain.VerdictKind) CIRe
 			out.Summary.Blocked++
 		}
 
-		if verdict >= failOn {
+		if verdict >= req.FailOn {
+			// Store the annotated advisory list (with VEXSuppressed flags)
+			// so the presenter can render suppressed advisories differently.
+			depCopy := d
+			depCopy.Advisories = annotatedAdvs
 			out.Findings = append(out.Findings, CIFinding{
-				Dep: d, Risk: risk, Verdict: verdict,
+				Dep:              depCopy,
+				Risk:             risk,
+				Verdict:          verdict,
+				LicenseViolation: licViolation,
+				Deprecated:       d.Deprecated,
+				DeprecatedReason: d.DeprecatedReason,
 			})
 			out.Passed = false
 		}
 	}
 	return out
+}
+
+// annotateAdvisories returns a copy of advs with VEXSuppressed=true set on
+// advisories that appear in the suppression set. The original slice is unchanged.
+func annotateAdvisories(advs []domain.Advisory, suppressed map[string]struct{}) []domain.Advisory {
+	if len(advs) == 0 || len(suppressed) == 0 {
+		return advs
+	}
+	out := make([]domain.Advisory, len(advs))
+	copy(out, advs)
+	for i := range out {
+		if isVEXSuppressed(out[i], suppressed) {
+			out[i].VEXSuppressed = true
+		}
+	}
+	return out
+}
+
+// activeOnly returns the subset of advs that are not VEX-suppressed.
+func activeOnly(advs []domain.Advisory) []domain.Advisory {
+	out := make([]domain.Advisory, 0, len(advs))
+	for _, a := range advs {
+		if !a.VEXSuppressed {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// isVEXSuppressed checks whether any of the advisory's identifiers
+// (ID + aliases) appear in the suppression set.
+func isVEXSuppressed(a domain.Advisory, suppressed map[string]struct{}) bool {
+	if len(suppressed) == 0 {
+		return false
+	}
+	if _, ok := suppressed[strings.ToUpper(a.ID)]; ok {
+		return true
+	}
+	return slices.ContainsFunc(a.Aliases, func(alias string) bool {
+		_, ok := suppressed[strings.ToUpper(alias)]
+		return ok
+	})
+}
+
+// downgradeVerdict lowers a verdict by one level. Block→Prompt,
+// Prompt→Review, Review→Safe. Used for reachability-based advisory
+// dampening when a dep is confirmed unused.
+func downgradeVerdict(v domain.VerdictKind) domain.VerdictKind {
+	switch v {
+	case domain.VerdictBlock:
+		return domain.VerdictPrompt
+	case domain.VerdictPrompt:
+		return domain.VerdictReview
+	case domain.VerdictReview:
+		return domain.VerdictSafe
+	}
+	return domain.VerdictSafe
 }

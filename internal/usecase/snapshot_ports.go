@@ -270,6 +270,28 @@ type LicenseFetcher interface {
 	FetchLicense(ctx context.Context, eco domain.Ecosystem, name, version string) (string, error)
 }
 
+// AdvisoryEnricher augments advisory metadata after the initial vuln
+// lookup. Current signals: EPSS exploit probability (FIRST.org) and
+// CISA KEV catalog membership. Implementation: infra/vulnenrich.
+//
+// Called once per dep per Enrich run; implementations must be safe for
+// concurrent calls. nil is the safe no-op — advisories are stored
+// without EPSS/KEV metadata.
+type AdvisoryEnricher interface {
+	Enrich(ctx context.Context, advs []domain.Advisory) []domain.Advisory
+}
+
+// PackageHealthFetcher fetches registry-reported deprecation status for
+// a package version. Implementation: infra/depsdotdev.
+//
+// nil is the safe no-op — Dependency.Deprecated stays false.
+// Best-effort: lookup failures are logged but don't abort Enrich.
+type PackageHealthFetcher interface {
+	// FetchDeprecated returns (deprecated, reason, error).
+	// Returns (false, "", nil) for unsupported ecosystems.
+	FetchDeprecated(ctx context.Context, eco domain.Ecosystem, name, version string) (bool, string, error)
+}
+
 // ProvenanceResult is the structured outcome of one npm attestation lookup.
 // Status is always populated; SourceURI and Commit are only non-empty when
 // Status == "attested" and a SLSA v1 provenance predicate was found.
