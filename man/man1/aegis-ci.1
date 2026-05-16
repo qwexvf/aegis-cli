@@ -38,12 +38,24 @@ deps incur AST scan cost.
 	min severity for --scan-actions: low|medium|high|critical
 
 .PP
+\fB--allow-licenses\fP=""
+	comma-separated SPDX license IDs to permit; any other license (or unknown) is blocked; mutually exclusive with --deny-licenses
+
+.PP
 \fB--baseline\fP=""
 	path to a saved aegis.lock to diff against (drift mode — catches version-changed deps that grew new capabilities; doesn't touch your aegis.lock)
 
 .PP
+\fB--deny-licenses\fP=""
+	comma-separated SPDX license IDs to reject (e.g. GPL-3.0,AGPL-3.0); mutually exclusive with --allow-licenses
+
+.PP
 \fB--fail-on\fP="block"
 	verdict threshold to fail on: safe|review|prompt|block
+
+.PP
+\fB--fail-on-deprecated\fP[=false]
+	treat deprecated packages as a finding at Review level
 
 .PP
 \fB-h\fP, \fB--help\fP[=false]
@@ -72,6 +84,10 @@ deps incur AST scan cost.
 .PP
 \fB--suggest\fP[=false]
 	print remediation commands for each blocked dep (upgrade hints)
+
+.PP
+\fB--vex\fP=""
+	path to an OpenVEX document (.vex JSON); advisories with status 'not_affected' are suppressed
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS
