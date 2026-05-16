@@ -34,12 +34,46 @@ func checkSecrets(pkg NormalizedPackage) []domain.Capability {
 	return nil
 }
 
-// containsHardcodedSecret returns true when body matches any secret pattern.
-// Early-exit on first match — we only need one to flag the package.
+// containsHardcodedSecret returns true when body matches any secret
+// pattern. Vendor-documented placeholders (AWS AKIAIOSFODNN7EXAMPLE,
+// GitHub all-a sample tokens, etc.) are excluded so tutorial snippets
+// don't manufacture false positives.
 func containsHardcodedSecret(body []byte) bool {
 	for _, p := range secretPatterns {
-		if p.Match(body) {
+		for _, m := range p.FindAll(body, -1) {
+			if isKnownPlaceholder(m) {
+				continue
+			}
 			return true
+		}
+	}
+	return false
+}
+
+// knownPlaceholders is the set of vendor-published example tokens that
+// must not trigger CapHardcodedSecret. Substrings are compared exactly
+// (case-sensitive) — these are stable canonical examples, not user-
+// typed identifiers.
+var knownPlaceholders = [][]byte{
+	[]byte("AKIAIOSFODNN7EXAMPLE"),  // AWS IAM docs canonical
+	[]byte("AKIA0000000000000000"),  // all-zero placeholder
+	[]byte("AKIAEXAMPLEAKIAEXAMPL"), // 20-char EXAMPLE variant
+	[]byte("ASIAIOSFODNN7EXAMPLE"),  // AWS STS docs canonical
+}
+
+func isKnownPlaceholder(match []byte) bool {
+	for _, p := range knownPlaceholders {
+		if len(match) == len(p) {
+			same := true
+			for i := range match {
+				if match[i] != p[i] {
+					same = false
+					break
+				}
+			}
+			if same {
+				return true
+			}
 		}
 	}
 	return false
