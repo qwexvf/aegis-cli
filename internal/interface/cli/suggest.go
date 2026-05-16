@@ -3,15 +3,15 @@ package cli
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 // renderSuggestions prints actionable remediation hints for every blocked
-// dependency. For advisory-flagged packages it links to the advisory URL;
-// for heuristic-flagged packages it suggests removing or replacing the dep.
+// dependency. Uses domain.BuildFixPlan to compute the upgrade target —
+// the highest FixedIn across all advisories on that dep — so the user
+// sees "upgrade to 4.17.21" instead of a generic "@latest".
 func renderSuggestions(out io.Writer, result usecase.CIResult) {
 	blocked := make([]usecase.CIFinding, 0, len(result.Findings))
 	for _, f := range result.Findings {
@@ -24,20 +24,35 @@ func renderSuggestions(out io.Writer, result usecase.CIResult) {
 		return
 	}
 
+	// Build a per-dep lookup of fix targets from BuildFixPlan so we can
+	// reuse the same algorithm aegis fix uses.
+	targets := make(map[string]string, len(blocked))
+	resolved := make(map[string][]domain.Advisory, len(blocked))
+	for _, f := range blocked {
+		item := domain.BuildFixPlan(domain.Snapshot{Deps: []domain.Dependency{f.Dep}})
+		if len(item.Items) == 0 {
+			continue
+		}
+		key := f.Dep.VersionedKey()
+		targets[key] = item.Items[0].TargetVersion
+		resolved[key] = item.Items[0].ResolvedAdvisories
+	}
+
 	fmt.Fprintf(out, "suggested remediation for %d blocked dep(s):\n\n", len(blocked))
 	for _, f := range blocked {
 		dep := f.Dep
 		fmt.Fprintf(out, "  %s@%s  [%s]\n", dep.Name, dep.Version, f.Verdict)
 
-		// Advisory links.
 		for _, adv := range dep.Advisories {
+			if adv.VEXSuppressed {
+				continue
+			}
 			fmt.Fprintf(out, "    ⚠  %s: %s\n", adv.ID, adv.Summary)
 			if adv.URL != "" {
 				fmt.Fprintf(out, "       %s\n", adv.URL)
 			}
 		}
 
-		// Heuristic flags (non-advisory).
 		for _, flag := range f.Risk.Flags {
 			if flag.Suppressed {
 				continue
@@ -52,40 +67,10 @@ func renderSuggestions(out io.Writer, result usecase.CIResult) {
 			}
 		}
 
-		// Upgrade command.
-		if cmd := upgradeCommand(dep); cmd != "" {
+		target := targets[dep.VersionedKey()]
+		if cmd := domain.UpgradeCommand(dep, target); cmd != "" {
 			fmt.Fprintf(out, "    →  %s\n", cmd)
 		}
 		fmt.Fprintln(out)
 	}
-}
-
-// upgradeCommand returns the ecosystem-appropriate upgrade shell command.
-func upgradeCommand(dep domain.Dependency) string {
-	name := dep.Name
-	switch dep.Ecosystem {
-	case domain.EcoNpm:
-		return fmt.Sprintf("npm install %s@latest", name)
-	case domain.EcoPyPI:
-		return fmt.Sprintf("pip install --upgrade %s", name)
-	case domain.EcoRubyGems:
-		return fmt.Sprintf("bundle update %s", name)
-	case domain.EcoCrates:
-		return fmt.Sprintf("cargo update %s", strings.ReplaceAll(name, "/", "-"))
-	case domain.EcoGo:
-		return fmt.Sprintf("go get %s@latest", name)
-	case domain.EcoMaven:
-		// Maven coords are groupId:artifactId
-		parts := strings.SplitN(name, ":", 2)
-		if len(parts) == 2 {
-			return fmt.Sprintf("mvn versions:use-latest-versions -Dincludes=%s:%s", parts[0], parts[1])
-		}
-	case domain.EcoPackagist:
-		return fmt.Sprintf("composer update %s", name)
-	case domain.EcoNuGet:
-		return fmt.Sprintf("dotnet add package %s", name)
-	case domain.EcoGleam:
-		return "gleam deps update"
-	}
-	return ""
 }

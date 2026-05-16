@@ -98,6 +98,11 @@ type Deps struct {
 	// scanner. Optional; nil disables the subcommand.
 	Actions *usecase.Actions
 
+	// Fix wires `aegis fix` — compute upgrade plan from FixedIn data.
+	// Optional; when nil the subcommand is not registered.
+	Fix          *usecase.Fix
+	FixPresenter *presentercli.FixPresenter
+
 	// AllowlistLoader is a factory so each invocation of an allowlist
 	// subcommand picks up the cwd at run time (matters for project-
 	// scoped operations). When nil, the allowlist subcommand is not
@@ -186,6 +191,9 @@ func NewRoot(d Deps) *cobra.Command {
 	}
 	if d.Actions != nil {
 		add(actionsCommand(d.Actions), groupInspect)
+	}
+	if d.Fix != nil && d.FixPresenter != nil {
+		add(fixCommand(d.Fix, d.FixPresenter), groupGate)
 	}
 	if d.AllowlistLoader != nil && d.AllowlistPresenter != nil {
 		add(allowlistCommand(d.AllowlistLoader, d.AllowlistPresenter), groupConfigure)
