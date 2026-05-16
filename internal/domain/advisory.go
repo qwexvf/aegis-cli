@@ -76,6 +76,13 @@ type Advisory struct {
 	// was applied to suppress this advisory for the dep being scored.
 	// Populated only in CI run context; not persisted to the snapshot.
 	VEXSuppressed bool `json:"-"`
+
+	// FunctionUnreachable is true when symbol-level reachability cleared
+	// this advisory: the advisory's AffectedFunctions don't intersect
+	// the dep's UsedSymbols. The vulnerable function exists in the dep
+	// but the user's source never calls it. Populated only in CI run
+	// context; not persisted.
+	FunctionUnreachable bool `json:"-"`
 }
 
 // AdvisoryQuery is a typed view of (eco, name, version) for batch

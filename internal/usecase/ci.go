@@ -330,9 +330,9 @@ func (c *CI) scoreSnapshot(snap domain.Snapshot, req CIRequest) CIResult {
 			DowngradeUnused(d.Reachability, unusedSuppressEnabled())
 		astVerdict := domain.Verdict(risk, domain.RiskAssessment{})
 
-		// Annotate advisories with VEX suppression flags, then score
-		// only the active (non-suppressed) subset for verdict.
-		annotatedAdvs := annotateAdvisories(d.Advisories, req.SuppressedAdvisories)
+		// Annotate advisories with VEX + function-reachability
+		// suppression flags, then score only the active subset.
+		annotatedAdvs := annotateAdvisories(d.Advisories, d.UsedSymbols, req.SuppressedAdvisories)
 		activeAdvs := activeOnly(annotatedAdvs)
 		advVerdict := domain.VerdictForAdvisories(activeAdvs)
 
@@ -386,11 +386,19 @@ func (c *CI) scoreSnapshot(snap domain.Snapshot, req CIRequest) CIResult {
 	return out
 }
 
-// annotateAdvisories returns a copy of advs with VEXSuppressed=true set on
-// advisories that appear in the suppression set. The original slice is unchanged.
-func annotateAdvisories(advs []domain.Advisory, suppressed map[string]struct{}) []domain.Advisory {
-	if len(advs) == 0 || len(suppressed) == 0 {
+// annotateAdvisories returns a copy of advs with suppression flags set:
+//   - VEXSuppressed when an entry's ID/alias appears in the VEX set.
+//   - FunctionUnreachable when the advisory carries AffectedFunctions
+//     and the dep's UsedSymbols (when non-empty) don't intersect.
+//
+// The original slice is unchanged.
+func annotateAdvisories(advs []domain.Advisory, usedSymbols []string, suppressed map[string]struct{}) []domain.Advisory {
+	if len(advs) == 0 {
 		return advs
+	}
+	usedSet := make(map[string]struct{}, len(usedSymbols))
+	for _, s := range usedSymbols {
+		usedSet[s] = struct{}{}
 	}
 	out := make([]domain.Advisory, len(advs))
 	copy(out, advs)
@@ -398,19 +406,43 @@ func annotateAdvisories(advs []domain.Advisory, suppressed map[string]struct{}) 
 		if isVEXSuppressed(out[i], suppressed) {
 			out[i].VEXSuppressed = true
 		}
+		if isFunctionUnreachable(out[i], usedSet) {
+			out[i].FunctionUnreachable = true
+		}
 	}
 	return out
 }
 
-// activeOnly returns the subset of advs that are not VEX-suppressed.
+// activeOnly returns the subset of advs that are neither VEX-suppressed
+// nor function-unreachable. Both flags are independent — an advisory is
+// active only when both are false.
 func activeOnly(advs []domain.Advisory) []domain.Advisory {
 	out := make([]domain.Advisory, 0, len(advs))
 	for _, a := range advs {
-		if !a.VEXSuppressed {
-			out = append(out, a)
+		if a.VEXSuppressed || a.FunctionUnreachable {
+			continue
 		}
+		out = append(out, a)
 	}
 	return out
+}
+
+// isFunctionUnreachable reports whether the advisory's AffectedFunctions
+// don't intersect with usedSymbols. Returns false (i.e. treat as
+// reachable) when either set is empty — absence of data is not absence
+// of risk. When both sets are populated and the intersection is empty,
+// the vulnerable function exists in the dep but the user's code never
+// calls it.
+func isFunctionUnreachable(a domain.Advisory, usedSet map[string]struct{}) bool {
+	if len(a.AffectedFunctions) == 0 || len(usedSet) == 0 {
+		return false
+	}
+	for _, fn := range a.AffectedFunctions {
+		if _, ok := usedSet[fn]; ok {
+			return false
+		}
+	}
+	return true
 }
 
 // isVEXSuppressed checks whether any of the advisory's identifiers

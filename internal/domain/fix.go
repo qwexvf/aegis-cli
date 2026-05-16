@@ -52,7 +52,7 @@ func BuildFixPlan(snap Snapshot) FixPlan {
 		var resolved, unresolved []Advisory
 		var target string
 		for _, a := range d.Advisories {
-			if a.VEXSuppressed {
+			if a.VEXSuppressed || a.FunctionUnreachable {
 				continue
 			}
 			if a.FixedIn == "" {
