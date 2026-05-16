@@ -1,5 +1,3 @@
-//go:build !nojsscan
-
 package usecase
 
 import (

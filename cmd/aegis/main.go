@@ -4,8 +4,7 @@
 // every other layer talks to ports, not implementations.
 //
 // The risk engine (AST scanner + package-source fetcher + fingerprint
-// cache) is opt-out via the `nojsscan` build tag. See risk_engine.go
-// (default) and risk_engine_off.go (with -tags=nojsscan).
+// cache) is always compiled in — aegis ships as one all-in-one binary.
 package main
 
 import (

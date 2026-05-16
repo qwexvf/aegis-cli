@@ -1,21 +1,9 @@
 # GoReleaser config for the aegis CLI.
 #
-# Two build flavours:
-#
-#   1. `aegis` (cgo, linux/amd64 only): default binary with the JS AST
-#      scanner via tree-sitter cgo. Anyone on a different OS/arch who
-#      wants the AST scanner installs from source with
-#      `go install github.com/qwexvf/aegis-cli/cmd/aegis@latest`.
-#
-#   2. `aegis-core` (no-cgo, linux/darwin/windows × amd64/arm64): drops
-#      the AST scanner via the `nojsscan` build tag. Pure-Go. Covers
-#      every other platform.
-#
-# Per-pm binaries (`aegis-npm`, `aegis-bun`, …) were dropped in v0.16
-# — they trimmed only 19 KB off the binary, not worth four extra
-# builds + archives + cosign attestations. The build tags
-# (`nonpm`, `nobun`, `noyarn`, `nopnpm`) stay around for users who
-# want a smaller `go install`.
+# One all-in-one binary. CGo is always linked in (tree-sitter); the
+# pre-built binary covers linux/amd64. Users on other OS/arch install
+# from source with `go install github.com/qwexvf/aegis-cli/cmd/aegis@latest`
+# — `go install` invokes the local cgo toolchain transparently.
 #
 # Version, commit, build-date are stamped into the cli package via
 # ldflags. The `version` cobra command (root.go) reads them.
@@ -36,39 +24,17 @@ builds:
       - CGO_ENABLED=1
     goos: [linux]
     goarch: [amd64]
-    ldflags: &ldflags
+    ldflags:
       - -s -w
       - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Version={{ .Version }}
       - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Commit={{ .Commit }}
       - -X github.com/qwexvf/aegis-cli/internal/interface/cli.Date={{ .Date }}
-
-  - id: aegis-core
-    binary: aegis-core
-    main: ./cmd/aegis
-    env:
-      - CGO_ENABLED=0
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
-    flags:
-      - -tags=nojsscan
-    ldflags: *ldflags
 
 archives:
   - id: default
     ids: [aegis]
     formats: [tar.gz]
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    files:
-      - LICENSE
-      - README.md
-
-  - id: core
-    ids: [aegis-core]
-    formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
-    name_template: 'aegis-core_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
     files:
       - LICENSE
       - README.md

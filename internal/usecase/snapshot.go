@@ -274,9 +274,9 @@ func (s *Snapshot) riskEngineEnabled() bool {
 	return s.fetcher != nil && s.analyzer != nil
 }
 
-// RiskEngineEnabled is the public probe used by adjacent use cases
-// (CI) that want to fail fast when AST scanning was requested but
-// the binary was built with `nojsscan`.
+// RiskEngineEnabled reports whether the AST risk engine is wired (i.e.
+// WithRiskEngine was called with non-nil fetcher + analyzer). Adjacent
+// use cases (CI) use this to fail fast when the engine is unconfigured.
 func (s *Snapshot) RiskEngineEnabled() bool { return s.riskEngineEnabled() }
 
 // Save scans the project's lockfile(s) and writes a fresh snapshot to

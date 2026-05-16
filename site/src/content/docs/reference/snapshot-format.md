@@ -144,11 +144,6 @@ Idempotent — re-running only enriches deps without an existing
 analyzed fingerprint. Errors (network down, 404 etc.) are reported
 per-dep and the operation continues; no partial writes.
 
-`aegis snapshot enrich` requires a build with the AST scanner
-included (`make build-release`, not `build-core`). With the
-`nojsscan` build tag set, it reports "risk engine not configured"
-and exits.
-
 See `docs/cli-risk-engine.md` for what the fingerprints contain.
 
 ### `verify` — schema sanity

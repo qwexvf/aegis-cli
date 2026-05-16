@@ -1,7 +1,6 @@
-//go:build !nojsscan
-
-// Default build: AST risk engine compiled in (tree-sitter cgo + JS
-// grammar + tarball fetcher). Adds ~3-4 MB to the binary.
+// risk_engine.go wires the AST risk engine: tree-sitter (cgo) language
+// scanners, the tarball fetcher, and the disk-backed fingerprint cache.
+// Compiled into every aegis binary — all-in-one.
 
 package main
 

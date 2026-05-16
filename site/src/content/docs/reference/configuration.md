@@ -219,17 +219,8 @@ See `aegis.example.yml` in the repository root for the full annotated reference.
 
 ## Build-time configuration
 
-These are compile-time choices, not env vars. See [Getting started § Install](../getting-started/#install) for the full table.
-
-| Build tag | Effect |
-|---|---|
-| `nojsscan` | Drop the JS AST scanner (no cgo, no tree-sitter). `make build-core`. |
-| `nonpm` | Don't register `aegis npm`. `make build-bun` (combined with `noyarn,nopnpm`). |
-| `nobun` | Don't register `aegis bun`. |
-| `noyarn` | Don't register `aegis yarn`. |
-| `nopnpm` | Don't register `aegis pnpm`. |
-
-ldflags injected at release time:
+aegis is an all-in-one binary — no build-tag flavours. CGo (tree-sitter)
+is always linked in. ldflags injected at release time:
 
 | Symbol | Source |
 |---|---|

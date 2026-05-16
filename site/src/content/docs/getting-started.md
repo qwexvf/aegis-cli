@@ -7,23 +7,17 @@ sidebar:
 
 ## Install
 
-### Pre-built binaries
+```sh
+go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
+aegis version
+```
 
-Download the latest release for your platform from
-[Releases](https://github.com/qwexvf/aegis-cli/releases). Two flavours:
+Requires Go 1.26 or later. Single all-in-one binary — every package
+manager wrapper and the full AST risk engine ship together.
 
-| Asset | Platforms | AST scanner | Notes |
-|---|---|---|---|
-| `aegis_<ver>_linux_amd64.tar.gz` | linux/amd64 | yes (cgo, tree-sitter) | Full feature set. |
-| `aegis-core_<ver>_<os>_<arch>.tar.gz` | linux/darwin/windows × amd64/arm64 | no (pure Go) | Install gate, OSV lookup, heuristics. Drop-in CLI for environments without a cgo toolchain. |
-
-If you need the AST scanner on darwin / windows / linux-arm64, build
-from source (see below) — the `go install` toolchain handles cgo
-locally.
-
-Artifacts are signed with [cosign](https://docs.sigstore.dev/cosign/)
-keyless OIDC and ship with [SLSA build provenance](https://slsa.dev/).
-Verify before running:
+Pre-built linux/amd64 release on [Releases](https://github.com/qwexvf/aegis-cli/releases),
+signed with [cosign](https://docs.sigstore.dev/cosign/) keyless OIDC
+and SLSA build provenance:
 
 ```sh
 cosign verify-blob \
@@ -36,20 +30,8 @@ sha256sum -c checksums.txt
 gh attestation verify aegis_<version>_linux_amd64.tar.gz --owner qwexvf
 ```
 
-### From source
-
-Requires Go 1.26 or later.
-
-```sh
-go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
-aegis version
-```
-
-To trim the binary to a single package manager (saves ~19 KB):
-
-```sh
-go install -tags=nobun,noyarn,nopnpm github.com/qwexvf/aegis-cli/cmd/aegis@latest   # npm only
-```
+For darwin / windows / linux-arm64, build from source with `go install` above —
+your local cgo toolchain handles tree-sitter transparently.
 
 ## First snapshot
 
