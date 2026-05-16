@@ -4,6 +4,17 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.22.0](https://github.com/qwexvf/aegis-cli/compare/v0.21.0...v0.22.0) (2026-05-16)
+
+
+### Added
+
+* **sbom (#68):** `--format=spdx` emits SPDX 2.3 JSON SBOM (US EO 14028 / federal procurement); `--format=cyclonedx` remains default
+* **sbom (#71):** CycloneDX `dependencies[]` section with per-component `dependsOn[]` graph — root lists all direct deps; each dep lists its transitive children (populated by lockfile parsers that expose the graph)
+* **sbom (#71):** `domain.Dependency.DependsOn` field persisted in `aegis.lock`; npm v2/v3 parser populates it via two-pass name→resolved-version resolution; versioned keys (`ecosystem/name@version`) prevent ambiguity in multi-version lockfiles
+* **sbom (#69):** `--sign` flag produces keyless Sigstore signature alongside the SBOM (`<output>.sig` + `<output>.pem`) via `cosign sign-blob`; requires `--output` and `cosign` in PATH
+
+
 ## [0.21.0](https://github.com/qwexvf/aegis-cli/compare/v0.20.0...v0.21.0) (2026-05-15)
 
 
