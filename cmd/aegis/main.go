@@ -40,6 +40,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/osv"
 	"github.com/qwexvf/aegis-cli/internal/infra/pypiregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/rubygemsregistry"
+	imagescan "github.com/qwexvf/aegis-cli/internal/infra/scan/image"
 	"github.com/qwexvf/aegis-cli/internal/infra/ttyprompt"
 	"github.com/qwexvf/aegis-cli/internal/infra/vulnenrich"
 	"github.com/qwexvf/aegis-cli/internal/infra/vulnlookup"
@@ -356,6 +357,8 @@ func main() {
 	actions := usecase.NewActions()
 	fixPresenter := cli.NewFixPresenter(presenter)
 	fix := usecase.NewFix(store, fixPresenter)
+	imagePresenter := cli.NewImagePresenter(presenter)
+	image := usecase.NewImage(imagescan.NewScanner(), vulnLookup, imagePresenter)
 
 	// Optionally attach the risk engine (AST scanner) + submit
 	// pipeline. The implementation is selected at compile time via
@@ -426,6 +429,8 @@ func main() {
 		Actions:            actions,
 		Fix:                fix,
 		FixPresenter:       fixPresenter,
+		Image:              image,
+		ImagePresenter:     imagePresenter,
 		API:                apiClient,
 		Cache:              cache,
 		Audit:              audit,
