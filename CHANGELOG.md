@@ -4,6 +4,21 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.23.0](https://github.com/qwexvf/aegis-cli/compare/v0.22.0...v0.23.0) (2026-05-16)
+
+
+### Added
+
+* **fix version:** every CVE finding now surfaces the earliest version that resolves it (`→ fix: X.Y.Z`) parsed from OSV `affected[].ranges.events`
+* **EPSS enrichment:** `snapshot enrich` fetches Exploit Prediction Scoring System probability from FIRST.org for every CVE alias; shown as `(EPSS XX%)` in CI output and `epss`/`epss_percentile` in JSON
+* **KEV enrichment:** advisories in the CISA Known Exploited Vulnerabilities catalog get a `[KEV]` badge (red); feed is disk-cached at `~/.aegis/cache/kev/kev.json` with a 24 h TTL
+* **license policy:** `aegis ci --deny-licenses GPL-3.0,AGPL-3.0` rejects deps with those SPDX identifiers; `--allow-licenses MIT,Apache-2.0` blocks anything not in the list; unknown licenses fail in allowlist mode
+* **hardcoded secrets (`CapHardcodedSecret`, weight 80):** heuristics pipeline detects credentials embedded in dep source — AWS AKIA/ASIA access keys, GitHub `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`/fine-grained PAT tokens, npm tokens, PEM private keys, Stripe `sk_live`/`sk_test`, SendGrid, Twilio AC SIDs, Slack `xoxb-` tokens, Bearer tokens ≥ 40 chars; weight crosses Block threshold alone
+* **package health:** `snapshot enrich` fetches deprecation status from deps.dev for npm/PyPI/Cargo/Go/Maven/NuGet; deprecated packages show `⚠ deprecated: <reason>` in CI output; opt-in `--fail-on-deprecated` flag makes them fail at Review level
+* **OpenVEX suppression:** `aegis ci --vex project.vex` loads an OpenVEX document and applies `not_affected` statements — suppressed advisories are excluded from verdict scoring, shown greyed-out with `[VEX: not_affected]` in human output, omitted from JSON
+* **reachability advisory downgrade:** when a dep is confirmed unused (`ReachabilityUnused`), its advisory-based verdict is reduced by one level (Block→Prompt, Prompt→Review, Review→Safe) to suppress noise on transitive deps not on the critical path; `Advisory.AffectedFunctions` now populated from OSV `ecosystem_specific.functions` for future function-symbol filtering
+
+
 ## [0.22.0](https://github.com/qwexvf/aegis-cli/compare/v0.21.0...v0.22.0) (2026-05-16)
 
 
