@@ -1,0 +1,66 @@
+package cli
+
+import (
+	presentercli "github.com/qwexvf/aegis-cli/internal/presenter/cli"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
+	"github.com/spf13/cobra"
+)
+
+// imageCommand wires `aegis image scan` — supply-chain analysis on
+// OCI / Docker image tars.
+//
+// v1 input: local tar file (`docker save -o image.tar` output, or
+// any OCI-format archive).
+// v2 will add registry pull (`aegis image scan ubuntu:22.04`).
+func imageCommand(uc *usecase.Image, presenter *presentercli.ImagePresenter) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "image",
+		Short: "Scan OCI / Docker container images for supply-chain risks",
+	}
+	cmd.AddCommand(imageScanCommand(uc, presenter))
+	return cmd
+}
+
+func imageScanCommand(uc *usecase.Image, presenter *presentercli.ImagePresenter) *cobra.Command {
+	var (
+		enrich  bool
+		jsonOut bool
+	)
+	c := &cobra.Command{
+		Use:   "scan <image.tar>",
+		Short: "Extract lockfiles from an OCI image tar and (optionally) run OSV vuln lookup",
+		Long: `scan reads a local Docker save / OCI image tar, overlays every layer
+(whiteout-aware), extracts any lockfile the locksnap registry recognises,
+and reports the resulting dependency set.
+
+Pass --enrich to additionally run the configured OSV.dev vulnerability
+lookup against the extracted deps. Without --enrich, scan is purely
+local — useful for SBOM bootstrap and offline workflows.
+
+Examples:
+
+  docker save my-app:latest -o my-app.tar
+  aegis image scan my-app.tar
+  aegis image scan my-app.tar --enrich
+  aegis image scan my-app.tar --json | jq '.deps[].name'`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			presenter.SetJSONMode(jsonOut)
+			_, err := uc.Run(cmd.Context(), usecase.ImageRequest{
+				Path:   args[0],
+				Enrich: enrich,
+			})
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			if err != nil {
+				return &exitCodeError{code: 2, err: err, silent: true}
+			}
+			return nil
+		},
+	}
+	c.Flags().BoolVar(&enrich, "enrich", false,
+		"run OSV.dev vulnerability lookup against the extracted dependency set")
+	c.Flags().BoolVar(&jsonOut, "json", false,
+		"emit machine-readable JSON on stdout (suppresses human output)")
+	return c
+}

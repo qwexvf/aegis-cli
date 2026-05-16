@@ -103,6 +103,11 @@ type Deps struct {
 	Fix          *usecase.Fix
 	FixPresenter *presentercli.FixPresenter
 
+	// Image wires `aegis image scan` — OCI/Docker tar lockfile extractor.
+	// Optional; when nil the subcommand is not registered.
+	Image          *usecase.Image
+	ImagePresenter *presentercli.ImagePresenter
+
 	// AllowlistLoader is a factory so each invocation of an allowlist
 	// subcommand picks up the cwd at run time (matters for project-
 	// scoped operations). When nil, the allowlist subcommand is not
@@ -194,6 +199,9 @@ func NewRoot(d Deps) *cobra.Command {
 	}
 	if d.Fix != nil && d.FixPresenter != nil {
 		add(fixCommand(d.Fix, d.FixPresenter), groupGate)
+	}
+	if d.Image != nil && d.ImagePresenter != nil {
+		add(imageCommand(d.Image, d.ImagePresenter), groupInspect)
 	}
 	if d.AllowlistLoader != nil && d.AllowlistPresenter != nil {
 		add(allowlistCommand(d.AllowlistLoader, d.AllowlistPresenter), groupConfigure)
