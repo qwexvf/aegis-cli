@@ -3,56 +3,133 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
 
-const capabilities = [
+const title = "Aegis — Open-source supply-chain security CLI for npm, PyPI, RubyGems, crates.io, Go";
+const description =
+  "Aegis is an open-source CLI that scans your lockfiles for CVEs, malicious packages, and risky behavior across JavaScript, Python, Ruby, Rust, and Go. Offline-first, no backend, no account. Catch typosquats, install hooks, obfuscated payloads, and SBOM your dependencies in seconds.";
+const keywords =
+  "supply chain security, supply chain scanner, npm security, npm malware detection, CVE scanner, SBOM generator, dependency scanner, OSV scanner, software composition analysis, SCA tool, open source security, lockfile scanner, package security CLI, typosquat detection, malicious package detection, GitHub Actions security scan, devsecops, offline security scanner";
+
+const features = [
   {
     num: "01",
-    title: "OSV across every ecosystem",
-    body: "Known CVEs and GHSAs for JavaScript, Python, Rust, Go, and Ruby in a single batched HTTP call. No API key, no rate-limit dance.",
+    title: "CVE & advisory lookup via OSV",
+    body: "Batched OSV.dev queries across npm, PyPI, RubyGems, crates.io, Go modules, and Maven. No API key. No rate limit. Findings include severity, fixed versions, and affected ranges.",
   },
   {
     num: "02",
     title: "AST capability scanning",
-    body: "Tree-sitter walks every JS, Python, Ruby, Rust, and Go package source, surfacing net-egress, child-process, dynamic-eval, credential-read, and friends — even on packages with zero published advisories.",
+    body: "Tree-sitter walks the actual source of every JS, Python, Ruby, Rust, and Go package. Flags network egress, child-process spawn, dynamic eval, filesystem write, and credential reads — even on packages with zero published advisories.",
   },
   {
     num: "03",
     title: "Behavior-based malware heuristics",
-    body: "Seven detectors fire on the patterns nobody has indexed yet: install hooks, obfuscated payloads, C2 URLs, binary droppers, typosquats, maintainer hijack, patch-version drift.",
+    body: "Seven detectors target patterns nobody has indexed yet: lifecycle install hooks, base64/hex-obfuscated payloads, C2 URLs, binary droppers, typosquats against popular names, maintainer hijack, suspicious patch-version drift.",
   },
   {
     num: "04",
-    title: "CI gate, drift mode, allowlist",
-    body: "aegis ci --fail-on=block for pipelines, snapshot diffs to catch new capabilities between releases, YAML allowlists for the false-positives that always exist.",
+    title: "CI gate, drift, allowlist",
+    body: "aegis ci --fail-on=block returns nonzero on policy violations. Snapshot diffs surface new capabilities introduced between releases. YAML allowlists let you carve out known-good packages without disabling rules globally.",
+  },
+  {
+    num: "05",
+    title: "SPDX 2.3 SBOM with dependency graph",
+    body: "Generate signed SPDX 2.3 SBOMs with dependsOn[] relationships. Sigstore-compatible signing. Drop straight into supply-chain attestation pipelines.",
+  },
+  {
+    num: "06",
+    title: "GitHub Actions workflow scanning",
+    body: "Audit every .github/workflows/*.yml for pinned-by-tag references, third-party action drift, write-permissive tokens, and npm provenance verification.",
   },
 ];
 
-const next = [
-  { href: "getting-started/", label: "Getting started", desc: "install, first snapshot, first CI gate" },
-  { href: "guides/cookbook/", label: "Cookbook", desc: "recipes for everyday workflows" },
-  { href: "reference/commands/", label: "Command reference", desc: "every flag, every exit code" },
-  { href: "contributing/architecture/", label: "Architecture", desc: "how the layers fit together" },
+const langs = [
+  { name: "JavaScript / TypeScript", pm: "npm, pnpm, yarn, bun", file: "package-lock.json · pnpm-lock.yaml · yarn.lock · bun.lock", ast: true, osv: true },
+  { name: "Python", pm: "Poetry, uv, pip", file: "poetry.lock · uv.lock · requirements.txt", ast: true, osv: true },
+  { name: "Ruby", pm: "Bundler", file: "Gemfile.lock", ast: true, osv: true },
+  { name: "Rust", pm: "Cargo", file: "Cargo.lock", ast: true, osv: true },
+  { name: "Go", pm: "go modules", file: "go.sum", ast: true, osv: true },
+  { name: "Java / Kotlin", pm: "Maven, Gradle", file: "pom.xml · build.gradle", ast: false, osv: true },
+  { name: ".NET", pm: "NuGet", file: "packages.lock.json", ast: false, osv: true },
 ];
+
+const faq = [
+  {
+    q: "Is Aegis free and open source?",
+    a: "Yes. The CLI is Apache-2.0 licensed and fully functional with no account. Aegis Cloud is a separate paid layer for sandbox dynamic analysis and team dashboards — the CLI does not require it.",
+  },
+  {
+    q: "Does Aegis send my code anywhere?",
+    a: "No. Static AST scanning, heuristics, and lockfile parsing all run locally. Only the OSV CVE lookup makes outbound HTTP calls — package names and versions, never source.",
+  },
+  {
+    q: "How is Aegis different from npm audit or pip-audit?",
+    a: "npm audit and pip-audit only look up known CVEs. Aegis adds AST-based capability detection and behavioral malware heuristics, catching malicious packages before they have a CVE assigned — the gap that 0-day supply-chain attacks exploit.",
+  },
+  {
+    q: "Which ecosystems are supported?",
+    a: "JavaScript/TypeScript (npm, pnpm, yarn), Python (Poetry, uv, pip), Ruby (Bundler), Rust (Cargo), and Go modules. Maven and NuGet CVE lookup via OSV; deeper AST coverage is planned.",
+  },
+  {
+    q: "Can I use Aegis in CI?",
+    a: "Yes — aegis ci is the dedicated CI entrypoint. It exits nonzero on policy violations, emits SARIF and JUnit XML, and runs in under a few seconds on typical lockfiles. GitHub Actions example in the docs.",
+  },
+  {
+    q: "Does Aegis generate SBOMs?",
+    a: "Yes. SPDX 2.3 with dependsOn[] dependency graph, optionally Sigstore-signed. Use aegis sbom <path> -o out.spdx.json.",
+  },
+];
+
+const jsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      name: "Aegis",
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "Linux, macOS, Windows",
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      description,
+      url: "https://qwexvf.github.io/aegis-cli/",
+      codeRepository: "https://github.com/qwexvf/aegis-cli",
+      programmingLanguage: "Go",
+      license: "https://www.apache.org/licenses/LICENSE-2.0",
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: faq.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
+    },
+  ],
+});
 ---
 
 <BaseLayout
-  title="Aegis — supply-chain analysis CLI"
-  description="Multi-language supply-chain analysis CLI. Lockfiles, OSV, AST scanning, malware heuristics — no backend, no account."
+  title={title}
+  description={description}
+  keywords={keywords}
+  jsonLd={jsonLd}
 >
-  <div class="mx-auto max-w-[80rem] px-6 pb-24">
+  <main class="mx-auto max-w-[80rem] px-6 pb-24">
+    {/* HERO */}
     <section class="pt-16 md:pt-24">
       <div class="mb-8 max-w-full overflow-hidden font-mono text-xs tracking-wider text-[var(--color-fg-faint)]">
-        ┌─ AEGIS / DOCS ──────────────────────────────────────────────
+        ┌─ AEGIS / OPEN-SOURCE SUPPLY-CHAIN SECURITY ──────────────────
       </div>
 
-      <h1 class="font-display text-5xl font-bold leading-[0.95] tracking-tight text-[var(--color-fg-strong)] md:text-7xl">
-        Aegis
+      <h1 class="font-display text-4xl font-bold leading-[1.05] tracking-tight text-[var(--color-fg-strong)] md:text-6xl">
+        Catch malicious packages <span class="text-[var(--color-signal)]">before</span> they ship.
       </h1>
 
       <div class="mt-6 h-0.5 w-16 bg-[var(--color-signal)]"></div>
 
-      <p class="mt-6 max-w-[55ch] font-mono text-base text-[var(--color-fg)]">
-        <span class="font-semibold text-[var(--color-signal)]">{">"}</span>{" "}
-        Multi-language supply-chain analysis. Lockfiles, OSV, AST scanning, malware heuristics — no backend, no account.
+      <p class="mt-6 max-w-[60ch] text-lg leading-relaxed text-[var(--color-fg)]">
+        Aegis is an open-source supply-chain security CLI. It scans your lockfiles for CVEs,
+        runs AST-based capability detection, and applies behavioral heuristics to surface
+        malicious packages across <strong>npm, PyPI, RubyGems, crates.io, and Go modules</strong> —
+        offline-first, no backend, no account.
       </p>
 
       <div class="mt-8 flex flex-wrap gap-3">
@@ -60,23 +137,185 @@ const next = [
           href={base + "getting-started/"}
           class="inline-flex items-center rounded-sm border border-[var(--color-fg-strong)] bg-[var(--color-fg-strong)] px-5 py-2.5 font-mono text-sm font-medium text-[var(--color-bg)] transition-colors hover:border-[var(--color-signal)] hover:bg-[var(--color-signal)]"
         >
-          Get started
+          Install Aegis →
         </a>
         <a
           href="https://github.com/qwexvf/aegis-cli"
           class="inline-flex items-center rounded-sm border border-[var(--color-rule-strong)] bg-transparent px-5 py-2.5 font-mono text-sm font-medium text-[var(--color-fg)] transition-colors hover:border-[var(--color-signal)] hover:text-[var(--color-signal)]"
         >
-          View on GitHub →
+          Star on GitHub
         </a>
+        <a
+          href={base + "reference/commands/"}
+          class="inline-flex items-center rounded-sm border border-[var(--color-rule-strong)] bg-transparent px-5 py-2.5 font-mono text-sm font-medium text-[var(--color-fg)] transition-colors hover:border-[var(--color-signal)] hover:text-[var(--color-signal)]"
+        >
+          Command reference
+        </a>
+      </div>
+
+      <div class="mt-10 max-w-2xl rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-mute)] p-4 font-mono text-sm">
+        <div class="mb-2 text-xs uppercase tracking-wider text-[var(--color-fg-faint)]">Install (Go 1.22+)</div>
+        <code class="block whitespace-pre text-[var(--color-fg-strong)]">go install github.com/qwexvf/aegis-cli/cmd/aegis@latest</code>
+        <div class="mt-3 text-xs uppercase tracking-wider text-[var(--color-fg-faint)]">First audit</div>
+        <code class="block whitespace-pre text-[var(--color-fg-strong)]">aegis ci .</code>
       </div>
     </section>
 
-    <section class="mt-24 max-w-4xl">
-      <div class="mb-5 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-[var(--color-fg-faint)]">
-        Capabilities
+    {/* SOCIAL PROOF / STATS */}
+    <section class="mt-20 grid grid-cols-2 gap-6 border-y border-[var(--color-rule)] py-10 md:grid-cols-4">
+      <div>
+        <div class="font-display text-3xl font-bold text-[var(--color-signal)]">6</div>
+        <div class="mt-1 font-mono text-xs uppercase tracking-wider text-[var(--color-fg-mute)]">ecosystems</div>
       </div>
-      <dl class="border-t border-[var(--color-rule)]">
-        {capabilities.map((c) => (
+      <div>
+        <div class="font-display text-3xl font-bold text-[var(--color-signal)]">7</div>
+        <div class="mt-1 font-mono text-xs uppercase tracking-wider text-[var(--color-fg-mute)]">malware detectors</div>
+      </div>
+      <div>
+        <div class="font-display text-3xl font-bold text-[var(--color-signal)]">0</div>
+        <div class="mt-1 font-mono text-xs uppercase tracking-wider text-[var(--color-fg-mute)]">accounts required</div>
+      </div>
+      <div>
+        <div class="font-display text-3xl font-bold text-[var(--color-signal)]">SPDX 2.3</div>
+        <div class="mt-1 font-mono text-xs uppercase tracking-wider text-[var(--color-fg-mute)]">signed SBOMs</div>
+      </div>
+    </section>
+
+    {/* QUICK START TABS */}
+    <section class="mt-20 max-w-6xl">
+      <h2 class="font-display text-3xl font-bold text-[var(--color-fg-strong)]">Quick start by ecosystem</h2>
+      <p class="mt-3 max-w-[65ch] text-base leading-relaxed text-[var(--color-fg)]">
+        Same binary, native lockfile for your stack.
+      </p>
+
+      <div class="mt-8 rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)]" data-tabs>
+        <div class="flex flex-wrap gap-0 border-b border-[var(--color-rule)] font-mono text-xs" role="tablist">
+          {[
+            { id: "npm", label: "npm / pnpm / bun" },
+            { id: "pip", label: "Python" },
+            { id: "cargo", label: "Rust" },
+            { id: "go", label: "Go" },
+            { id: "bundler", label: "Ruby" },
+          ].map((t, i) => (
+            <button
+              type="button"
+              role="tab"
+              data-tab-target={t.id}
+              data-tab-active={i === 0 ? "true" : "false"}
+              class="border-r border-[var(--color-rule)] px-5 py-3 uppercase tracking-wider text-[var(--color-fg-mute)] transition-colors hover:text-[var(--color-fg-strong)] data-[tab-active=true]:bg-[var(--color-bg-code)] data-[tab-active=true]:text-[var(--color-fg-strong)]"
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div data-tab-panel="npm" class="block p-5">
+          <pre class="overflow-x-auto bg-transparent p-0 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`# install
+go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
+# or download: https://github.com/qwexvf/aegis-cli/releases
+
+# audit any node project
+cd my-app
+aegis ci .
+
+# install gate wrapper (blocks risky deps at install time)
+aegis npm install left-pad
+aegis pnpm add react
+aegis bun add zod
+aegis yarn add lodash`}</code></pre>
+        </div>
+
+        <div data-tab-panel="pip" class="hidden p-5">
+          <pre class="overflow-x-auto bg-transparent p-0 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`# install
+go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
+
+# poetry
+cd my-py-app
+aegis ci .                # reads poetry.lock
+
+# uv
+aegis ci .                # reads uv.lock
+
+# pip-tools / requirements.txt
+aegis ci --lockfile requirements.txt .
+
+# inspect one package without installing
+aegis analyze requests==2.31.0`}</code></pre>
+        </div>
+
+        <div data-tab-panel="cargo" class="hidden p-5">
+          <pre class="overflow-x-auto bg-transparent p-0 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`# install
+go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
+
+# audit Cargo.lock
+cd my-rust-app
+aegis ci .
+
+# SBOM with dependency graph
+aegis sbom . -o sbom.spdx.json
+
+# inspect a crate
+aegis analyze tokio@1.40.0`}</code></pre>
+        </div>
+
+        <div data-tab-panel="go" class="hidden p-5">
+          <pre class="overflow-x-auto bg-transparent p-0 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`# install
+go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
+
+# audit go.sum
+cd my-go-svc
+aegis ci .
+
+# detect drift between releases
+aegis snapshot save v1.0.0
+go get -u ./...
+aegis snapshot diff v1.0.0
+
+# inspect a module
+aegis analyze github.com/gin-gonic/gin@v1.10.0`}</code></pre>
+        </div>
+
+        <div data-tab-panel="bundler" class="hidden p-5">
+          <pre class="overflow-x-auto bg-transparent p-0 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`# install
+go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
+
+# audit Gemfile.lock
+cd my-rails-app
+aegis ci .
+
+# inspect a gem
+aegis analyze rails@7.1.0
+
+# explain a finding
+aegis explain nokogiri@1.16.0`}</code></pre>
+        </div>
+      </div>
+    </section>
+
+    {/* WHY AEGIS */}
+    <section class="mt-20 max-w-4xl">
+      <h2 class="font-display text-3xl font-bold text-[var(--color-fg-strong)]">
+        Why another supply-chain scanner?
+      </h2>
+      <p class="mt-4 max-w-[65ch] text-base leading-relaxed text-[var(--color-fg)]">
+        <code>npm audit</code>, <code>pip-audit</code>, and most SCA tools only check for
+        <strong>known CVEs</strong>. They miss the entire class of attacks that defines modern
+        supply-chain compromise: typosquats, install-hook payloads, obfuscated droppers, and
+        compromised maintainer accounts. By the time a CVE exists, the package has already shipped.
+      </p>
+      <p class="mt-4 max-w-[65ch] text-base leading-relaxed text-[var(--color-fg)]">
+        Aegis adds two layers on top of OSV: <strong>AST-based capability detection</strong>
+        that reads what the code actually does, and <strong>behavioral heuristics</strong>
+        that flag the patterns malicious packages share. No machine learning hand-wave — just
+        deterministic detectors you can read in the source.
+      </p>
+    </section>
+
+    {/* CAPABILITIES */}
+    <section class="mt-20 max-w-6xl">
+      <h2 class="font-display text-3xl font-bold text-[var(--color-fg-strong)]">What Aegis does</h2>
+      <dl class="mt-8 border-t border-[var(--color-rule)]">
+        {features.map((c) => (
           <div class="grid gap-x-8 gap-y-2 border-b border-[var(--color-rule)] py-6 md:grid-cols-[22rem_1fr]">
             <dt class="flex items-baseline gap-4">
               <span class="font-mono text-sm font-semibold text-[var(--color-signal)]">{c.num}</span>
@@ -88,24 +327,594 @@ const next = [
       </dl>
     </section>
 
-    <section class="mt-20 max-w-4xl">
-      <div class="mb-5 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-[var(--color-fg-faint)]">
-        Next
+    {/* LANGUAGES */}
+    <section class="mt-20 max-w-6xl">
+      <h2 class="font-display text-3xl font-bold text-[var(--color-fg-strong)]">Supported ecosystems</h2>
+      <p class="mt-3 max-w-[65ch] text-base leading-relaxed text-[var(--color-fg)]">
+        Aegis reads native lockfiles directly — no extra manifest, no annotation, no install step.
+      </p>
+      <div class="mt-6 overflow-x-auto">
+        <table class="w-full border-collapse text-sm">
+          <thead>
+            <tr class="border-y border-[var(--color-rule-strong)]">
+              <th class="px-4 py-3 text-left font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Ecosystem</th>
+              <th class="px-4 py-3 text-left font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Package managers</th>
+              <th class="px-4 py-3 text-left font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Lockfiles</th>
+              <th class="px-4 py-3 text-left font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">AST scan</th>
+              <th class="px-4 py-3 text-left font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">OSV CVE</th>
+            </tr>
+          </thead>
+          <tbody>
+            {langs.map((l) => (
+              <tr class="border-b border-[var(--color-rule)]">
+                <td class="px-4 py-3 font-display font-semibold text-[var(--color-fg-strong)]">{l.name}</td>
+                <td class="px-4 py-3 text-[var(--color-fg)]">{l.pm}</td>
+                <td class="px-4 py-3 font-mono text-xs text-[var(--color-fg-mute)]">{l.file}</td>
+                <td class="px-4 py-3 font-mono text-xs">
+                  <span class={l.ast ? "text-[var(--color-fg-strong)]" : "text-[var(--color-fg-faint)]"}>{l.ast ? "✓" : "planned"}</span>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs">
+                  <span class={l.osv ? "text-[var(--color-fg-strong)]" : "text-[var(--color-fg-faint)]"}>{l.osv ? "✓" : "—"}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <ul class="border-t border-[var(--color-rule)]">
-        {next.map((n) => (
-          <li class="grid grid-cols-1 gap-x-8 gap-y-1 border-b border-[var(--color-rule)] py-3 md:grid-cols-[16rem_1fr]">
-            <a
-              href={base + n.href}
-              class="group inline-flex items-baseline font-display text-base font-semibold text-[var(--color-fg-strong)] transition-colors hover:text-[var(--color-signal)]"
-            >
-              <span class="mr-2 font-mono font-normal text-[var(--color-signal)]">→</span>
-              {n.label}
-            </a>
-            <span class="self-center text-sm text-[var(--color-fg-mute)]">{n.desc}</span>
+    </section>
+
+    {/* EXAMPLES */}
+    <section class="mt-20 max-w-6xl">
+      <h2 class="font-display text-3xl font-bold text-[var(--color-fg-strong)]">Examples</h2>
+      <p class="mt-3 max-w-[65ch] text-base leading-relaxed text-[var(--color-fg)]">
+        Real commands, real output. Copy, paste, run.
+      </p>
+
+      <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2">
+        {/* Audit lockfile */}
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Audit a lockfile</div>
+          <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">Find CVEs + risky capabilities</div>
+          <pre data-terminal class="mt-4 overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`$ aegis ci .
+
+  ◆ 312 packages · 14 ecosystems
+  ◆ 2 critical · 5 high · 11 medium
+
+  CVE-2024-XXXXX  axios@0.21.0    → 0.21.4
+  install-hook    fake-pkg@1.0.0  net + child_process
+  typosquat       expresss@4.18   → express
+
+  exit 1`}</code></pre>
+        </div>
+
+        {/* Explain finding */}
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Explain a finding</div>
+          <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">Capabilities + evidence per package</div>
+          <pre data-terminal class="mt-4 overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`$ aegis explain fake-pkg@1.0.0
+
+  capabilities:
+    - net.egress        evidence: index.js:14 http.get(...)
+    - child_process     evidence: postinstall.js:3 spawn('sh',...)
+    - obfuscation       evidence: base64 payload > 4KB
+  risk: BLOCK
+  reason: install-hook + net + obfuscated payload`}</code></pre>
+        </div>
+
+        {/* Generate SBOM */}
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Generate SBOM</div>
+          <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">SPDX 2.3 with dependency graph</div>
+          <pre data-terminal class="mt-4 overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`$ aegis sbom . -o sbom.spdx.json
+  ✓ wrote 312 components, 408 relationships
+
+$ aegis sbom . --sign --key cosign.key
+  ✓ sigstore signature → sbom.spdx.json.sig`}</code></pre>
+        </div>
+
+        {/* Snapshot diff */}
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Drift detection</div>
+          <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">Capabilities added between releases</div>
+          <pre data-terminal class="mt-4 overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`$ aegis snapshot save baseline
+$ npm update
+$ aegis snapshot diff baseline
+
+  + lodash@4.17.21 → 4.17.22
+      new capability: net.egress
+  ⚠ unexpected drift in a patch release`}</code></pre>
+        </div>
+
+        {/* Analyze single pkg */}
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Inspect any registry package</div>
+          <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">No install required</div>
+          <pre data-terminal class="mt-4 overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`$ aegis analyze lodash@4.17.21
+
+  ecosystem:    npm
+  size:         71 KB · 1042 LOC
+  capabilities: -
+  cve:          0 known
+  risk:         OK`}</code></pre>
+        </div>
+
+        {/* Allowlist */}
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Allowlist false positives</div>
+          <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">YAML, per package + capability</div>
+          <pre data-terminal class="mt-4 overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`# aegis.allow.yml
+packages:
+  - name: esbuild
+    version: ">=0.20.0"
+    allow: [child_process]
+    reason: native build, expected`}</code></pre>
+        </div>
+
+        {/* Pre-commit hook */}
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Pre-commit hook</div>
+          <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">Catch risky deps before push</div>
+          <pre data-terminal class="mt-4 overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`$ aegis hook install
+  ✓ .git/hooks/pre-commit installed
+
+$ git commit -m "add dep"
+  aegis: 1 new high-risk package — push blocked
+  aegis explain <pkg> for details`}</code></pre>
+        </div>
+
+        {/* Actions scan */}
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">GitHub Actions audit</div>
+          <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">Pinned tags, token scope, provenance</div>
+          <pre data-terminal class="mt-4 overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`$ aegis actions .
+
+  release.yml
+    actions/checkout@v4         unpinned (use SHA)
+    third-party/spooky@main     unpinned + write:contents`}</code></pre>
+        </div>
+
+        {/* Package manager wrap */}
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Install gate wrapper</div>
+          <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">Block risky deps at install time</div>
+          <pre data-terminal class="mt-4 overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`$ aegis npm install left-pad
+  ✓ left-pad@1.3.0 — OK
+  → forwarding to npm install left-pad
+
+$ aegis pnpm add suspicious-pkg
+  ✗ install-hook + obfuscated payload
+  → install aborted`}</code></pre>
+        </div>
+
+        {/* SARIF output */}
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Output formats</div>
+          <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">JSON, SARIF, JUnit XML</div>
+          <pre data-terminal class="mt-4 overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`$ aegis ci --format json . > findings.json
+$ aegis ci --sarif aegis.sarif .
+$ aegis ci --junit reports/aegis.xml .
+
+# Pipe into anything
+$ aegis ci --format json . | jq '.findings[].cve'`}</code></pre>
+        </div>
+      </div>
+    </section>
+
+    {/* ATTACK CATALOG */}
+    <section class="mt-20 max-w-6xl">
+      <h2 class="font-display text-3xl font-bold text-[var(--color-fg-strong)]">Attacks Aegis catches</h2>
+      <p class="mt-3 max-w-[65ch] text-base leading-relaxed text-[var(--color-fg)]">
+        Real public supply-chain incidents. Each one matched one or more Aegis detectors.
+      </p>
+
+      <ul class="mt-8 border-t border-[var(--color-rule)]">
+        {[
+          {
+            name: "event-stream",
+            year: "2018",
+            eco: "npm",
+            blurb: "Maintainer handoff to malicious actor → crypto-stealing payload injected.",
+            detectors: "maintainer drift · obfuscation · net.egress",
+          },
+          {
+            name: "ua-parser-js",
+            year: "2021",
+            eco: "npm",
+            blurb: "Account hijack → install-hook downloaded coin miner + credential stealer.",
+            detectors: "install-hook · binary dropper · C2 URL",
+          },
+          {
+            name: "colors.js / faker.js",
+            year: "2022",
+            eco: "npm",
+            blurb: "Author protest → infinite-loop sabotage shipped in a patch release.",
+            detectors: "snapshot drift · capability change in patch",
+          },
+          {
+            name: "node-ipc",
+            year: "2022",
+            eco: "npm",
+            blurb: "Protestware patched in geo-targeted file-wiping logic.",
+            detectors: "fs.write to home dir · IP-based branching",
+          },
+          {
+            name: "ctx + phpass",
+            year: "2023",
+            eco: "PyPI / npm",
+            blurb: "Squatted abandoned name → exfiltrated AWS env vars on import.",
+            detectors: "typosquat · credential read · net.egress on import",
+          },
+          {
+            name: "xz-utils backdoor",
+            year: "2024",
+            eco: "system / Go indirect",
+            blurb: "Long-game maintainer trust → obfuscated build-time backdoor in liblzma.",
+            detectors: "obfuscation · maintainer drift · binary tamper",
+          },
+          {
+            name: "lottie-player",
+            year: "2024",
+            eco: "npm",
+            blurb: "Maintainer phishing → wallet drainer injected via CDN-style npm release.",
+            detectors: "install-hook · obfuscation · C2 URL",
+          },
+          {
+            name: "@solana/web3.js",
+            year: "2024",
+            eco: "npm",
+            blurb: "Compromised maintainer account → patch release stole private keys.",
+            detectors: "maintainer drift · credential read · capability change in patch",
+          },
+        ].map((a) => (
+          <li class="grid grid-cols-1 gap-x-8 gap-y-1 border-b border-[var(--color-rule)] py-5 md:grid-cols-[14rem_1fr_18rem]">
+            <div>
+              <div class="font-display text-base font-semibold text-[var(--color-fg-strong)]">{a.name}</div>
+              <div class="mt-0.5 font-mono text-xs text-[var(--color-fg-mute)]">{a.eco} · {a.year}</div>
+            </div>
+            <p class="text-sm leading-relaxed text-[var(--color-fg)]">{a.blurb}</p>
+            <div class="font-mono text-xs leading-relaxed text-[var(--color-fg-mute)]">
+              <span class="text-[var(--color-fg-faint)]">matched →</span> {a.detectors}
+            </div>
           </li>
         ))}
       </ul>
+      <p class="mt-4 font-mono text-xs text-[var(--color-fg-faint)]">
+        Aegis is deterministic — every detector is a readable function in the source. No ML, no hidden heuristics.
+      </p>
     </section>
-  </div>
+
+    {/* CI EXAMPLE */}
+    <section class="mt-20 max-w-6xl">
+      <h2 class="font-display text-3xl font-bold text-[var(--color-fg-strong)]">Drop into CI in 30 seconds</h2>
+      <p class="mt-3 max-w-[65ch] text-base leading-relaxed text-[var(--color-fg)]">
+        Single binary, exits nonzero on policy violations, emits SARIF for GitHub code scanning.
+      </p>
+      <div class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <div class="mb-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">.github/workflows/aegis.yml</div>
+          <pre class="overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-4 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`name: aegis
+on: [push, pull_request]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.22' }
+      - run: go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
+      - run: aegis ci --fail-on=block --sarif aegis.sarif .
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: aegis.sarif }`}</code></pre>
+        </div>
+        <div>
+          <div class="mb-2 flex items-center gap-2 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">
+            <span class="inline-block h-2 w-2 rounded-full bg-[var(--color-danger)]"></span>
+            runner / pull_request #482
+          </div>
+          <pre data-terminal class="overflow-x-auto rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-code)] p-4 font-mono text-xs leading-relaxed text-[var(--color-fg-strong)]"><code>{`Run aegis ci --fail-on=block --sarif aegis.sarif .
+
+aegis 0.22.0 · go1.22.4 · linux/amd64
+
+▸ parse lockfiles
+  package-lock.json     1241 deps
+  go.sum                  82 modules
+
+▸ OSV lookup
+  HTTP 200 · batched in 1 call · 38ms
+
+▸ AST capability scan
+  scanned 1323 packages · 4.1s
+
+▸ heuristics
+  ✓ install-hook
+  ✓ obfuscation
+  ✓ typosquat
+  ✓ maintainer drift
+
+▸ findings
+  CVE-2024-21538  cross-spawn@7.0.3  → 7.0.6
+  install-hook    fake-pkg@1.0.0     net + child_process
+  typosquat       expresss@4.18      → express
+
+▸ summary
+  2 BLOCK · 3 WARN · 1318 OK
+  SARIF written → aegis.sarif
+
+##[error] aegis: policy violations
+exit code 1`}</code></pre>
+        </div>
+      </div>
+    </section>
+
+    {/* FAQ — SEO gold */}
+    <section class="mt-20 max-w-4xl">
+      <h2 class="font-display text-3xl font-bold text-[var(--color-fg-strong)]">Frequently asked questions</h2>
+      <dl class="mt-8 border-t border-[var(--color-rule)]">
+        {faq.map((f) => (
+          <div class="border-b border-[var(--color-rule)] py-6">
+            <dt class="font-display text-base font-semibold text-[var(--color-fg-strong)]">{f.q}</dt>
+            <dd class="mt-2 max-w-[65ch] text-sm leading-relaxed text-[var(--color-fg)]">{f.a}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+
+    {/* OSS vs CLOUD */}
+    <section class="mt-20 max-w-6xl">
+      <h2 class="font-display text-3xl font-bold text-[var(--color-fg-strong)]">OSS vs Aegis Cloud</h2>
+      <p class="mt-3 max-w-[65ch] text-base leading-relaxed text-[var(--color-fg)]">
+        CLI is fully functional with zero account. Cloud unlocks dynamic analysis + team features. Honest split.
+      </p>
+
+      <div class="mt-8 overflow-x-auto">
+        <table class="w-full border-collapse text-sm">
+          <thead>
+            <tr class="border-y border-[var(--color-rule-strong)]">
+              <th class="px-4 py-3 text-left font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Feature</th>
+              <th class="px-4 py-3 text-left font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">OSS · free</th>
+              <th class="px-4 py-3 text-left font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Cloud · paid</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ["Lockfile parsing · 5 ecosystems", "yes", "yes"],
+              ["OSV CVE lookup", "yes", "yes"],
+              ["AST capability scanning", "yes", "yes"],
+              ["Malware heuristics · 7 detectors", "yes", "yes"],
+              ["SBOM · SPDX 2.3 + sigstore", "yes", "yes"],
+              ["GitHub Actions audit", "yes", "yes"],
+              ["CI gate · SARIF · JUnit", "yes", "yes"],
+              ["Snapshot drift", "yes", "yes"],
+              ["Allowlist YAML", "yes", "yes"],
+              ["Offline · no account", "yes", "—"],
+              ["Sandbox dynamic analysis · Firecracker", "—", "yes"],
+              ["Team dashboard · history", "—", "yes"],
+              ["Registry monitoring", "—", "yes"],
+              ["Shared org allowlist", "—", "yes"],
+              ["Public package report graph", "—", "yes"],
+            ].map(([feat, oss, cloud]) => (
+              <tr class="border-b border-[var(--color-rule)]">
+                <td class="px-4 py-3 text-[var(--color-fg-strong)]">{feat}</td>
+                <td class="px-4 py-3 font-mono text-xs">
+                  <span class={oss === "yes" ? "text-[var(--color-fg-strong)]" : "text-[var(--color-fg-faint)]"}>
+                    {oss === "yes" ? "✓ included" : "—"}
+                  </span>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs">
+                  <span class={cloud === "yes" ? "text-[var(--color-fg-strong)]" : "text-[var(--color-fg-faint)]"}>
+                    {cloud === "yes" ? "✓ included" : "—"}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div class="rounded-sm border border-[var(--color-rule)] bg-[var(--color-bg-elev)] p-5">
+          <div class="font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">OSS</div>
+          <div class="mt-1 font-display text-2xl font-bold text-[var(--color-fg-strong)]">$0 · forever</div>
+          <p class="mt-2 text-sm text-[var(--color-fg)]">Apache-2.0. Audit your code locally. No telemetry, no account, no rate limit.</p>
+          <a
+            href={base + "getting-started/"}
+            class="mt-4 inline-flex items-center font-mono text-sm font-medium text-[var(--color-fg-strong)] hover:text-[var(--color-signal)]"
+          >Install →</a>
+        </div>
+        <div class="rounded-sm border border-[var(--color-rule-strong)] bg-[var(--color-bg-elev-2)] p-5">
+          <div class="font-mono text-[0.7rem] uppercase tracking-[0.14em] text-[var(--color-fg-faint)]">Cloud</div>
+          <div class="mt-1 font-display text-2xl font-bold text-[var(--color-fg-strong)]">Coming soon</div>
+          <p class="mt-2 text-sm text-[var(--color-fg)]">Dynamic sandbox analysis for the cases the CLI can't catch statically. Bring your CLI snapshots, share with your team.</p>
+          <a
+            href={base + "cloud/"}
+            class="mt-4 inline-flex items-center font-mono text-sm font-medium text-[var(--color-fg-strong)] hover:text-[var(--color-signal)]"
+          >Learn more →</a>
+        </div>
+      </div>
+    </section>
+
+    {/* CTA */}
+    <section class="mt-20 max-w-6xl rounded-sm border border-[var(--color-rule-strong)] bg-[var(--color-bg-elev)] p-8 md:p-12">
+      <h2 class="font-display text-3xl font-bold text-[var(--color-fg-strong)]">
+        Ship without surprises.
+      </h2>
+      <p class="mt-3 max-w-[55ch] text-base text-[var(--color-fg)]">
+        Aegis is one binary, zero accounts, fully offline. Install in seconds, audit a real lockfile, decide for yourself.
+      </p>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <a
+          href={base + "getting-started/"}
+          class="inline-flex items-center rounded-sm border border-[var(--color-fg-strong)] bg-[var(--color-fg-strong)] px-5 py-2.5 font-mono text-sm font-medium text-[var(--color-bg)] transition-colors hover:border-[var(--color-signal)] hover:bg-[var(--color-signal)]"
+        >
+          Get started →
+        </a>
+        <a
+          href="https://github.com/qwexvf/aegis-cli"
+          class="inline-flex items-center rounded-sm border border-[var(--color-rule-strong)] bg-transparent px-5 py-2.5 font-mono text-sm font-medium text-[var(--color-fg)] transition-colors hover:border-[var(--color-signal)] hover:text-[var(--color-signal)]"
+        >
+          github.com/qwexvf/aegis-cli
+        </a>
+      </div>
+    </section>
+
+    {/* FOOTER NAV — internal linking helps SEO */}
+    <section class="mt-20 max-w-6xl">
+      <div class="mb-5 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-[var(--color-fg-faint)]">
+        Explore the docs
+      </div>
+      <ul class="grid grid-cols-1 gap-x-8 gap-y-1 border-t border-[var(--color-rule)] md:grid-cols-2">
+        <li class="border-b border-[var(--color-rule)] py-3"><a href={base + "getting-started/"} class="font-display text-base font-semibold text-[var(--color-fg-strong)] hover:text-[var(--color-signal)]">Getting started</a></li>
+        <li class="border-b border-[var(--color-rule)] py-3"><a href={base + "guides/cookbook/"} class="font-display text-base font-semibold text-[var(--color-fg-strong)] hover:text-[var(--color-signal)]">Cookbook</a></li>
+        <li class="border-b border-[var(--color-rule)] py-3"><a href={base + "reference/commands/"} class="font-display text-base font-semibold text-[var(--color-fg-strong)] hover:text-[var(--color-signal)]">Command reference</a></li>
+        <li class="border-b border-[var(--color-rule)] py-3"><a href={base + "contributing/architecture/"} class="font-display text-base font-semibold text-[var(--color-fg-strong)] hover:text-[var(--color-signal)]">Architecture</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <style>
+    [data-terminal] code {
+      display: block;
+      min-height: 1.6em;
+    }
+    [data-terminal] .term-cursor {
+      display: inline-block;
+      width: 0.55em;
+      height: 1em;
+      vertical-align: -2px;
+      background: var(--color-fg-strong);
+      margin-left: 2px;
+      animation: term-blink 1s steps(1) infinite;
+    }
+    [data-terminal] .term-line {
+      opacity: 0;
+      transition: opacity 0.18s ease-out;
+    }
+    [data-terminal] .term-line.term-line-visible {
+      opacity: 1;
+    }
+    [data-terminal] .term-line-prompt {
+      color: var(--color-fg-strong);
+    }
+    [data-terminal] .term-line-output {
+      color: var(--color-fg);
+    }
+    [data-terminal] .term-line-output-strong {
+      color: var(--color-fg-strong);
+    }
+    @keyframes term-blink {
+      50% { opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      [data-terminal] .term-cursor { animation: none; opacity: 0; }
+      [data-terminal] .term-line { opacity: 1 !important; transition: none; }
+    }
+  </style>
+
+  <script>
+    (() => {
+      const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const blocks = document.querySelectorAll<HTMLPreElement>("[data-terminal]");
+
+      blocks.forEach((pre) => {
+        const codeEl = pre.querySelector("code");
+        if (!codeEl) return;
+        const original = codeEl.textContent ?? "";
+        const lines = original.replace(/^\n+|\n+$/g, "").split("\n");
+        codeEl.textContent = "";
+
+        const lineEls: { el: HTMLSpanElement; text: string; isPrompt: boolean }[] = [];
+        lines.forEach((line, i) => {
+          const isPrompt = /^\s*\$\s/.test(line) || /^Run\s/.test(line);
+          const isStrong = /^\s*[✓✗◆⚠→#]/.test(line) || /(BLOCK|OK|exit\s+\d)/.test(line);
+          const span = document.createElement("span");
+          span.className = "term-line " + (isPrompt
+            ? "term-line-prompt"
+            : isStrong
+              ? "term-line-output-strong"
+              : "term-line-output");
+          codeEl.appendChild(span);
+          if (i < lines.length - 1) codeEl.appendChild(document.createTextNode("\n"));
+          lineEls.push({ el: span, text: line, isPrompt });
+        });
+
+        const cursor = document.createElement("span");
+        cursor.className = "term-cursor";
+        cursor.style.display = "none";
+        codeEl.appendChild(cursor);
+
+        let started = false;
+        const run = async () => {
+          if (started) return;
+          started = true;
+          cursor.style.display = "inline-block";
+
+          for (const { el, text, isPrompt } of lineEls) {
+            el.classList.add("term-line-visible");
+            if (isPrompt && !prefersReduced) {
+              for (let i = 0; i < text.length; i++) {
+                el.textContent = text.slice(0, i + 1);
+                await sleep(18 + Math.random() * 18);
+              }
+              await sleep(220);
+            } else {
+              el.textContent = text;
+              await sleep(prefersReduced ? 0 : (text.trim() === "" ? 60 : 90));
+            }
+          }
+          await sleep(600);
+          cursor.style.display = "none";
+        };
+
+        if (prefersReduced) {
+          lineEls.forEach(({ el, text }) => {
+            el.textContent = text;
+            el.classList.add("term-line-visible");
+          });
+          return;
+        }
+
+        const io = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((e) => {
+              if (e.isIntersecting) {
+                run();
+                io.disconnect();
+              }
+            });
+          },
+          { threshold: 0.25 },
+        );
+        io.observe(pre);
+      });
+
+      function sleep(ms: number) {
+        return new Promise((r) => setTimeout(r, ms));
+      }
+    })();
+
+    // Quick-start ecosystem tabs.
+    (() => {
+      document.querySelectorAll<HTMLElement>("[data-tabs]").forEach((container) => {
+        const buttons = container.querySelectorAll<HTMLButtonElement>("[data-tab-target]");
+        const panels = container.querySelectorAll<HTMLElement>("[data-tab-panel]");
+
+        buttons.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const target = btn.dataset.tabTarget;
+            buttons.forEach((b) => (b.dataset.tabActive = b === btn ? "true" : "false"));
+            panels.forEach((p) => {
+              if (p.dataset.tabPanel === target) {
+                p.classList.remove("hidden");
+                p.classList.add("block");
+              } else {
+                p.classList.add("hidden");
+                p.classList.remove("block");
+              }
+            });
+          });
+        });
+      });
+    })();
+  </script>
 </BaseLayout>
