@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
-	"github.com/qwexvf/aegis-cli/internal/infra/ghactions"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/actions"
 )
 
 // Actions is the use case for `aegis actions scan`. It walks a
@@ -16,7 +16,7 @@ import (
 // runs heuristics, and returns aggregated findings.
 //
 // Layering note: this use case takes a concrete dependency on the
-// ghactions infra package. The package is pure (no I/O beyond reading
+// actions infra package. The package is pure (no I/O beyond reading
 // workflow files) so the cost of a port abstraction isn't justified
 // for the prototype. Lift to a port once a second backend appears
 // (e.g. GitHub API for remote-repo scanning).
@@ -70,7 +70,7 @@ type ActionsScanResult struct {
 // Scan walks workflows and returns findings. ctx is used for remote API
 // requests — pass cmd.Context() from cobra so SIGINT cancels in-flight calls.
 func (a *Actions) Scan(ctx context.Context, req ActionsScanRequest) (ActionsScanResult, error) {
-	var workflows []ghactions.ParsedWorkflow
+	var workflows []actions.ParsedWorkflow
 	var numWorkflows int
 
 	if req.Repo != "" {
@@ -78,29 +78,29 @@ func (a *Actions) Scan(ctx context.Context, req ActionsScanRequest) (ActionsScan
 		if !ok {
 			return ActionsScanResult{}, fmt.Errorf("actions: --repo must be owner/repo, got %q", req.Repo)
 		}
-		wfs, err := ghactions.FetchRemoteWorkflows(ctx, owner, repo, req.Token, req.HTTPClient)
+		wfs, err := actions.FetchRemoteWorkflows(ctx, owner, repo, req.Token, req.HTTPClient)
 		if err != nil {
 			return ActionsScanResult{}, fmt.Errorf("actions: remote fetch %s: %w", req.Repo, err)
 		}
 		workflows = wfs
 	} else {
-		paths, err := ghactions.FindWorkflows(req.ProjectDir)
+		paths, err := actions.FindWorkflows(req.ProjectDir)
 		if err != nil {
 			return ActionsScanResult{}, err
 		}
 		for _, p := range paths {
-			wf, err := ghactions.Parse(p)
+			wf, err := actions.Parse(p)
 			if err != nil {
 				return ActionsScanResult{}, fmt.Errorf("actions: parse %s: %w", p, err)
 			}
-			workflows = append(workflows, ghactions.ParsedWorkflow{Workflow: wf})
+			workflows = append(workflows, actions.ParsedWorkflow{Workflow: wf})
 		}
 	}
 	numWorkflows = len(workflows)
 
 	var all []domain.WorkflowFinding
 	for _, pw := range workflows {
-		all = append(all, ghactions.Analyze(pw.Workflow)...)
+		all = append(all, actions.Analyze(pw.Workflow)...)
 	}
 	sort.SliceStable(all, func(i, j int) bool {
 		if all[i].File != all[j].File {
