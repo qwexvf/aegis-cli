@@ -27,9 +27,11 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/depsdotdev"
 	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis-cli/internal/infra/envprobe"
+	"github.com/qwexvf/aegis-cli/internal/infra/epss"
 	"github.com/qwexvf/aegis-cli/internal/infra/ghsalookup"
 	"github.com/qwexvf/aegis-cli/internal/infra/hookfs"
 	"github.com/qwexvf/aegis-cli/internal/infra/httpx"
+	"github.com/qwexvf/aegis-cli/internal/infra/kev"
 	"github.com/qwexvf/aegis-cli/internal/infra/licensefetch"
 	"github.com/qwexvf/aegis-cli/internal/infra/locksnap"
 	"github.com/qwexvf/aegis-cli/internal/infra/ndjsonaudit"
@@ -40,6 +42,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/pypiregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/rubygemsregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/ttyprompt"
+	"github.com/qwexvf/aegis-cli/internal/infra/vulnenrich"
 	"github.com/qwexvf/aegis-cli/internal/infra/vulnlookup"
 	"github.com/qwexvf/aegis-cli/internal/presenter/cli"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
@@ -266,6 +269,25 @@ func main() {
 	}
 	if vulnLookup != nil {
 		snapshot.WithVulnLookup(vulnLookup)
+	}
+
+	// Advisory enricher: EPSS probability scores + CISA KEV membership.
+	// Runs after the OSV lookup, gated on the same offline flag.
+	if os.Getenv("AEGIS_NO_VULN_LOOKUP") == "" {
+		kevCacheDir := ""
+		if root := diskcache.CacheRoot(); root != "" {
+			kevCacheDir = root + "/kev"
+		}
+		snapshot.WithAdvisoryEnricher(vulnenrich.NewWithClients(
+			epss.New(epss.WithHTTPClient(httpClient)),
+			kev.New(kev.WithHTTPClient(httpClient), kev.WithCacheDir(kevCacheDir)),
+		))
+	}
+
+	// Package health (deprecation status) via deps.dev, same offline gate.
+	if os.Getenv("AEGIS_NO_VULN_LOOKUP") == "" {
+		depsDevClient := depsdotdev.New(depsdotdev.WithHTTPClient(httpClient))
+		snapshot.WithPackageHealthFetcher(depsDevClient)
 	}
 
 	// License fetcher: disabled when AEGIS_NO_VULN_LOOKUP=1 (same offline

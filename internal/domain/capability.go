@@ -177,6 +177,15 @@ const (
 	// registry security scans. In a *published* package this is highly
 	// anomalous; in most ecosystems it is an outright anti-pattern.
 	CapVCSDependency
+
+	// CapHardcodedSecret — the package source contains what appears to be
+	// a hardcoded credential: AWS access key, GitHub token, npm token,
+	// PEM private key, Stripe key, SendGrid API key, Twilio auth ID.
+	// Any of these in a published dep is immediately suspicious — package
+	// code should never embed real credentials. Weight is high enough to
+	// push to Block by itself; pair with allowlist for known false-positive
+	// packages that embed test/example tokens.
+	CapHardcodedSecret
 )
 
 // String returns the canonical name. Used for serialization, logs,
@@ -227,6 +236,8 @@ func (c Capability) String() string {
 		return "known-malware-ioc"
 	case CapVCSDependency:
 		return "vcs-dependency"
+	case CapHardcodedSecret:
+		return "hardcoded-secret"
 	}
 	return "unknown"
 }
@@ -281,6 +292,8 @@ func (c Capability) Description() string {
 		return "tarball contains a confirmed-malware filename IOC (router_init.js / router_runtime.js / tanstack_runner.js)"
 	case CapVCSDependency:
 		return "manifest pins a dep to a git/VCS URL — bypasses registry immutability; invisible to security scans"
+	case CapHardcodedSecret:
+		return "source contains a hardcoded credential (AWS key, GitHub token, PEM private key, Stripe key, etc.)"
 	}
 	return "no description available"
 }
@@ -311,6 +324,7 @@ func AllCapabilities() []Capability {
 		CapVersionUnpublished,
 		CapKnownMalwareIOC,
 		CapVCSDependency,
+		CapHardcodedSecret,
 	}
 }
 

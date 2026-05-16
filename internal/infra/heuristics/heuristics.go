@@ -49,6 +49,7 @@ var defaultPipeline = NewPipeline(
 		checkBinaryDropper,   // suspicious binary outside expected paths → CapBinaryDropper
 		checkTyposquat,       // name × levenshtein × top-N list → CapTyposquatRisk
 		checkSourcePatterns,  // source files × obfuscation/URL/IOC → multiple caps
+		checkSecrets,         // hardcoded credentials in source → CapHardcodedSecret
 		checkOptionalGitDep,  // optional VCS dep → CapGitDepInOptionalDep (worm vector)
 		checkUnlistedPayload, // large unlisted file → CapUnlistedLargeFile
 		checkVCSDeps,         // any VCS dep → CapVCSDependency

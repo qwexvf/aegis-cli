@@ -130,6 +130,15 @@ const (
 	// attestation. Informational: most packages lack it today, so this
 	// is a low-weight signal that pairs with others to escalate verdict.
 	WeightProvenanceMissing = 10
+	// WeightHardcodedSecret — source contains a real credential pattern
+	// (AWS key, GitHub token, PEM private key, etc.). No legitimate dep
+	// embeds real credentials; weight crosses Block by itself.
+	WeightHardcodedSecret = 80
+	// WeightDeprecated — registry has marked this package as deprecated.
+	// Informational severity: package still works but may be abandoned,
+	// unmaintained, or replaced by a successor. Low weight — produces
+	// Review verdict on its own; combines with other signals.
+	WeightDeprecated = 15
 )
 
 // credentialEnvVarRoots is the list of env var name prefixes that, when
@@ -274,6 +283,14 @@ func RiskScore(fp *Fingerprint) RiskAssessment {
 			add(c.String(),
 				"tarball contains a confirmed-malware filename IOC (router_init.js / router_runtime.js / tanstack_runner.js)",
 				WeightKnownMalwareIOC)
+		case CapVCSDependency:
+			add(c.String(),
+				"manifest pins a dep to a git/VCS URL — bypasses registry immutability; invisible to security scans",
+				WeightVCSDependency)
+		case CapHardcodedSecret:
+			add(c.String(),
+				"source contains a hardcoded credential (AWS key, GitHub token, PEM private key, Stripe/SendGrid/Twilio key)",
+				WeightHardcodedSecret)
 		}
 	}
 

@@ -322,6 +322,20 @@ type osvDoc struct {
 	DatabaseSpecific struct {
 		Severity string `json:"severity"`
 	} `json:"database_specific"`
+	Affected []osvAffected `json:"affected"`
+}
+
+type osvAffected struct {
+	Ranges []struct {
+		Type   string `json:"type"`
+		Events []struct {
+			Introduced string `json:"introduced,omitempty"`
+			Fixed      string `json:"fixed,omitempty"`
+		} `json:"events"`
+	} `json:"ranges"`
+	EcosystemSpecific struct {
+		Functions []string `json:"functions"`
+	} `json:"ecosystem_specific"`
 }
 
 // parseOSVVuln decodes an OSV vulnerability JSON document into the
@@ -343,13 +357,56 @@ func parseOSVVuln(raw []byte) (domain.Advisory, error) {
 		summary = "(no summary provided)"
 	}
 	return domain.Advisory{
-		ID:       doc.ID,
-		Aliases:  doc.Aliases,
-		Severity: severityFromOSV(doc.Severity, doc.DatabaseSpecific.Severity),
-		Summary:  summary,
-		URL:      "https://osv.dev/vulnerability/" + doc.ID,
-		Source:   "osv",
+		ID:                doc.ID,
+		Aliases:           doc.Aliases,
+		Severity:          severityFromOSV(doc.Severity, doc.DatabaseSpecific.Severity),
+		Summary:           summary,
+		URL:               "https://osv.dev/vulnerability/" + doc.ID,
+		Source:            "osv",
+		FixedIn:           fixVersionFromAffected(doc.Affected),
+		AffectedFunctions: affectedFunctions(doc.Affected),
 	}, nil
+}
+
+// affectedFunctions collects the union of function names across all
+// affected[] entries. Most OSV advisories don't carry this data; when
+// they do (e.g. specific Go function-level vulns), it enables tighter
+// reachability filtering.
+func affectedFunctions(affected []osvAffected) []string {
+	var out []string
+	seen := make(map[string]struct{})
+	for _, a := range affected {
+		for _, fn := range a.EcosystemSpecific.Functions {
+			if fn == "" {
+				continue
+			}
+			if _, dup := seen[fn]; !dup {
+				seen[fn] = struct{}{}
+				out = append(out, fn)
+			}
+		}
+	}
+	return out
+}
+
+// fixVersionFromAffected extracts the first "fixed" version from the
+// OSV affected[].ranges.events list. SEMVER and ECOSYSTEM range types
+// carry human-usable version strings; GIT ranges use commit SHAs which
+// are less actionable, so those are skipped.
+func fixVersionFromAffected(affected []osvAffected) string {
+	for _, a := range affected {
+		for _, r := range a.Ranges {
+			if r.Type != "SEMVER" && r.Type != "ECOSYSTEM" {
+				continue
+			}
+			for _, e := range r.Events {
+				if e.Fixed != "" {
+					return e.Fixed
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // severityFromOSV maps OSV's severity surface onto our enum. CVSS

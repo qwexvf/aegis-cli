@@ -92,6 +92,8 @@ type versionResp struct {
 		AdvisoryKeys []struct {
 			ID string `json:"id"`
 		} `json:"advisoryKeys"`
+		IsDeprecated     bool   `json:"isDeprecated"`
+		DeprecatedReason string `json:"deprecatedReason"`
 	} `json:"version"`
 }
 
@@ -212,6 +214,49 @@ func parseSeverity(s string) domain.Severity {
 		return domain.SevLow
 	}
 	return domain.SevInfo
+}
+
+// FetchDeprecated implements usecase.PackageHealthFetcher.
+// Returns (deprecated, reason, nil) for supported ecosystems; (false, "", nil)
+// for unsupported ones or 404s. Uses the same version endpoint as
+// fetchAdvisories — connection reuse keeps the cost low.
+func (c *Client) FetchDeprecated(ctx context.Context, eco domain.Ecosystem, name, version string) (bool, string, error) {
+	sys := depsSystem(eco)
+	if sys == "" {
+		return false, "", nil
+	}
+	endpoint := fmt.Sprintf("%s/v3alpha/systems/%s/packages/%s/versions/%s",
+		c.baseURL,
+		url.PathEscape(sys),
+		url.PathEscape(name),
+		url.PathEscape(version),
+	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return false, "", err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpx.Do(ctx, c.http, req, c.retry)
+	if err != nil {
+		return false, "", fmt.Errorf("deps.dev health %s/%s@%s: %w", sys, name, version, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return false, "", nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return false, "", fmt.Errorf("deps.dev health %s/%s@%s: HTTP %d", sys, name, version, resp.StatusCode)
+	}
+	raw, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return false, "", err
+	}
+	var vr versionResp
+	if err := json.Unmarshal(raw, &vr); err != nil {
+		return false, "", fmt.Errorf("deps.dev health decode: %w", err)
+	}
+	return vr.Version.IsDeprecated, vr.Version.DeprecatedReason, nil
 }
 
 // depsSystem maps domain.Ecosystem to the deps.dev system name.

@@ -53,6 +53,14 @@ type Dependency struct {
 	// License is the SPDX identifier (or raw license string) from the
 	// package registry. Empty when not yet fetched or unavailable.
 	License string `json:",omitempty"`
+	// Deprecated is true when the package registry has marked this version
+	// (or the package as a whole) as deprecated — e.g. npm's "deprecated"
+	// field, PyPI's yanked flag. Populated during Enrich; false when not
+	// yet fetched or when the registry returns no deprecation signal.
+	Deprecated bool `json:",omitempty"`
+	// DeprecatedReason is the human-readable reason from the registry.
+	// Empty when Deprecated is false.
+	DeprecatedReason string `json:",omitempty"`
 	// ProvenanceStatus is the result of the npm attestation lookup during
 	// `aegis snapshot enrich`. One of: "attested", "missing", "error".
 	// Empty means not yet queried. Non-npm ecosystems always leave this empty.

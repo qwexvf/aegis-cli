@@ -7,6 +7,7 @@ import (
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
+	"github.com/qwexvf/aegis-cli/internal/infra/openvex"
 	"github.com/qwexvf/aegis-cli/internal/infra/sarif"
 	presentercli "github.com/qwexvf/aegis-cli/internal/presenter/cli"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
@@ -32,6 +33,10 @@ func ciCommand(uc *usecase.CI, actions *usecase.Actions, presenter *presentercli
 		baselinePath     string
 		scanActions      bool
 		actionsFailOnStr string
+		denyLicenses     string
+		allowLicenses    string
+		vexPath          string
+		failOnDeprecated bool
 	)
 	cmd := &cobra.Command{
 		Use:   "ci",
@@ -82,11 +87,18 @@ deps incur AST scan cost.`,
 			presenter.SetJSONMode(jsonOut)
 			presenter.SetQuietMode(quiet)
 
+			suppressed, vexErr := loadVEX(vexPath)
+			if vexErr != nil {
+				return &exitCodeError{code: 2, err: vexErr, silent: false}
+			}
 			result, runErr := uc.Run(cmd.Context(), usecase.CIRequest{
-				ProjectDir:   cwd,
-				FailOn:       failOn,
-				Enrich:       !noEnrich,
-				BaselinePath: baselinePath,
+				ProjectDir:           cwd,
+				FailOn:               failOn,
+				Enrich:               !noEnrich,
+				BaselinePath:         baselinePath,
+				LicensePolicy:        parseLicensePolicy(allowLicenses, denyLicenses),
+				SuppressedAdvisories: suppressed,
+				FailOnDeprecated:     failOnDeprecated,
 			})
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
@@ -218,7 +230,51 @@ deps incur AST scan cost.`,
 	cmd.Flags().StringVar(&baselinePath, "baseline", "",
 		"path to a saved aegis.lock to diff against (drift mode — catches "+
 			"version-changed deps that grew new capabilities; doesn't touch your aegis.lock)")
+	cmd.Flags().StringVar(&denyLicenses, "deny-licenses", "",
+		"comma-separated SPDX license IDs to reject (e.g. GPL-3.0,AGPL-3.0); "+
+			"mutually exclusive with --allow-licenses")
+	cmd.Flags().StringVar(&allowLicenses, "allow-licenses", "",
+		"comma-separated SPDX license IDs to permit; any other license (or unknown) is blocked; "+
+			"mutually exclusive with --deny-licenses")
+	cmd.Flags().StringVar(&vexPath, "vex", "",
+		"path to an OpenVEX document (.vex JSON); advisories with status 'not_affected' are suppressed")
+	cmd.Flags().BoolVar(&failOnDeprecated, "fail-on-deprecated", false,
+		"treat deprecated packages as a finding at Review level")
 	return cmd
+}
+
+// loadVEX parses an OpenVEX file and returns the suppressed advisory ID set.
+// Returns (nil, nil) when path is empty (no-op). Uses the openvex package
+// to parse; any file error or JSON error returns (nil, err).
+func loadVEX(path string) (map[string]struct{}, error) {
+	if path == "" {
+		return nil, nil
+	}
+	doc, err := openvex.LoadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("--vex: %w", err)
+	}
+	return openvex.SuppressedAdvisories(doc), nil
+}
+
+// parseLicensePolicy builds a domain.LicensePolicy from the raw
+// --allow-licenses / --deny-licenses flag strings (comma-separated
+// SPDX IDs). Empty strings produce an empty (no-op) policy.
+func parseLicensePolicy(allow, deny string) domain.LicensePolicy {
+	split := func(s string) []string {
+		if s == "" {
+			return nil
+		}
+		parts := strings.Split(s, ",")
+		out := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				out = append(out, t)
+			}
+		}
+		return out
+	}
+	return domain.LicensePolicy{Allow: split(allow), Deny: split(deny)}
 }
 
 // parseFailOn maps the user's --fail-on string to a VerdictKind.

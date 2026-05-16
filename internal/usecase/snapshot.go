@@ -67,6 +67,15 @@ type Snapshot struct {
 	// vulnerabilities, only on local AST findings.
 	vulnLookup VulnLookup
 
+	// Optional advisory enricher. When set, runs after lookupAdvisories
+	// to stamp EPSS probability scores and CISA KEV membership onto
+	// advisories that carry CVE IDs. nil skips enrichment.
+	advisoryEnricher AdvisoryEnricher
+
+	// Optional package health fetcher. When set, Enrich populates
+	// Dependency.Deprecated + DeprecatedReason via deps.dev. nil skips.
+	healthFetcher PackageHealthFetcher
+
 	// Optional registry license fetcher. When set, Enrich populates
 	// Dependency.License for deps that don't already have one.
 	licenseFetcher LicenseFetcher
@@ -165,6 +174,22 @@ func (s *Snapshot) WithPublishedAtResolver(r PublishedAtResolver) *Snapshot {
 // falls back to AST-only behaviour. Useful when running offline.
 func (s *Snapshot) WithVulnLookup(v VulnLookup) *Snapshot {
 	s.vulnLookup = v
+	return s
+}
+
+// WithAdvisoryEnricher attaches the post-lookup advisory enricher
+// (EPSS + KEV). nil is safe — advisories are stored without those
+// fields. Called after WithVulnLookup; both must be set for
+// enrichment to run.
+func (s *Snapshot) WithAdvisoryEnricher(e AdvisoryEnricher) *Snapshot {
+	s.advisoryEnricher = e
+	return s
+}
+
+// WithPackageHealthFetcher attaches the deprecation fetcher (deps.dev).
+// nil is safe — Dependency.Deprecated stays false.
+func (s *Snapshot) WithPackageHealthFetcher(f PackageHealthFetcher) *Snapshot {
+	s.healthFetcher = f
 	return s
 }
 
@@ -376,6 +401,8 @@ func (s *Snapshot) Enrich(ctx context.Context, projectDir string) error {
 	// failed lookup logs an info line but doesn't fail Enrich —
 	// the AST findings already on disk are the floor.
 	s.lookupAdvisories(ctx, snap.Deps)
+	s.enrichAdvisoryMeta(ctx, snap.Deps)
+	s.lookupPackageHealth(ctx, snap.Deps)
 	s.lookupLicenses(ctx, snap.Deps)
 	s.lookupProvenance(ctx, snap.Deps)
 
@@ -1123,6 +1150,48 @@ func (s *Snapshot) lookupAdvisories(ctx context.Context, deps []domain.Dependenc
 	}
 }
 
+// enrichAdvisoryMeta stamps EPSS probability scores and CISA KEV
+// membership onto advisories that carry CVE IDs. No-op when the
+// enricher wasn't configured; best-effort (network failures leave
+// advisories unchanged rather than failing the whole Enrich).
+func (s *Snapshot) enrichAdvisoryMeta(ctx context.Context, deps []domain.Dependency) {
+	if s.advisoryEnricher == nil {
+		return
+	}
+	for i, d := range deps {
+		if len(d.Advisories) == 0 {
+			continue
+		}
+		deps[i].Advisories = s.advisoryEnricher.Enrich(ctx, d.Advisories)
+	}
+}
+
+// lookupPackageHealth fetches deprecation status for deps that don't
+// already have it. Best-effort: failures are logged, never fatal.
+func (s *Snapshot) lookupPackageHealth(ctx context.Context, deps []domain.Dependency) {
+	if s.healthFetcher == nil {
+		return
+	}
+	deprecated := 0
+	for i, d := range deps {
+		if d.Deprecated {
+			continue // already set (e.g. from a previous enrich run)
+		}
+		isDeprecated, reason, err := s.healthFetcher.FetchDeprecated(ctx, d.Ecosystem, d.Name, d.Version)
+		if err != nil {
+			continue // best-effort
+		}
+		if isDeprecated {
+			deps[i].Deprecated = true
+			deps[i].DeprecatedReason = reason
+			deprecated++
+		}
+	}
+	if deprecated > 0 {
+		s.presenter.OnSnapshotInfo(fmt.Sprintf("%d deprecated packages detected", deprecated))
+	}
+}
+
 // Rescan re-queries the vulnerability feed for every dep in the saved
 // snapshot regardless of whether it was already enriched, then diffs
 // against the previously stored advisories to surface newly-disclosed
@@ -1156,6 +1225,7 @@ func (s *Snapshot) Rescan(ctx context.Context, projectDir string) (RescanResult,
 	}
 
 	s.lookupAdvisories(ctx, snap.Deps)
+	s.enrichAdvisoryMeta(ctx, snap.Deps)
 
 	var findings []RescanFinding
 	for i, d := range snap.Deps {

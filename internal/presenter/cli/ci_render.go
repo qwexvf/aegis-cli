@@ -111,6 +111,8 @@ func (cp *CIPresenter) renderFinding(f usecase.CIFinding) {
 	cp.renderFlagBlock("Risk flags", "+", f.Risk.Flags)
 	cp.renderFlagBlock("Drift flags (vs baseline)", "Δ", f.Drift.Flags)
 	cp.renderAdvisoryBlock(f.Dep.Advisories)
+	cp.renderLicenseViolation(f.LicenseViolation)
+	cp.renderDeprecated(f.Deprecated, f.DeprecatedReason)
 }
 
 // renderAdvisoryBlock prints known vulnerabilities for the dep, one
@@ -123,6 +125,13 @@ func (cp *CIPresenter) renderAdvisoryBlock(advs []domain.Advisory) {
 	}
 	fmt.Fprintf(cp.p.w, "  %sAdvisories:%s\n", cp.p.dim(), cp.p.reset())
 	for _, a := range advs {
+		if a.VEXSuppressed {
+			// Render suppressed advisories greyed out so the user can see
+			// what was cleared by the VEX document without it affecting output.
+			fmt.Fprintf(cp.p.w, "    %s• %s [VEX: not_affected] — %s%s\n",
+				cp.p.dim(), a.ID, a.Summary, cp.p.reset())
+			continue
+		}
 		var sevColor string
 		switch a.Severity {
 		case domain.SevCritical, domain.SevHigh:
@@ -132,11 +141,50 @@ func (cp *CIPresenter) renderAdvisoryBlock(advs []domain.Advisory) {
 		default:
 			sevColor = cp.p.dim()
 		}
-		fmt.Fprintf(cp.p.w, "    %s•%s %s%s%s %s[%s]%s — %s\n",
+		kevBadge := ""
+		if a.InKEV {
+			kevBadge = fmt.Sprintf(" %s[KEV]%s", cp.p.red(), cp.p.reset())
+		}
+		epssSuffix := ""
+		if a.EPSS > 0 {
+			epssSuffix = fmt.Sprintf(" %s(EPSS %.0f%%)%s",
+				cp.p.dim(), a.EPSS*100, cp.p.reset())
+		}
+		fixSuffix := ""
+		if a.FixedIn != "" {
+			fixSuffix = fmt.Sprintf(" %s→ fix: %s%s",
+				cp.p.dim(), a.FixedIn, cp.p.reset())
+		}
+		fmt.Fprintf(cp.p.w, "    %s•%s %s%s%s%s %s[%s]%s — %s%s%s\n",
 			cp.p.dim(), cp.p.reset(),
 			sevColor, a.ID, cp.p.reset(),
+			kevBadge,
 			cp.p.dim(), a.Severity, cp.p.reset(),
-			a.Summary)
+			a.Summary, epssSuffix, fixSuffix)
+	}
+}
+
+// renderLicenseViolation prints a license policy failure line.
+func (cp *CIPresenter) renderLicenseViolation(violation string) {
+	if violation == "" {
+		return
+	}
+	fmt.Fprintf(cp.p.w, "  %sLicense:%s %s%s%s\n",
+		cp.p.dim(), cp.p.reset(),
+		cp.p.red(), violation, cp.p.reset())
+}
+
+// renderDeprecated prints a deprecation warning line.
+func (cp *CIPresenter) renderDeprecated(deprecated bool, reason string) {
+	if !deprecated {
+		return
+	}
+	if reason != "" {
+		fmt.Fprintf(cp.p.w, "  %s⚠ deprecated:%s %s\n",
+			cp.p.yellow(), cp.p.reset(), reason)
+	} else {
+		fmt.Fprintf(cp.p.w, "  %s⚠ deprecated%s\n",
+			cp.p.yellow(), cp.p.reset())
 	}
 }
 
@@ -204,24 +252,31 @@ type ciSummaryJSON struct {
 }
 
 type ciFindingJSON struct {
-	Ecosystem  string                  `json:"ecosystem"`
-	Name       string                  `json:"name"`
-	Version    string                  `json:"version"`
-	Direct     bool                    `json:"direct"`
-	Verdict    string                  `json:"verdict"`
-	RiskScore  int                     `json:"risk_score"`
-	DriftScore int                     `json:"drift_score,omitempty"`
-	Flags      []ciFindingFlagJSON     `json:"flags,omitempty"`
-	DriftFlags []ciFindingFlagJSON     `json:"drift_flags,omitempty"`
-	Advisories []ciFindingAdvisoryJSON `json:"advisories,omitempty"`
+	Ecosystem        string                  `json:"ecosystem"`
+	Name             string                  `json:"name"`
+	Version          string                  `json:"version"`
+	Direct           bool                    `json:"direct"`
+	Verdict          string                  `json:"verdict"`
+	RiskScore        int                     `json:"risk_score"`
+	DriftScore       int                     `json:"drift_score,omitempty"`
+	Flags            []ciFindingFlagJSON     `json:"flags,omitempty"`
+	DriftFlags       []ciFindingFlagJSON     `json:"drift_flags,omitempty"`
+	Advisories       []ciFindingAdvisoryJSON `json:"advisories,omitempty"`
+	LicenseViolation string                  `json:"license_violation,omitempty"`
+	Deprecated       bool                    `json:"deprecated,omitempty"`
+	DeprecatedReason string                  `json:"deprecated_reason,omitempty"`
 }
 
 type ciFindingAdvisoryJSON struct {
-	ID       string `json:"id"`
-	Severity string `json:"severity"`
-	Summary  string `json:"summary"`
-	URL      string `json:"url,omitempty"`
-	Source   string `json:"source"`
+	ID             string  `json:"id"`
+	Severity       string  `json:"severity"`
+	Summary        string  `json:"summary"`
+	URL            string  `json:"url,omitempty"`
+	Source         string  `json:"source"`
+	FixedIn        string  `json:"fixed_in,omitempty"`
+	EPSS           float64 `json:"epss,omitempty"`
+	EPSSPercentile float64 `json:"epss_percentile,omitempty"`
+	InKEV          bool    `json:"in_kev,omitempty"`
 }
 
 type ciFindingFlagJSON struct {
@@ -267,16 +322,19 @@ func toCIJSONResult(r usecase.CIResult) ciJSONResult {
 	}
 	for _, f := range r.Findings {
 		out.Findings = append(out.Findings, ciFindingJSON{
-			Ecosystem:  string(f.Dep.Ecosystem),
-			Name:       f.Dep.Name,
-			Version:    f.Dep.Version,
-			Direct:     f.Dep.Direct,
-			Verdict:    f.Verdict.String(),
-			RiskScore:  f.Risk.Score,
-			DriftScore: f.Drift.Score,
-			Flags:      flagsToJSON(f.Risk.Flags),
-			DriftFlags: flagsToJSON(f.Drift.Flags),
-			Advisories: advisoriesToJSON(f.Dep.Advisories),
+			Ecosystem:        string(f.Dep.Ecosystem),
+			Name:             f.Dep.Name,
+			Version:          f.Dep.Version,
+			Direct:           f.Dep.Direct,
+			Verdict:          f.Verdict.String(),
+			RiskScore:        f.Risk.Score,
+			DriftScore:       f.Drift.Score,
+			Flags:            flagsToJSON(f.Risk.Flags),
+			DriftFlags:       flagsToJSON(f.Drift.Flags),
+			Advisories:       advisoriesToJSON(f.Dep.Advisories),
+			LicenseViolation: f.LicenseViolation,
+			Deprecated:       f.Deprecated,
+			DeprecatedReason: f.DeprecatedReason,
 		})
 	}
 	return out
@@ -291,12 +349,19 @@ func advisoriesToJSON(advs []domain.Advisory) []ciFindingAdvisoryJSON {
 	}
 	out := make([]ciFindingAdvisoryJSON, 0, len(advs))
 	for _, a := range advs {
+		if a.VEXSuppressed {
+			continue // omit from JSON — suppressed means not_affected
+		}
 		out = append(out, ciFindingAdvisoryJSON{
-			ID:       a.ID,
-			Severity: string(a.Severity),
-			Summary:  a.Summary,
-			URL:      a.URL,
-			Source:   a.Source,
+			ID:             a.ID,
+			Severity:       string(a.Severity),
+			Summary:        a.Summary,
+			URL:            a.URL,
+			Source:         a.Source,
+			FixedIn:        a.FixedIn,
+			EPSS:           a.EPSS,
+			EPSSPercentile: a.EPSSPercentile,
+			InKEV:          a.InKEV,
 		})
 	}
 	return out
