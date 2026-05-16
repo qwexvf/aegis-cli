@@ -22,8 +22,8 @@ import (
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan/depusagebridge"
 	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/depusagebridge"
 	"github.com/qwexvf/depusage"
 )
 

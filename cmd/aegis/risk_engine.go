@@ -12,20 +12,20 @@ import (
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan/csscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan/gleamscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan/goscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan/jsscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan/jvscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan/phpscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan/pyscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan/rbscan"
-	"github.com/qwexvf/aegis-cli/internal/infra/astscan/rsscan"
 	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
 	"github.com/qwexvf/aegis-cli/internal/infra/jspkgsource"
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/reporterid"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/csscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/gleamscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/goscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/jsscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/jvscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/phpscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/pyscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/rbscan"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/rsscan"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
@@ -37,14 +37,14 @@ func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiC
 		fmt.Fprintln(os.Stderr, "aegis: JS scanner init failed:", err)
 		return
 	}
-	dispatcher := astscan.NewDispatcher()
+	dispatcher := ast.NewDispatcher()
 	dispatcher.Register(domain.EcoNpm, jsScanner)
 
 	// Non-JS scanners are best-effort: a constructor failure means the
 	// embedded queries don't compile (developer bug), but the rest of
 	// the gate (OSV lookup, source-pattern heuristics, install-hook
 	// detection) still runs for those ecosystems. Warn and continue.
-	tryRegister := func(name string, eco domain.Ecosystem, ctor func() (astscan.LanguageScanner, error)) {
+	tryRegister := func(name string, eco domain.Ecosystem, ctor func() (ast.LanguageScanner, error)) {
 		s, err := ctor()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "aegis: %s scanner init failed: %v\n", name, err)
@@ -52,14 +52,14 @@ func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiC
 		}
 		dispatcher.Register(eco, s)
 	}
-	tryRegister("Python", domain.EcoPyPI, func() (astscan.LanguageScanner, error) { return pyscan.New() })
-	tryRegister("Ruby", domain.EcoRubyGems, func() (astscan.LanguageScanner, error) { return rbscan.New() })
-	tryRegister("Rust", domain.EcoCrates, func() (astscan.LanguageScanner, error) { return rsscan.New() })
-	tryRegister("Go", domain.EcoGo, func() (astscan.LanguageScanner, error) { return goscan.New() })
-	tryRegister("Java", domain.EcoMaven, func() (astscan.LanguageScanner, error) { return jvscan.New() })
-	tryRegister("PHP", domain.EcoPackagist, func() (astscan.LanguageScanner, error) { return phpscan.New() })
-	tryRegister("C#", domain.EcoNuGet, func() (astscan.LanguageScanner, error) { return csscan.New() })
-	tryRegister("Gleam", domain.EcoGleam, func() (astscan.LanguageScanner, error) { return gleamscan.New() })
+	tryRegister("Python", domain.EcoPyPI, func() (ast.LanguageScanner, error) { return pyscan.New() })
+	tryRegister("Ruby", domain.EcoRubyGems, func() (ast.LanguageScanner, error) { return rbscan.New() })
+	tryRegister("Rust", domain.EcoCrates, func() (ast.LanguageScanner, error) { return rsscan.New() })
+	tryRegister("Go", domain.EcoGo, func() (ast.LanguageScanner, error) { return goscan.New() })
+	tryRegister("Java", domain.EcoMaven, func() (ast.LanguageScanner, error) { return jvscan.New() })
+	tryRegister("PHP", domain.EcoPackagist, func() (ast.LanguageScanner, error) { return phpscan.New() })
+	tryRegister("C#", domain.EcoNuGet, func() (ast.LanguageScanner, error) { return csscan.New() })
+	tryRegister("Gleam", domain.EcoGleam, func() (ast.LanguageScanner, error) { return gleamscan.New() })
 
 	fetcher := jspkgsource.New(jspkgsource.WithHTTPClient(httpClient))
 	snapshot.WithRiskEngine(
