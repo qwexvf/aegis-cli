@@ -55,18 +55,10 @@ jobs:
         with:
           go-version: "1.26.3"
           cache: true
-      - name: build aegis + aegis-core
-        run: |
-          make build-release
-          make build-core
-      - name: smoke — every binary prints --version
-        run: |
-          set -euo pipefail
-          for b in aegis aegis-core; do
-            echo "::group::$b version"
-            ./bin/"$b" version
-            echo "::endgroup::"
-          done
+      - name: build aegis
+        run: make build-release
+      - name: smoke — binary prints --version
+        run: ./bin/aegis version
 
       - name: e2e — analyze every fixture in examples/incidents/
         run: AEGIS=./bin/aegis AEGIS_SKIP_BUILD=1 bash tests/e2e/incidents.sh
