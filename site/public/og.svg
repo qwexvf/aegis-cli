@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#09090B"/>
+      <stop offset="1" stop-color="#111113"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <g font-family="JetBrains Mono, ui-monospace, monospace" fill="#71717A">
+    <text x="80" y="110" font-size="20" letter-spacing="3">┌─ AEGIS / OPEN-SOURCE SUPPLY-CHAIN SECURITY ──</text>
+  </g>
+  <g font-family="Instrument Sans, system-ui, sans-serif">
+    <text x="80" y="260" font-size="84" font-weight="700" fill="#FAFAFA">Aegis</text>
+    <rect x="80" y="290" width="80" height="4" fill="#FAFAFA"/>
+    <text x="80" y="370" font-size="38" font-weight="600" fill="#FAFAFA">Catch malicious packages</text>
+    <text x="80" y="418" font-size="38" font-weight="600" fill="#A1A1AA">before they ship.</text>
+    <text x="80" y="490" font-size="22" fill="#71717A">Supply-chain CLI · npm · PyPI · Ruby · Rust · Go</text>
+    <text x="80" y="524" font-size="22" fill="#71717A">CVE · AST · malware heuristics · SBOM · offline</text>
+  </g>
+  <g font-family="JetBrains Mono, monospace" fill="#52525B">
+    <text x="80" y="585" font-size="18">github.com/qwexvf/aegis-cli</text>
+  </g>
+</svg>

@@ -107,16 +107,22 @@
   padding: 0;
 }
 
-/* Shiki theme switching: github-light by default, github-dark-dimmed in dark mode */
-[data-theme='dark'] .prose-aegis pre,
+/* Shiki theme switching: only colorize tokens. Pre bg stays --color-bg-code so
+   codeblocks match the zinc surface palette in both themes. Span background
+   never overrides — otherwise highlighted tokens render as colored boxes. */
+[data-theme='dark'] .prose-aegis pre {
+  color: var(--shiki-dark);
+}
 [data-theme='dark'] .prose-aegis pre span {
   color: var(--shiki-dark) !important;
-  background-color: var(--shiki-dark-bg) !important;
+  background-color: transparent !important;
 }
-.prose-aegis pre,
+.prose-aegis pre {
+  color: var(--shiki-light);
+}
 .prose-aegis pre span {
   color: var(--shiki-light);
-  background-color: var(--shiki-light-bg);
+  background-color: transparent;
 }
 
 /* Lists */
