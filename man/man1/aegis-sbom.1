@@ -2,7 +2,7 @@
 .TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
 
 .SH NAME
-aegis-sbom - Emit a CycloneDX JSON SBOM from the saved snapshot
+aegis-sbom - Emit a CycloneDX or SPDX 2.3 SBOM from the saved snapshot
 
 
 .SH SYNOPSIS
@@ -10,12 +10,16 @@ aegis-sbom - Emit a CycloneDX JSON SBOM from the saved snapshot
 
 
 .SH DESCRIPTION
-Emit a CycloneDX JSON Software Bill of Materials built from aegis.lock. Pass --include-vulns for a live re-query against the configured vulnerability sources (OSV / GHSA / deps.dev / aegis, per config). Use --cdx-version=1.6 for the CycloneDX 1.6 spec (adds lifecycles metadata; default is 1.5 for wider consumer support).
+Emit a Software Bill of Materials built from aegis.lock. Use --format=cyclonedx (default) for CycloneDX JSON or --format=spdx for SPDX 2.3 JSON (required by US EO 14028 / federal procurement). Pass --include-vulns for a live re-query against the configured vulnerability sources. Use --cdx-version=1.6 for the CycloneDX 1.6 spec (adds lifecycles metadata; default is 1.5). Use --sign to produce a keyless Sigstore signature alongside the SBOM (requires cosign in PATH; uses OIDC ambient credentials).
 
 
 .SH OPTIONS
 \fB--cdx-version\fP="1.5"
 	CycloneDX spec version to emit: 1.5 or 1.6
+
+.PP
+\fB--format\fP="cyclonedx"
+	output format: cyclonedx or spdx
 
 .PP
 \fB-h\fP, \fB--help\fP[=false]
@@ -36,6 +40,10 @@ Emit a CycloneDX JSON Software Bill of Materials built from aegis.lock. Pass --i
 .PP
 \fB--project\fP=""
 	override the root component name (default: snapshot.project)
+
+.PP
+\fB--sign\fP[=false]
+	sign the SBOM with cosign keyless OIDC (requires --output and cosign in PATH)
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS
