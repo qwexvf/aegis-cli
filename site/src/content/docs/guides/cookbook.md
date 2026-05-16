@@ -8,7 +8,7 @@ End-to-end recipes for the most common ways teams use `aegis`. Pick the one clos
 
 If you're new to the CLI, start with [Getting started](../getting-started/) — it covers the 30-second tour. This page picks up where that leaves off.
 
-> **Status note (v0.1.x):** the Aegis API platform is not yet
+> **Status note:** the Aegis API platform is not yet
 > publicly deployed. Recipes below that mark themselves with 🌐
 > require a self-hosted Aegis backend; until that platform repo is
 > public, those recipes are aspirational. Recipes without 🌐 work
@@ -75,10 +75,10 @@ Goal: developers run plain `npm install` locally; CI fails the build if the AST 
     node-version: '20'
 - run: npm ci
 
-- name: Install aegis
-  run: |
-    curl -sSL https://github.com/qwexvf/aegis-cli/releases/download/v0.7.1/aegis-cli_0.7.1_linux_amd64.tar.gz \
-      | sudo tar -xz -C /usr/local/bin aegis
+- uses: actions/setup-go@v6
+  with:
+    go-version: '1.26'
+- run: go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
 
 - uses: actions/cache@v4
   with:
@@ -178,9 +178,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          curl -sSL https://github.com/qwexvf/aegis-cli/releases/download/v0.7.1/aegis-cli_0.7.1_linux_amd64.tar.gz \
-            | sudo tar -xz -C /usr/local/bin aegis
+      - uses: actions/setup-go@v6
+        with: { go-version: '1.26' }
+      - run: go install github.com/qwexvf/aegis-cli/cmd/aegis@latest
       - run: aegis snapshot save
       - run: |
           if ! git diff --exit-code aegis.lock; then

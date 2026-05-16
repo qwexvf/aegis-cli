@@ -18,10 +18,10 @@ How to add support for a new package ecosystem (Maven, Composer, Swift, …) or 
 | New AST language scanner | `astscan.LanguageScanner` | `dispatcher.Register(eco, s)` | 3-5 (parser, queries, scanner, tests) |
 | New vulnerability feed | `usecase.VulnLookup` | `snapshot.WithVulnLookup(...)` | 1 (HTTP adapter) |
 | New maintainer-metadata source (PyPI / crates.io) | `usecase.MaintainerSignalFetcher` | `snapshot.WithMaintainerSignalFetcher(...)` | 1 |
-| New malware heuristic | `usecase.MalwareHeuristics` (or extend `internal/infra/heuristics/`) | `snapshot.WithMalwareHeuristics(...)` | 1-2 |
+| New malware heuristic | `usecase.MalwareHeuristics` (or extend `internal/infra/scan/heuristics/`) | `snapshot.WithMalwareHeuristics(...)` | 1-2 |
 | New PM wrapper (`aegis nx install …`) | `pmwrapper.PackageManager` | `cmd/aegis/pm_<name>.go` with `//go:build !no<name>` | 1 |
 
-Every interface is in `internal/usecase/snapshot_ports.go` (or `internal/infra/astscan/scanner.go` for the AST one). Domain types live in `internal/domain/`.
+Every interface is in `internal/usecase/snapshot_ports.go` (or `internal/infra/scan/ast/scanner.go` for the AST one). Domain types live in `internal/domain/`.
 
 ## Easiest: adding a heuristic ecosystem parser
 
@@ -35,7 +35,7 @@ Adding a new ecosystem parser is **one file + one registration line**. No check 
 
 ### 1. Implement `EcosystemParser`
 
-`internal/infra/heuristics/parser_<eco>.go`:
+`internal/infra/scan/heuristics/parser_<eco>.go`:
 
 ```go
 type swiftParser struct{}
@@ -58,7 +58,7 @@ Populate `Dep.Source`:
 
 ### 2. Register in `defaultPipeline`
 
-One line in `internal/infra/heuristics/heuristics.go`:
+One line in `internal/infra/scan/heuristics/heuristics.go`:
 
 ```go
 var defaultPipeline = NewPipeline(
@@ -73,7 +73,7 @@ var defaultPipeline = NewPipeline(
 ### Adding a new Check
 
 ```go
-// internal/infra/heuristics/check_<name>.go
+// internal/infra/scan/heuristics/check_<name>.go
 func checkMyDetection(pkg NormalizedPackage) []domain.Capability {
     for _, dep := range pkg.Deps {
         if dep.Source == DepSourceVCS && slices.Contains(dep.Groups, "optional") {
@@ -185,7 +185,7 @@ Same shape as the lockfile pattern but more code (tree-sitter integration is the
 ### Files
 
 ```
-internal/infra/astscan/<lang>scan/
+internal/infra/scan/ast/<lang>scan/
 ├── scanner.go          ASTAnalyzer implementation, tree-sitter binding
 ├── queries/
 │   ├── shell.scm       tree-sitter query: subprocess / Command / system
@@ -195,17 +195,17 @@ internal/infra/astscan/<lang>scan/
 └── scanner_test.go     fixture-based tests (synthetic source, expected caps)
 ```
 
-The dispatcher pattern lives in `internal/infra/astscan/scanner.go` — your scanner implements `LanguageScanner` (one method, `AnalyzeFile`). Register at startup:
+The dispatcher pattern lives in `internal/infra/scan/ast/scanner.go` — your scanner implements `LanguageScanner` (one method, `AnalyzeFile`). Register at startup:
 
 ```go
 import (
-    "github.com/qwexvf/aegis-cli/internal/infra/astscan"
-    "github.com/qwexvf/aegis-cli/internal/infra/astscan/pyscan"
+    "github.com/qwexvf/aegis-cli/internal/infra/scan/ast"
+    "github.com/qwexvf/aegis-cli/internal/infra/scan/ast/py"
 )
 
 dispatcher := astscan.NewDispatcher()
-dispatcher.Register(domain.EcoNpm, jsscan.New())
-dispatcher.Register(domain.EcoPyPI, pyscan.New()) // your new one
+dispatcher.Register(domain.EcoNpm, js.New())
+dispatcher.Register(domain.EcoPyPI, py.New()) // your new one
 ```
 
 The risk-engine wiring + capability scoring picks it up unchanged — same `domain.Capability` enum, same `domain.RiskScore`, same allowlist application.

@@ -65,11 +65,11 @@ Exits non-zero on any finding at or above the threshold. See
 
 | Ecosystem | Lockfile | AST scanner |
 |---|---|---|
-| **npm** (JS / TS) | npm / pnpm / yarn / bun | `jsscan` (tree-sitter-javascript) |
-| **PyPI** (Python) | `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `uv.lock` | `pyscan` (tree-sitter-python) |
-| **RubyGems** (Ruby) | `Gemfile.lock` | `rbscan` (tree-sitter-ruby) |
-| **crates.io** (Rust) | `Cargo.lock` | `rsscan` (tree-sitter-rust) |
-| **Go modules** | `go.mod` / `go.sum` | `goscan` (tree-sitter-go) |
+| **npm** (JS / TS) | npm / pnpm / yarn / bun | `js` (tree-sitter-javascript) |
+| **PyPI** (Python) | `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `uv.lock` | `py` (tree-sitter-python) |
+| **RubyGems** (Ruby) | `Gemfile.lock` | `ruby` (tree-sitter-ruby) |
+| **crates.io** (Rust) | `Cargo.lock` | `rust` (tree-sitter-rust) |
+| **Go modules** | `go.mod` / `go.sum` | `golang` (tree-sitter-go) |
 
 OSV.dev advisory lookup runs across every supported ecosystem; AST capability scanning runs across the five listed scanners; the malware-heuristic pass (URL scan, install hooks, typosquat, binary dropper, obfuscation) runs across all of them with per-ecosystem carve-outs.
 

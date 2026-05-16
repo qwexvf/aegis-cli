@@ -54,7 +54,7 @@ scanners map their syntax onto the same Capabilities.
 `CapTarballDrift` and `CapMaintainerChanged` are *provenance* signals
 (detected from registry metadata + GitHub tree) rather than AST
 findings, so they have no `queries.scm` line. See
-`internal/infra/heuristics/{tarball_drift,maintainer}.go`.
+`internal/infra/scan/heuristics/{tarball_drift,maintainer}.go`.
 
 Adding a new AST-derived Capability is one constant in `domain/capability.go`,
 one weight in `domain/risk.go`, and one query line in each
@@ -166,7 +166,7 @@ and silencing it would obscure the faker@6.6.6 sabotage pattern.
 
 ## Tree-sitter scanner
 
-`infra/astscan/jsscan` uses `github.com/tree-sitter/go-tree-sitter`
+`infra/scan/ast/js` uses `github.com/tree-sitter/go-tree-sitter`
 v0.25 with the `tree-sitter-javascript` grammar. Detection patterns
 are S-expression queries embedded from `queries.scm`.
 
@@ -182,7 +182,7 @@ a new Capability is:
 Per-file dispatch (`isAnalyzable`) skips:
 - `*.min.js` (minified, false-positive prone)
 - `*.d.ts` (type-only, no runtime)
-- `__pycache__/`, `tests/`, `test_*.py` (when pyscan lands)
+- `__pycache__/`, `tests/`, `test_*.py` (when py lands)
 
 ## False-positive management
 
@@ -240,7 +240,7 @@ The risk engine is the most-tested layer in the CLI:
 - `domain/allowlist_match_test.go` — `MatchAll` enumeration
   including "any capability" collapse
 - `domain/allowlist_bench_test.go` — index lookup benchmarks
-- `infra/astscan/jsscan/scanner_test.go` — every Capability has
+- `infra/scan/ast/js/scanner_test.go` — every Capability has
   positive + negative cases
 
 Pure-function design means most tests are 5-line table entries.

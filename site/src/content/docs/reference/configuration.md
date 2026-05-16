@@ -6,7 +6,7 @@ sidebar:
 ---
 
 
-How `aegis` is configured: environment variables, config file paths, and CI auto-detection. Authoritative as of `v0.1.0`.
+How `aegis` is configured: environment variables, config file paths, and CI auto-detection. Authoritative as of the current main branch.
 
 `aegis` is configured through **three layers** (CLI flags take precedence):
 
@@ -18,7 +18,7 @@ This makes the binary safe to drop into shared CI runners without surprise state
 
 > 🌐 marks variables that are **only meaningful when an Aegis API
 > server is reachable**. The hosted Aegis Cloud is not yet available
-> in `v0.1.x`, so these can be left unset for local-only use.
+> today, so these can be left unset for local-only use.
 
 ## Environment variables
 
@@ -224,7 +224,7 @@ is always linked in. ldflags injected at release time:
 
 | Symbol | Source |
 |---|---|
-| `cli.Version` | Git tag (e.g. `v0.1.0`) |
+| `cli.Version` | Git tag (e.g. `v0.24.0`) |
 | `cli.Commit` | Full git SHA at the tag |
 | `cli.Date` | RFC3339 build timestamp |
 
