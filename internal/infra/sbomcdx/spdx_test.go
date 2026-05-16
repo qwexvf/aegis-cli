@@ -176,7 +176,11 @@ func TestBuildSPDX_IDSanitization(t *testing.T) {
 	doc := BuildSPDX(snap, SPDXOptions{AegisVersion: "v0.0.0-test"})
 	for _, p := range doc.Packages {
 		for _, c := range p.SPDXID {
-			if c != '-' && c != '.' && !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+			valid := c == '-' || c == '.' ||
+				(c >= 'a' && c <= 'z') ||
+				(c >= 'A' && c <= 'Z') ||
+				(c >= '0' && c <= '9')
+			if !valid {
 				t.Fatalf("invalid char %q in SPDXID %q", c, p.SPDXID)
 			}
 		}
