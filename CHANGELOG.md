@@ -4,6 +4,30 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.25.0](https://github.com/qwexvf/aegis-cli/compare/v0.24.0...v0.25.0) (2026-05-16)
+
+
+### Changed
+
+* **build:** dropped the `nojsscan` / `nonpm` / `nobun` / `noyarn` / `nopnpm` build tags and the separate `aegis-core` release variant — aegis now ships as a single all-in-one binary. tag-driven trim was cargo-cult (22 KB on a 28 MB binary); `make build-core` / `make build-all` targets removed
+* **install:** docs collapsed to one `go install github.com/qwexvf/aegis-cli/cmd/aegis@latest` command; pre-built binary is linux/amd64 only, other platforms use the local cgo toolchain via `go install`
+
+
+### Fixed
+
+* **secrets:** AWS-published canonical placeholders (`AKIAIOSFODNN7EXAMPLE`, `AKIA0000000000000000`, `ASIAIOSFODNN7EXAMPLE`, etc.) are no longer flagged as hardcoded secrets — tutorial snippets and SDK example values produced false positives on legitimate packages
+
+
+### Tests
+
+* fills the v0.23.0+ infra coverage gap: `openvex` 0% → 100%, `vulnenrich` 0% → 100%, `epss` 0% → 83%, `kev` 0% → 79%, `depsdotdev` 0% → 43%, `domain/license_policy` newly covered; total coverage 57.2% → 59.4%, suite 1372 → 1433 tests
+
+
+### Docs
+
+* README, getting-started, configuration, snapshot-format, cookbook, architecture all aligned with v0.24.0 features; scanner names dropped redundant `scan` suffix (`jsscan` → `js`, `pyscan` → `py`, `goscan` → `golang`, etc.); stale `v0.7.1` curl install replaced with `go install` via `setup-go`
+
+
 ## [0.24.0](https://github.com/qwexvf/aegis-cli/compare/v0.23.0...v0.24.0) (2026-05-16)
 
 
