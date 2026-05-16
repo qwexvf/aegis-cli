@@ -14,6 +14,10 @@ Emit a Software Bill of Materials built from aegis.lock. Use --format=cyclonedx 
 
 
 .SH OPTIONS
+\fB--attest\fP[=false]
+	produce an in-toto attestation with the SBOM as predicate (DSSE-wrapped, recorded in Rekor transparency log; preferred over --sign for SBOMs)
+
+.PP
 \fB--cdx-version\fP="1.5"
 	CycloneDX spec version to emit: 1.5 or 1.6
 

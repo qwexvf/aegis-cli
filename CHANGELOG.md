@@ -4,6 +4,20 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.24.0](https://github.com/qwexvf/aegis-cli/compare/v0.23.0...v0.24.0) (2026-05-16)
+
+
+### Added
+
+* **fix:** new `aegis fix` command — loads aegis.lock, groups advisories per dep, picks the highest `FixedIn` across each dep (the smallest single upgrade that clears every resolvable CVE), and emits ecosystem-appropriate upgrade commands. modes: human (default), `--json` for tooling, `--script` for `| sh`. `--strict` exits 1 when any advisory has no upstream fix
+* **fix:** `domain.BuildFixPlan` is pure — VEX-suppressed and function-unreachable advisories are skipped automatically
+* **fix:** `domain.UpgradeCommand` consolidates ecosystem → shell command shape across npm / pypi / rubygems / cargo / go / maven / packagist / nuget / gleam; pinned (target version) vs latest variants per ecosystem
+* **fix:** `aegis ci --suggest` now reuses `BuildFixPlan` so the upgrade hints match `aegis fix` exactly
+* **sbom (#69-followup):** `aegis sbom --attest` produces a DSSE-wrapped in-toto attestation with the SBOM as predicate via `cosign attest-blob`; predicate-type derived from `--format` (`cyclonedx` / `spdxjson`); recorded in Rekor by default. preferred over `--sign` (raw blob signature) for SBOMs
+* **ci:** symbol-level reachability — when `Advisory.AffectedFunctions` (OSV `ecosystem_specific.functions`) and `Dependency.UsedSymbols` are both non-empty and don't intersect, the advisory is suppressed (`FunctionUnreachable`) from verdict scoring, CI JSON output, and `aegis fix` plans
+* **infra:** scanner packages consolidated under `internal/infra/scan/` — `ast/{js,py,golang,ruby,php,csharp,rust,java,gleam}/`, `actions/`, `heuristics/`, `drift/`, plus a reserved `agent/` for future expansion
+
+
 ## [0.23.0](https://github.com/qwexvf/aegis-cli/compare/v0.22.0...v0.23.0) (2026-05-16)
 
 
