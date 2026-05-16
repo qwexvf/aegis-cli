@@ -99,8 +99,7 @@ cmd      → interface → usecase → domain
 .
 ├── cmd/aegis/
 │   ├── main.go                    composition root
-│   ├── risk_engine.go             default build: AST scanner enabled
-│   └── risk_engine_off.go         //go:build nojsscan
+│   └── risk_engine.go             AST scanner wiring (always compiled in)
 │
 ├── internal/
 │   ├── domain/                    pure (no I/O)
@@ -230,18 +229,9 @@ Python, `Kernel#system` in Ruby — same Capability, three queries).
 See `docs/cli-risk-engine.md` for the engine, `docs/cli-snapshot.md`
 for the snapshot mechanism.
 
-## Build flavours
+## Build
 
-| Target | Output | Tags | Use |
-|---|---|---|---|
-| `make build` | ~27 MB (debug) | — | local dev |
-| `make build-release` | ~22 MB | `-ldflags='-s -w'` | full features |
-| `make build-core` | ~10 MB | `nojsscan` + stripped | size-constrained CI runners (no AST scanner, no cgo) |
-
-The AST scanner ships eight tree-sitter grammars (≈12 MB after strip)
-— `aegis-core` skips them entirely.
-
-`risk_engine.go` (default) registers the JS tree-sitter scanner;
-`risk_engine_off.go` (`//go:build nojsscan`) is a no-op stub.
-`aegis snapshot enrich` gracefully reports "risk engine not
-configured" when the no-op stub is in effect.
+One all-in-one binary. Tree-sitter (cgo) is always linked in. `make
+build` for a debug build; `make build-release` for a stripped binary
+with version ldflags. The AST scanner ships eight tree-sitter grammars
+(≈12 MB after strip).

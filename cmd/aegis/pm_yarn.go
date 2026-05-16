@@ -1,5 +1,3 @@
-//go:build !noyarn
-
 package main
 
 import "github.com/qwexvf/aegis-cli/internal/infra/pmwrapper"

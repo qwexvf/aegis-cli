@@ -1,5 +1,3 @@
-//go:build !nonpm
-
 package main
 
 import "github.com/qwexvf/aegis-cli/internal/infra/pmwrapper"
