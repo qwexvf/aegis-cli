@@ -22,6 +22,7 @@ func sbomCommand(uc *usecase.Sbom) *cobra.Command {
 		cdxVersion   string
 		format       string
 		sign         bool
+		attest       bool
 	)
 	c := &cobra.Command{
 		Use:   "sbom",
@@ -48,6 +49,12 @@ func sbomCommand(uc *usecase.Sbom) *cobra.Command {
 			}
 			if sign && outputPath == "" {
 				return fmt.Errorf("--sign requires --output: cosign cannot sign stdout")
+			}
+			if attest && outputPath == "" {
+				return fmt.Errorf("--attest requires --output: cosign attest-blob needs a blob file")
+			}
+			if sign && attest {
+				return fmt.Errorf("--sign and --attest are mutually exclusive: use --attest for in-toto SBOM attestation, --sign for raw blob signature")
 			}
 
 			opts := usecase.SbomOptions{
@@ -84,6 +91,13 @@ func sbomCommand(uc *usecase.Sbom) *cobra.Command {
 				}
 				fmt.Fprintf(cmd.ErrOrStderr(), "aegis: signature → %s.sig  certificate → %s.pem\n", outputPath, outputPath)
 			}
+			if attest {
+				attPath, certPath, err := cosignAttest(outputPath, format)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "aegis: in-toto attestation → %s  certificate → %s\n", attPath, certPath)
+			}
 			return nil
 		},
 	}
@@ -94,6 +108,8 @@ func sbomCommand(uc *usecase.Sbom) *cobra.Command {
 	c.Flags().StringVar(&cdxVersion, "cdx-version", "1.5", "CycloneDX spec version to emit: 1.5 or 1.6")
 	c.Flags().StringVar(&format, "format", "cyclonedx", "output format: cyclonedx or spdx")
 	c.Flags().BoolVar(&sign, "sign", false, "sign the SBOM with cosign keyless OIDC (requires --output and cosign in PATH)")
+	c.Flags().BoolVar(&attest, "attest", false, "produce an in-toto attestation with the SBOM as predicate "+
+		"(DSSE-wrapped, recorded in Rekor transparency log; preferred over --sign for SBOMs)")
 	return c
 }
 
@@ -114,4 +130,47 @@ func cosignBlob(path string) error {
 		return fmt.Errorf("cosign sign-blob: %w", err)
 	}
 	return nil
+}
+
+// cosignAttest produces an in-toto attestation for path using cosign
+// keyless OIDC, with the SBOM file itself as the attestation predicate.
+//
+// Output: <path>.intoto.jsonl (DSSE-wrapped in-toto Statement) and <path>.pem
+// (Fulcio certificate). The attestation is also recorded in the public
+// Rekor transparency log unless cosign is run with --no-upload.
+//
+// predicateType is derived from the SBOM format flag: "cyclonedx" for
+// CycloneDX, "spdxjson" for SPDX (the predicate-type values recognized
+// by cosign attest-blob — see in-toto attestation/types).
+func cosignAttest(path, format string) (attPath, certPath string, err error) {
+	cosign, err := exec.LookPath("cosign")
+	if err != nil {
+		return "", "", fmt.Errorf("--attest: cosign not found in PATH — install from https://github.com/sigstore/cosign/releases")
+	}
+	var predicateType string
+	switch format {
+	case "cyclonedx":
+		predicateType = "cyclonedx"
+	case "spdx":
+		predicateType = "spdxjson"
+	default:
+		return "", "", fmt.Errorf("--attest: unsupported format %q (need cyclonedx or spdx)", format)
+	}
+
+	attPath = path + ".intoto.jsonl"
+	certPath = path + ".pem"
+	cmd := exec.Command(cosign, "attest-blob",
+		"--predicate", path,
+		"--type", predicateType,
+		"--output-attestation", attPath,
+		"--output-certificate", certPath,
+		"--yes",
+		path,
+	)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return "", "", fmt.Errorf("cosign attest-blob: %w", err)
+	}
+	return attPath, certPath, nil
 }
