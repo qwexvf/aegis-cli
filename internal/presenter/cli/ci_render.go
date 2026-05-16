@@ -126,9 +126,12 @@ func (cp *CIPresenter) renderAdvisoryBlock(advs []domain.Advisory) {
 	fmt.Fprintf(cp.p.w, "  %sAdvisories:%s\n", cp.p.dim(), cp.p.reset())
 	for _, a := range advs {
 		if a.VEXSuppressed {
-			// Render suppressed advisories greyed out so the user can see
-			// what was cleared by the VEX document without it affecting output.
 			fmt.Fprintf(cp.p.w, "    %s• %s [VEX: not_affected] — %s%s\n",
+				cp.p.dim(), a.ID, a.Summary, cp.p.reset())
+			continue
+		}
+		if a.FunctionUnreachable {
+			fmt.Fprintf(cp.p.w, "    %s• %s [vulnerable fn unreached] — %s%s\n",
 				cp.p.dim(), a.ID, a.Summary, cp.p.reset())
 			continue
 		}
@@ -349,8 +352,8 @@ func advisoriesToJSON(advs []domain.Advisory) []ciFindingAdvisoryJSON {
 	}
 	out := make([]ciFindingAdvisoryJSON, 0, len(advs))
 	for _, a := range advs {
-		if a.VEXSuppressed {
-			continue // omit from JSON — suppressed means not_affected
+		if a.VEXSuppressed || a.FunctionUnreachable {
+			continue // omit from JSON — suppression means not actionable
 		}
 		out = append(out, ciFindingAdvisoryJSON{
 			ID:             a.ID,
