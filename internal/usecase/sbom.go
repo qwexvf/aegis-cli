@@ -3,6 +3,7 @@ package usecase
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -47,11 +48,14 @@ type SbomOptions struct {
 	// Pretty toggles indented JSON output.
 	Pretty bool
 	// CdxVersion selects the CycloneDX spec version: "1.5" (default) or "1.6".
+	// Only applies when Format == "cyclonedx".
 	CdxVersion string
+	// Format selects the output format: "cyclonedx" (default) or "spdx".
+	Format string
 }
 
 // Generate loads the snapshot at projectDir, optionally enriches with
-// fresh OSV advisories, and writes the CycloneDX JSON to out. Returns
+// fresh OSV advisories, and writes the SBOM JSON to out. Returns
 // the number of components and vulnerabilities emitted for the caller
 // to print a one-line summary.
 func (s *Sbom) Generate(ctx context.Context, projectDir string, out io.Writer, opts SbomOptions) (components, vulns int, err error) {
@@ -72,6 +76,13 @@ func (s *Sbom) Generate(ctx context.Context, projectDir string, out io.Writer, o
 		}
 	}
 
+	if opts.Format == "spdx" {
+		return s.generateSPDX(snap, out, opts)
+	}
+	return s.generateCycloneDX(snap, out, opts)
+}
+
+func (s *Sbom) generateCycloneDX(snap domain.Snapshot, out io.Writer, opts SbomOptions) (components, vulns int, err error) {
 	specVersion := cdx.SpecVersion1_5
 	if opts.CdxVersion == "1.6" {
 		specVersion = cdx.SpecVersion1_6
@@ -109,6 +120,30 @@ func (s *Sbom) Generate(ctx context.Context, projectDir string, out io.Writer, o
 		vulns = len(*bom.Vulnerabilities)
 	}
 	return components, vulns, nil
+}
+
+func (s *Sbom) generateSPDX(snap domain.Snapshot, out io.Writer, opts SbomOptions) (components, vulns int, err error) {
+	doc := sbomcdx.BuildSPDX(snap, sbomcdx.SPDXOptions{
+		AegisVersion: s.aegisVersion,
+		Project:      opts.Project,
+		Timestamp:    time.Now().UTC(),
+	})
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	if opts.Pretty {
+		enc.SetIndent("", "  ")
+	}
+	if err := enc.Encode(doc); err != nil {
+		return 0, 0, fmt.Errorf("encode spdx: %w", err)
+	}
+	if _, err := out.Write(buf.Bytes()); err != nil {
+		return 0, 0, err
+	}
+
+	// len(doc.Packages) includes the root project package, subtract 1.
+	components = max(len(doc.Packages)-1, 0)
+	return components, 0, nil
 }
 
 // attachAdvisories overwrites Advisories on each dep with fresh lookup

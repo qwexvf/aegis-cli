@@ -127,6 +127,82 @@ func TestBuild_VulnerabilitiesOmittedByDefault(t *testing.T) {
 	}
 }
 
+func TestBuild_DependenciesGraph(t *testing.T) {
+	// fixture: root → lodash (direct), lodash → tslib (transitive)
+	snap := domain.Snapshot{
+		Project: "myapp",
+		Deps: []domain.Dependency{
+			{
+				Ecosystem: domain.EcoNpm, Name: "lodash", Version: "4.17.21",
+				Direct:    true,
+				DependsOn: []string{"npm/tslib@2.6.0"},
+			},
+			{
+				Ecosystem: domain.EcoNpm, Name: "tslib", Version: "2.6.0",
+				Direct: false,
+			},
+		},
+	}
+	bom := Build(snap, Options{
+		AegisVersion: "v0.0.0-test",
+		SerialNumber: "urn:uuid:00000000-0000-0000-0000-000000000002",
+	})
+
+	if bom.Dependencies == nil {
+		t.Fatal("bom.Dependencies must be non-nil")
+	}
+	deps := *bom.Dependencies
+	// Expect: root + 2 component entries = 3 total.
+	if len(deps) != 3 {
+		t.Fatalf("expected 3 dependency entries, got %d", len(deps))
+	}
+
+	// Root entry: dependsOn lodash only (direct).
+	root := deps[0]
+	if root.Ref != "aegis:root:myapp" {
+		t.Fatalf("root ref: %s", root.Ref)
+	}
+	if root.Dependencies == nil || len(*root.Dependencies) != 1 {
+		t.Fatalf("root should depend on 1 direct dep, got %v", root.Dependencies)
+	}
+	if (*root.Dependencies)[0] != "pkg:npm/lodash@4.17.21" {
+		t.Fatalf("root.dependsOn[0]: %s", (*root.Dependencies)[0])
+	}
+
+	// lodash entry: dependsOn tslib.
+	var lodash *cdx.Dependency
+	for i := range deps {
+		if deps[i].Ref == "pkg:npm/lodash@4.17.21" {
+			lodash = &deps[i]
+			break
+		}
+	}
+	if lodash == nil {
+		t.Fatal("lodash entry not found in dependencies[]")
+	}
+	if lodash.Dependencies == nil || len(*lodash.Dependencies) != 1 {
+		t.Fatalf("lodash.dependsOn: %v", lodash.Dependencies)
+	}
+	if (*lodash.Dependencies)[0] != "pkg:npm/tslib@2.6.0" {
+		t.Fatalf("lodash.dependsOn[0]: %s", (*lodash.Dependencies)[0])
+	}
+
+	// tslib entry: empty dependsOn (leaf).
+	var tslib *cdx.Dependency
+	for i := range deps {
+		if deps[i].Ref == "pkg:npm/tslib@2.6.0" {
+			tslib = &deps[i]
+			break
+		}
+	}
+	if tslib == nil {
+		t.Fatal("tslib entry not found in dependencies[]")
+	}
+	if tslib.Dependencies == nil || len(*tslib.Dependencies) != 0 {
+		t.Fatalf("tslib should have empty dependsOn, got %v", tslib.Dependencies)
+	}
+}
+
 func TestHashFromIntegrity_OversizeRejected(t *testing.T) {
 	// 700-byte b64 payload would decode to ~525 bytes; well under any
 	// real SRI hash. Cap should reject pre-decode so we never allocate.

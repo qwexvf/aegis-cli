@@ -92,6 +92,9 @@ func Build(snap domain.Snapshot, opts Options) *cdx.BOM {
 	}
 	bom.Components = &components
 
+	deps := dependenciesFromSnap(snap, rootRef)
+	bom.Dependencies = &deps
+
 	if opts.IncludeVulnerabilities {
 		if vulns := vulnerabilitiesFromDeps(snap.Deps); len(vulns) > 0 {
 			bom.Vulnerabilities = &vulns
@@ -99,6 +102,44 @@ func Build(snap domain.Snapshot, opts Options) *cdx.BOM {
 	}
 
 	return bom
+}
+
+// dependenciesFromSnap builds the BOM dependencies[] section.
+// Root depends on all direct deps. Each dep lists its own dependsOn
+// from domain.Dependency.DependsOn (populated by lockfile parsers that
+// expose the full transitive graph). Deps with no known children still
+// get an entry with an empty dependsOn so the BOM is spec-compliant.
+func dependenciesFromSnap(snap domain.Snapshot, rootRef string) []cdx.Dependency {
+	// versionedKey (ecosystem/name@version) → bom-ref. Using the versioned
+	// key prevents ambiguity when a lockfile contains multiple versions of
+	// the same package (e.g. foo@1.0 and foo@2.0 both present).
+	keyToRef := make(map[string]string, len(snap.Deps))
+	for _, d := range snap.Deps {
+		keyToRef[d.VersionedKey()] = bomRefFor(d)
+	}
+
+	// Root entry: dependsOn all direct deps.
+	var rootDeps []string
+	for _, d := range snap.Deps {
+		if d.Direct {
+			rootDeps = append(rootDeps, bomRefFor(d))
+		}
+	}
+	sort.Strings(rootDeps)
+	result := []cdx.Dependency{{Ref: rootRef, Dependencies: &rootDeps}}
+
+	// One entry per component.
+	for _, d := range snap.Deps {
+		children := make([]string, 0, len(d.DependsOn))
+		for _, key := range d.DependsOn {
+			if ref, ok := keyToRef[key]; ok {
+				children = append(children, ref)
+			}
+		}
+		sort.Strings(children)
+		result = append(result, cdx.Dependency{Ref: bomRefFor(d), Dependencies: &children})
+	}
+	return result
 }
 
 // bomRefFor returns a stable component reference for a dep. PURL is

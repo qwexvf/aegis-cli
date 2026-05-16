@@ -31,6 +31,14 @@ type Dependency struct {
 	Version   string
 	Integrity string // sha512-... from lockfile (if available)
 	Direct    bool
+	// DependsOn holds the VersionedKey() values ("ecosystem/name@version")
+	// of packages this dep directly requires, as parsed from the lockfile.
+	// Populated by parsers that expose the full transitive graph (e.g. npm
+	// v2/v3). Empty means "graph not available" — the CycloneDX builder
+	// still emits a dependencies[] entry with an empty dependsOn so the
+	// BOM is spec-compliant. Versioned keys prevent ambiguity when a
+	// lockfile contains multiple versions of the same package.
+	DependsOn []string `json:",omitempty"`
 	// Fingerprint is reserved for behavioral data (AST scan, depsandbox).
 	// Empty in the MVP snapshot — populated by `aegis snapshot enrich`
 	// in a follow-up PR.

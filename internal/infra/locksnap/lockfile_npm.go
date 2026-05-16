@@ -20,11 +20,12 @@ func parseNpmLock(raw []byte, direct map[string]bool) ([]domain.Dependency, erro
 		LockfileVersion int `json:"lockfileVersion"`
 		// v2 / v3
 		Packages map[string]struct {
-			Version   string `json:"version"`
-			Integrity string `json:"integrity"`
-			Resolved  string `json:"resolved"`
-			Dev       bool   `json:"dev"`
-			Optional  bool   `json:"optional"`
+			Version      string            `json:"version"`
+			Integrity    string            `json:"integrity"`
+			Resolved     string            `json:"resolved"`
+			Dev          bool              `json:"dev"`
+			Optional     bool              `json:"optional"`
+			Dependencies map[string]string `json:"dependencies"` // dep name → version range
 		} `json:"packages"`
 		// v1
 		Dependencies map[string]npmV1Dep `json:"dependencies"`
@@ -41,6 +42,26 @@ func parseNpmLock(raw []byte, direct map[string]bool) ([]domain.Dependency, erro
 		//   ""                           -> the project itself (skip)
 		//   "node_modules/lodash"        -> top-level lodash
 		//   "node_modules/foo/node_modules/bar" -> nested bar
+		//
+		// First pass: build name→resolvedVersion for DependsOn resolution.
+		// When a name appears at multiple nesting depths we keep the version
+		// of the shallowest (shortest path) entry, which matches how Node
+		// resolves the dep for most packages.
+		nameToVersion := make(map[string]string, len(lf.Packages))
+		for path, p := range lf.Packages {
+			if path == "" || p.Version == "" {
+				continue
+			}
+			name := nameFromNpmPath(path)
+			if name == "" {
+				continue
+			}
+			existing, ok := nameToVersion[name]
+			if !ok || len(path) < len(existing) {
+				nameToVersion[name] = p.Version
+			}
+		}
+
 		for path, p := range lf.Packages {
 			if path == "" {
 				continue
@@ -57,12 +78,21 @@ func parseNpmLock(raw []byte, direct map[string]bool) ([]domain.Dependency, erro
 				continue
 			}
 			seen[key] = true
+			// DependsOn stores VersionedKey() values so the CycloneDX builder
+			// can resolve them unambiguously when multiple versions coexist.
+			var dependsOn []string
+			for depName := range p.Dependencies {
+				if ver, ok := nameToVersion[depName]; ok {
+					dependsOn = append(dependsOn, string(domain.EcoNpm)+"/"+depName+"@"+ver)
+				}
+			}
 			deps = append(deps, domain.Dependency{
 				Ecosystem: domain.EcoNpm,
 				Name:      name,
 				Version:   p.Version,
 				Integrity: p.Integrity,
 				Direct:    direct[name],
+				DependsOn: dependsOn,
 			})
 		}
 		return deps, nil
