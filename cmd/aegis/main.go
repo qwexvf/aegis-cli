@@ -355,6 +355,8 @@ func main() {
 		sbom.WithVulnLookup(vulnLookup)
 	}
 	actions := usecase.NewActions()
+	fixPresenter := cli.NewFixPresenter(presenter)
+	fix := usecase.NewFix(store, fixPresenter)
 
 	// Optionally attach the risk engine (AST scanner) + submit
 	// pipeline. The implementation is selected at compile time via
@@ -423,6 +425,8 @@ func main() {
 		Hook:               hook,
 		Sbom:               sbom,
 		Actions:            actions,
+		Fix:                fix,
+		FixPresenter:       fixPresenter,
 		API:                apiClient,
 		Cache:              cache,
 		Audit:              audit,
