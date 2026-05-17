@@ -3,7 +3,7 @@ module github.com/qwexvf/aegis-cli
 go 1.26.3
 
 require (
-	github.com/CycloneDX/cyclonedx-go v0.10.0
+	github.com/CycloneDX/cyclonedx-go v0.11.0
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/gleam-lang/tree-sitter-gleam v1.1.1-0.20260430091822-4e4643c2215c
 	github.com/google/go-containerregistry v0.21.5
@@ -11,6 +11,7 @@ require (
 	github.com/package-url/packageurl-go v0.1.6
 	github.com/qwexvf/depusage v0.1.1
 	github.com/spf13/cobra v1.10.2
+	github.com/tree-sitter-grammars/tree-sitter-lua v0.5.0
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-c-sharp v0.23.5
 	github.com/tree-sitter/tree-sitter-go v0.25.0
@@ -37,7 +38,6 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/tree-sitter-grammars/tree-sitter-lua v0.5.0 // indirect
 	github.com/vbatts/tar-split v0.12.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
