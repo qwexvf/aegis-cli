@@ -542,6 +542,49 @@ Suppressed findings are still shown in output but don't trigger `--fail-on`.
 
 ---
 
+## `aegis image scan <image.tar>`
+
+Scan a local OCI / Docker image tarball for supply-chain risks. Reads `docker save` output (or any OCI-format archive), overlays every layer (whiteout-aware), and extracts every dependency it can find via two complementary paths:
+
+1. **Lockfiles** baked into the image — `package-lock.json`, `Gemfile.lock`, `Pipfile.lock`, `composer.lock`, etc. Parsed by the same locksnap registry the project-mode scanner uses
+2. **Per-package manifests** that live outside any lockfile — `node_modules/<pkg>/package.json`, `*.dist-info/METADATA`, `*.egg-info/PKG-INFO`, `gems/<name>-<ver>/`, `vendor/<v>/<p>/composer.json`, and `/opt/<tool>-v<ver>/package.json` (top-level npm tooling like yarn). Closes the recall gap on distroless and multi-stage images where the lockfile never lands in the final image
+
+```sh
+docker save my-app:latest -o my-app.tar
+aegis image scan my-app.tar
+aegis image scan my-app.tar --enrich
+aegis image scan my-app.tar --capabilities
+aegis image scan my-app.tar --no-manifest-walk     # lockfile-only mode
+aegis image scan my-app.tar --json | jq '.deps[].name'
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--enrich` | `false` | Run OSV.dev vulnerability lookup against the extracted dependency set |
+| `--capabilities` | `false` | AST-scan every package found inside the image (tree-sitter capability + heuristic detection — finds malware Trivy can't) |
+| `--no-manifest-walk` | `false` | Skip per-package manifest scanning, return lockfile-derived deps only |
+| `--json` | `false` | Machine-readable JSON on stdout |
+
+**Provenance** — every dep in the JSON output carries a `source` field: `"lockfile"` (parsed from a known lockfile), `"manifest"` (synthesized from a per-package manifest), or omitted for older snapshots. Use it to audit how a particular dep was discovered.
+
+**Recall** — example numbers from public base images:
+
+| Image | Lockfile-only | Manifest walker ON |
+|---|---|---|
+| `node:20-alpine` | 0 | 193 npm |
+| `ruby:3.3-alpine` | 52 gems | 130 gems |
+| `python:3.12-alpine` | 0 | 1 pypi |
+
+Combine `--enrich` with manifest walk to surface CVEs that lockfile-only scans miss entirely — e.g. `cross-spawn` ReDoS and `glob` command injection on the stock `node:20-alpine` image.
+
+**Memory** — each captured manifest is capped at 64 KB and the total per-image manifest budget is 64 MB (≈ 32k packages). When the cap fires the result is partial and `truncated: true` lands in the JSON output.
+
+**Exit codes**: `0` clean scan, `2` I/O error reading the tar.
+
+---
+
 ## `aegis admin gen-key`
 
 Generate a fresh submit API key plus a sha256 hex digest for installing it server-side. Used when bootstrapping a new operator account against a self-hosted Aegis API.
