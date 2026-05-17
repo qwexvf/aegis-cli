@@ -37,6 +37,12 @@ const (
 	EcoHackage   Ecosystem = "hackage"
 	EcoCPAN      Ecosystem = "cpan"
 	EcoCocoaPods Ecosystem = "cocoapods"
+	// EcoNeovim covers git-distributed Lua plugins for Neovim. Unlike the
+	// other constants this is not a registry namespace — Neovim plugins
+	// have no central registry. OSV.dev has no Neovim ecosystem either,
+	// so `--enrich` returns nothing for these deps; aegis's value here
+	// is purely static (AST capability scan + install-hook heuristics).
+	EcoNeovim Ecosystem = "neovim"
 )
 
 // AllEcosystems returns every ecosystem the CLI recognises.
@@ -46,7 +52,7 @@ func AllEcosystems() []Ecosystem {
 		EcoRubyGems, EcoPackagist, EcoNuGet, EcoGleam,
 		EcoPub, EcoSwiftPM,
 		EcoCRAN, EcoHackage, EcoCPAN,
-		EcoCocoaPods,
+		EcoCocoaPods, EcoNeovim,
 	}
 }
 

@@ -295,6 +295,18 @@ func isAnalyzable(eco domain.Ecosystem, path string) bool {
 			return false
 		}
 		return true
+	case domain.EcoNeovim:
+		// Lua source for Neovim plugins. Skip busted-style specs and
+		// generic *_test.lua test files — those never run at plugin
+		// load time. lua/plenary/ and other vendored deps are NOT
+		// excluded; same gap exists in the JS scanner today.
+		if !strings.HasSuffix(path, ".lua") {
+			return false
+		}
+		if strings.HasSuffix(path, "_spec.lua") || strings.HasSuffix(path, "_test.lua") {
+			return false
+		}
+		return true
 	}
 	return false
 }
