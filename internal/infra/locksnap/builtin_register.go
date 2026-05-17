@@ -81,4 +81,8 @@ func init() {
 
 	// CocoaPods (iOS/macOS) — Podfile.lock produced by `pod install`.
 	Register(newFuncParser("Podfile.lock", domain.EcoCocoaPods, parseCocoaPodsLock))
+
+	// Neovim — lazy-lock.json produced by lazy.nvim. Plugins are
+	// git-distributed; the commit SHA is the canonical Version.
+	Register(newFuncParser("lazy-lock.json", domain.EcoNeovim, parseLazyLock))
 }
