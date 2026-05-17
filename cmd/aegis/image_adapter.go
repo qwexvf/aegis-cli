@@ -21,6 +21,7 @@ func (a imageScannerAdapter) ScanImage(path string) ([]domain.Dependency, error)
 func (a imageScannerAdapter) ScanImagePackages(path string, opts usecase.ImageScanOpts) (usecase.ImagePackageSet, error) {
 	res, err := a.inner.ScanImagePackages(path, imagescan.ScanOpts{
 		CapturePackageSources: opts.CapturePackageSources,
+		DisableManifestWalk:   opts.DisableManifestWalk,
 	})
 	if err != nil {
 		return usecase.ImagePackageSet{}, err

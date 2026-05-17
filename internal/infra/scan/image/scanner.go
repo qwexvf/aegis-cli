@@ -84,6 +84,13 @@ type ScanOpts struct {
 	// pipeline. Only language source files (.js, .ts, .py, .rb, ...)
 	// + the package manifest are captured; binary assets are skipped.
 	CapturePackageSources bool
+	// DisableManifestWalk turns OFF the per-package manifest walker
+	// that synthesizes deps from node_modules/<pkg>/package.json,
+	// *.dist-info/METADATA, *.egg-info/PKG-INFO, gems/<name>-<ver>/,
+	// and vendor/<v>/<p>/composer.json. Stored as negation so the
+	// zero value enables the recall-broadening default; --no-manifest-walk
+	// at the CLI maps here.
+	DisableManifestWalk bool
 }
 
 // PackageSet bundles the result of a full image scan: the lockfile-
@@ -125,14 +132,126 @@ func (s *Scanner) ScanImagePackages(imagePath string, opts ScanOpts) (PackageSet
 	for i, l := range layers {
 		vlayers[i] = l
 	}
-	files, pkgFiles, truncated, err := overlayLayersFull(vlayers, opts, s.lockfileNames)
+	files, pkgFiles, manifests, gemDirs, truncated, err := overlayLayersFull(vlayers, opts, s.lockfileNames)
 	if err != nil {
 		return PackageSet{}, fmt.Errorf("image: overlay layers: %w", err)
 	}
 
 	deps := s.parseFiles(files)
+	if !opts.DisableManifestWalk {
+		synth := synthesizeFromManifests(manifests, gemDirs)
+		deps = mergeWithLockfile(deps, synth)
+	}
 	sources := groupPackageSources(pkgFiles, deps)
 	return PackageSet{Deps: deps, Sources: sources, Truncated: truncated}, nil
+}
+
+// synthesizeFromManifests turns the per-package manifest map plus the
+// gem-dir presence set into a flat []domain.Dependency. Each entry gets
+// Source="manifest" so the merge step (and downstream consumers) can
+// see how the dep was discovered.
+func synthesizeFromManifests(manifests map[string]manifestEntry, gemDirs map[string]struct{}) []domain.Dependency {
+	if len(manifests) == 0 && len(gemDirs) == 0 {
+		return nil
+	}
+	out := make([]domain.Dependency, 0, len(manifests)+len(gemDirs))
+	for _, m := range manifests {
+		var (
+			name, version string
+			eco           domain.Ecosystem
+		)
+		switch m.kind {
+		case mkNpm:
+			n, v, ok := synthesizeNpm(m.body)
+			if !ok {
+				continue
+			}
+			eco, name, version = domain.EcoNpm, n, v
+		case mkPyPIDistInfo, mkPyPIEggInfo:
+			// Prefer in-body fields; fall back to path-derived hints.
+			n, v, ok := synthesizePyPI(m.body)
+			if !ok {
+				n, v = m.nameHint, m.versionHint
+			}
+			if n == "" || v == "" {
+				continue
+			}
+			eco, name, version = domain.EcoPyPI, n, v
+		case mkPackagist:
+			n, v, ok := synthesizePackagist(m.body)
+			if !ok {
+				continue
+			}
+			eco, name, version = domain.EcoPackagist, n, v
+		default:
+			continue
+		}
+		out = append(out, domain.Dependency{
+			Ecosystem: eco,
+			Name:      name,
+			Version:   version,
+			Source:    "manifest",
+		})
+	}
+	for gemDir := range gemDirs {
+		name, version, ok := splitGemDirName(gemDir)
+		if !ok {
+			continue
+		}
+		out = append(out, domain.Dependency{
+			Ecosystem: domain.EcoRubyGems,
+			Name:      name,
+			Version:   version,
+			Source:    "manifest",
+		})
+	}
+	return out
+}
+
+// mergeWithLockfile merges manifest-derived deps into the lockfile-derived
+// list. Lockfile entries win on full (ecosystem/name@version) collision;
+// manifest entries fill the gaps. Multiple versions of the same name
+// are preserved (nested node_modules/glob etc.).
+//
+// Key normalization: lockfile entries with empty Version (rare — some
+// parsers emit name-only fallbacks) collide with any manifest version
+// for the same name. We treat empty-Version lockfile entries as
+// "version unknown" and let the manifest version fill in when the names
+// match exactly.
+func mergeWithLockfile(lock, synth []domain.Dependency) []domain.Dependency {
+	if len(synth) == 0 {
+		return lock
+	}
+	// Mark lockfile entries with Source="lockfile" (preserves provenance
+	// on output without forcing every parser to stamp the field).
+	for i := range lock {
+		if lock[i].Source == "" {
+			lock[i].Source = "lockfile"
+		}
+	}
+	// Build full-key + name-only sets over lockfile entries.
+	full := make(map[string]struct{}, len(lock))
+	nameOnly := make(map[string]struct{}, len(lock))
+	for _, d := range lock {
+		full[string(d.Ecosystem)+"/"+d.Name+"@"+d.Version] = struct{}{}
+		if d.Version == "" {
+			nameOnly[string(d.Ecosystem)+"/"+d.Name] = struct{}{}
+		}
+	}
+	out := lock
+	for _, d := range synth {
+		fk := string(d.Ecosystem) + "/" + d.Name + "@" + d.Version
+		if _, dup := full[fk]; dup {
+			continue
+		}
+		nk := string(d.Ecosystem) + "/" + d.Name
+		if _, dup := nameOnly[nk]; dup {
+			continue
+		}
+		out = append(out, d)
+		full[fk] = struct{}{}
+	}
+	return dedupSort(out)
 }
 
 // parseFiles iterates the overlay's file table, dispatches each
@@ -474,26 +593,44 @@ func groupPackageSources(pkgFiles map[string]map[string][]byte, deps []domain.De
 //
 // The merge step is cheap (map ops, no decode) so all I/O parallelism
 // is preserved.
-func overlayLayersFull(layers []v1Layer, opts ScanOpts, lockfileNames map[string]struct{}) (map[string][]byte, map[string]map[string][]byte, bool, error) {
+func overlayLayersFull(layers []v1Layer, opts ScanOpts, lockfileNames map[string]struct{}) (map[string][]byte, map[string]map[string][]byte, map[string]manifestEntry, map[string]struct{}, bool, error) {
 	// Decode every layer concurrently into an isolated view.
 	layerViews, err := decodeLayersParallel(layers, opts, lockfileNames)
 	if err != nil {
-		return nil, nil, false, err
+		return nil, nil, nil, nil, false, err
 	}
 
 	// Merge views sequentially — order matters for whiteout semantics.
-	files := make(map[string][]byte)
-	deleted := make(map[string]struct{})
-	var pkgFiles map[string]map[string][]byte
-	if opts.CapturePackageSources {
-		pkgFiles = make(map[string]map[string][]byte)
+	st := &overlayState{
+		files:   make(map[string][]byte),
+		deleted: make(map[string]struct{}),
+		totals:  &globalCaps{},
 	}
-	totals := &globalCaps{}
+	if opts.CapturePackageSources {
+		st.pkgFiles = make(map[string]map[string][]byte)
+	}
+	if !opts.DisableManifestWalk {
+		st.manifests = make(map[string]manifestEntry)
+		st.gemDirs = make(map[string]struct{})
+	}
 
 	for _, v := range layerViews {
-		mergeLayerView(v, files, deleted, pkgFiles, totals)
+		mergeLayerView(v, st)
 	}
-	return files, pkgFiles, totals.truncated, nil
+	return st.files, st.pkgFiles, st.manifests, st.gemDirs, st.totals.truncated, nil
+}
+
+// overlayState bundles the running overlay buffers + byte-cap totals
+// that mergeLayerView mutates across sequential layer applications.
+// Extracted so mergeLayerView keeps a single argument beyond the
+// per-layer view — see "≤4 params" rule in golang-code-style.
+type overlayState struct {
+	files     map[string][]byte
+	deleted   map[string]struct{}
+	pkgFiles  map[string]map[string][]byte // nil when CapturePackageSources off
+	manifests map[string]manifestEntry     // nil when DisableManifestWalk on
+	gemDirs   map[string]struct{}          // nil when DisableManifestWalk on
+	totals    *globalCaps
 }
 
 // decodeLayersParallel walks every layer concurrently. Each goroutine
@@ -555,8 +692,10 @@ const decodeWorkers = 8
 type layerView struct {
 	files      map[string][]byte
 	pkgFiles   map[string]map[string][]byte
-	whiteouts  []string // file-level deletes
-	opaqueDirs []string // opaque whiteout markers (paths with trailing /)
+	manifests  map[string]manifestEntry // per-package manifests (node_modules/, *.dist-info, vendor/)
+	gemDirs    map[string]struct{}      // rubygems install dirs ("gems/<name>-<ver>/")
+	whiteouts  []string                 // file-level deletes
+	opaqueDirs []string                 // opaque whiteout markers (paths with trailing /)
 }
 
 // decodeOneLayer reads a single layer in isolation, with no knowledge
@@ -574,6 +713,10 @@ func decodeOneLayer(layer v1Layer, opts ScanOpts, lockfileNames map[string]struc
 	}
 	if opts.CapturePackageSources {
 		v.pkgFiles = make(map[string]map[string][]byte)
+	}
+	if !opts.DisableManifestWalk {
+		v.manifests = make(map[string]manifestEntry)
+		v.gemDirs = make(map[string]struct{})
 	}
 	pkgSize := make(map[string]int)
 
@@ -599,6 +742,13 @@ func decodeOneLayer(layer v1Layer, opts ScanOpts, lockfileNames map[string]struc
 			v.whiteouts = append(v.whiteouts, path.Join(dir, rest))
 			continue
 		}
+		// Rubygems install dir marker: any path matching "gems/<name>-<ver>/...".
+		// Recorded as a presence set so the merge step can synthesize one
+		// Dependency per gem dir without reading any manifest.
+		if v.gemDirs != nil && hdr.Typeflag == tar.TypeDir {
+			recordGemDir(name, v.gemDirs)
+			// Don't `continue` — fall through; nothing else matches a dir entry.
+		}
 		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
@@ -614,6 +764,33 @@ func decodeOneLayer(layer v1Layer, opts ScanOpts, lockfileNames map[string]struc
 			}
 			continue
 		}
+		// Per-package manifest capture (default ON). Classify BEFORE the
+		// source-capture branch so a package.json inside node_modules/
+		// always routes here rather than getting pulled in by the AST
+		// source allowlist as well. The two branches are mutually
+		// exclusive after this point.
+		if v.manifests != nil {
+			if kind, nameHint, versionHint, ok := classifyManifestPath(name, base); ok {
+				body, err := io.ReadAll(io.LimitReader(tr, maxManifestFileBytes))
+				if err != nil {
+					return nil, err
+				}
+				v.manifests[name] = manifestEntry{
+					kind:        kind,
+					body:        body,
+					nameHint:    nameHint,
+					versionHint: versionHint,
+				}
+				// Manifest also feeds the AST package-source bundle when
+				// CapturePackageSources is on — package.json is one of the
+				// few JSON files the AST scanner consumes. Mirrors the
+				// lockfile branch above.
+				if v.pkgFiles != nil {
+					stashPackageSource(name, body, v.pkgFiles, pkgSize)
+				}
+				continue
+			}
+		}
 		if v.pkgFiles != nil && isSourceFileBase(name, base) {
 			body, err := io.ReadAll(io.LimitReader(tr, maxSourceFileBytes))
 			if err != nil {
@@ -624,59 +801,117 @@ func decodeOneLayer(layer v1Layer, opts ScanOpts, lockfileNames map[string]struc
 	}
 }
 
+// recordGemDir notes the first segment matching "gems/<name>-<ver>/..."
+// (or a `<...>/gems/<name>-<ver>/...` sub-path) in the gemDirs set so
+// the merge step can synthesize a rubygems Dependency per gem install
+// without reading any manifest body. Idempotent: dup paths are a no-op.
+func recordGemDir(p string, gemDirs map[string]struct{}) {
+	// Find the deepest "gems/" segment.
+	const marker = "gems/"
+	idx := -1
+	if strings.HasPrefix(p, marker) {
+		idx = 0
+	}
+	if midIdx := strings.LastIndex(p, "/"+marker); midIdx >= 0 {
+		idx = midIdx + 1
+	}
+	if idx < 0 {
+		return
+	}
+	rest := p[idx+len(marker):]
+	first, _, _ := strings.Cut(rest, "/")
+	if first == "" {
+		return
+	}
+	if _, _, ok := splitGemDirName(first); !ok {
+		return
+	}
+	gemDirs[first] = struct{}{}
+}
+
 // mergeLayerView applies one layer's view to the running overlay,
-// honouring whiteouts and global byte caps.
-func mergeLayerView(v *layerView, files map[string][]byte, deleted map[string]struct{}, pkgFiles map[string]map[string][]byte, totals *globalCaps) {
+// honouring whiteouts and global byte caps. st.pkgFiles / st.manifests
+// / st.gemDirs are nil-safe — callers that disable those features
+// leave them unset.
+func mergeLayerView(v *layerView, st *overlayState) {
 	// Opaque directory whiteouts: clear every captured path under that prefix.
 	for _, prefix := range v.opaqueDirs {
-		for k := range files {
+		for k := range st.files {
 			if strings.HasPrefix(k, prefix) {
-				delete(files, k)
-				deleted[k] = struct{}{}
+				delete(st.files, k)
+				st.deleted[k] = struct{}{}
 			}
 		}
-		for pkgKey, pf := range pkgFiles {
+		for pkgKey, pf := range st.pkgFiles {
 			for fpath := range pf {
 				if strings.HasPrefix(fpath, prefix) {
 					delete(pf, fpath)
 				}
 			}
 			if len(pf) == 0 {
-				delete(pkgFiles, pkgKey)
+				delete(st.pkgFiles, pkgKey)
+			}
+		}
+		for k := range st.manifests {
+			if strings.HasPrefix(k, prefix) {
+				delete(st.manifests, k)
 			}
 		}
 	}
 	// File-level whiteouts.
 	for _, target := range v.whiteouts {
-		delete(files, target)
-		deleted[target] = struct{}{}
+		delete(st.files, target)
+		st.deleted[target] = struct{}{}
+		// Manifest tombstone — node_modules/<pkg>/package.json deleted
+		// in a later layer must drop the manifest entry too.
+		delete(st.manifests, target)
 	}
 	// Captured lockfiles from this layer. Honour global byte cap.
 	for name, body := range v.files {
-		if totals.lockfileBytes >= maxTotalLockfileBytes {
-			totals.truncated = true
+		if st.totals.lockfileBytes >= maxTotalLockfileBytes {
+			st.totals.truncated = true
 			break
 		}
 		// Re-introduction: clearing the tombstone (sequential merge order
 		// matches OCI layer order, so this is safe).
-		delete(deleted, name)
-		totals.lockfileBytes += len(body)
-		files[name] = body
+		delete(st.deleted, name)
+		st.totals.lockfileBytes += len(body)
+		st.files[name] = body
 	}
 	// Captured package sources from this layer.
 	for pkgKey, pf := range v.pkgFiles {
-		dst, exists := pkgFiles[pkgKey]
+		dst, exists := st.pkgFiles[pkgKey]
 		if !exists {
 			dst = make(map[string][]byte)
-			pkgFiles[pkgKey] = dst
+			st.pkgFiles[pkgKey] = dst
 		}
 		for rel, body := range pf {
-			if totals.packageBytes >= maxTotalPackageBytes {
-				totals.truncated = true
+			if st.totals.packageBytes >= maxTotalPackageBytes {
+				st.totals.truncated = true
 				break
 			}
-			totals.packageBytes += len(body)
+			st.totals.packageBytes += len(body)
 			dst[rel] = body
+		}
+	}
+	// Captured per-package manifests from this layer. Later layers
+	// overwrite earlier (matches overlay semantics — e.g. a layer that
+	// reinstalls a package replaces the earlier package.json bytes).
+	if st.manifests != nil {
+		for name, m := range v.manifests {
+			if st.totals.manifestBytes >= maxTotalManifestBytes {
+				st.totals.truncated = true
+				break
+			}
+			st.totals.manifestBytes += len(m.body)
+			st.manifests[name] = m
+		}
+	}
+	// Gem-dir presence set: union. Whiteouts on a gem dir would be a
+	// directory tombstone — rare in practice; left for v2.
+	if st.gemDirs != nil {
+		for k := range v.gemDirs {
+			st.gemDirs[k] = struct{}{}
 		}
 	}
 }
@@ -690,6 +925,7 @@ func mergeLayerView(v *layerView, files map[string][]byte, deleted map[string]st
 type globalCaps struct {
 	lockfileBytes int
 	packageBytes  int
+	manifestBytes int
 	truncated     bool
 }
 
@@ -762,6 +998,15 @@ const (
 	// further packages are skipped — the scan reports a partial
 	// result rather than OOM-ing the runner.
 	maxTotalPackageBytes = 512 * 1024 * 1024
+	// maxManifestFileBytes caps a single per-package manifest. npm
+	// package.json can hit 50 KB on heavy packages (long descriptions,
+	// scripts blocks); 64 KB leaves headroom without inviting abuse.
+	maxManifestFileBytes = 64 * 1024
+	// maxTotalManifestBytes caps total manifest bytes captured across
+	// the whole image. 64 MB / 2 KB ≈ 32k packages — well past any
+	// realistic image. Beyond the cap further manifests are skipped
+	// and PackageSet.Truncated flips so the presenter can warn.
+	maxTotalManifestBytes = 64 * 1024 * 1024
 )
 
 // v1Layer is the subset of github.com/google/go-containerregistry/pkg/v1.Layer

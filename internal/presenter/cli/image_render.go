@@ -141,6 +141,7 @@ type imageJSONDep struct {
 	Ecosystem    string              `json:"ecosystem"`
 	Name         string              `json:"name"`
 	Version      string              `json:"version"`
+	Source       string              `json:"source,omitempty"`
 	Advisories   []imageJSONAdvisory `json:"advisories,omitempty"`
 	Capabilities []string            `json:"capabilities,omitempty"`
 }
@@ -171,6 +172,7 @@ func toImageJSONResult(r usecase.ImageResult) imageJSONResult {
 			Ecosystem: string(d.Ecosystem),
 			Name:      d.Name,
 			Version:   d.Version,
+			Source:    d.Source,
 		}
 		for _, a := range d.Advisories {
 			j.Advisories = append(j.Advisories, imageJSONAdvisory{
