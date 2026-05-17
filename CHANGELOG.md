@@ -4,6 +4,31 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.27.0](https://github.com/qwexvf/aegis-cli/compare/v0.26.0...v0.27.0) (2026-05-18)
+
+
+### Added
+
+* **neovim:** first-class Lua AST scanning for git-distributed Neovim plugins. New `EcoNeovim` ecosystem covers plugins that have no registry and no manifest. Capability mapping reuses existing `domain.Capability` values: `os.execute` / `io.popen` / `vim.fn.system` → `shell-spawn`, `loadstring` / `vim.api.nvim_exec` → `dynamic-eval`, `require("socket.http")` / `vim.uv.new_tcp` → `net-egress`, `os.getenv` / `vim.env.*` → `env-read`, `io.open` / `vim.fn.writefile` → `fs-write-outside-root`, `ffi.load` / `package.cpath = ...` → `install-hook-exec`, raw IPv4 string literals → `raw-ip-literal`. No new capability added — Cloud allowlist schema is unchanged
+* **neovim:** `aegis analyze --ecosystem neovim <dir>` — manifestless invocation. Name derived from directory basename, Version from `git rev-parse --short HEAD` (falls back to `"unknown"`)
+* **neovim:** `lazy-lock.json` parser (lazy.nvim, dominant plugin manager). Commit SHA is the canonical Version; entries without commit are skipped
+* **neovim:** plugin-spec `build = "<shell>"` detection. Strings in lazy.nvim / packer.nvim / vim.pack specs are piped through the existing `CapInstallHookSuspicious` matcher — same one that catches `curl | sh` in npm scripts and Cargo `build.rs`
+* **analyze:** new `--baseline <prior.json>` flag. Compares the current scan's capabilities against a previously-saved `--json` output and exits 1 when new capabilities appear. Plugin managers use this for "did this update get worse?" checks — capability shrinkage is fine, capability growth is a regression worth surfacing
+* **sbom:** CycloneDX emitter now produces `pkg:generic/<name>@<sha>` PURLs for `EcoNeovim` deps. Will promote to `pkg:github/owner/repo@<sha>` once a URL field lands on `domain.Dependency`
+
+
+### Refactored
+
+* **heuristics:** `ScriptMatchesMalwarePattern` exported as the canonical entry point for non-NormalizedPackage scanners (e.g. Lua plugin specs) that need to flag a single shell snippet
+
+
+### Docs
+
+* `docs/neovim-plugin-manager-safety-spec.md` — MUST/SHOULD/MAY-graded safety spec for what a Neovim plugin manager has to do to ship safe plugins. 10 sections + threat model + 5-item MVP for plugin manager authors
+* `aegis analyze` man page picks up the new `--ecosystem` and `--baseline` flags
+* `lua-neovim-support.md` removed — implementation plan is now fully shipped
+
+
 ## [0.26.0](https://github.com/qwexvf/aegis-cli/compare/v0.25.0...v0.26.0) (2026-05-17)
 
 

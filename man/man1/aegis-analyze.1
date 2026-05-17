@@ -21,14 +21,38 @@ required as a label for the result. Useful for fixture-based testing
 (examples/incidents/...) and for analysing a tree before publish.
 
 .PP
+With --ecosystem neovim, the positional argument is interpreted as a
+directory containing a Neovim plugin (Lua source, no manifest). Name is
+derived from the directory basename, Version from the git HEAD SHA. No
+registry fetch happens; the AST scanner is the entire signal.
+
+.PP
+With --baseline , the scanner compares the resulting capabilities
+against a previous --json output (cached at ). Exits 1 with a
+diff of new capabilities when the current scan introduces any that
+weren't in the baseline. Plugin managers use this for "did this update
+get worse?" checks — capability shrinkage is fine, capability growth
+is a regression worth surfacing.
+
+.PP
 Examples:
   aegis analyze lodash@4.17.21
   aegis analyze @solana/web3.js@1.95.4
   aegis analyze npm/event-stream@3.3.6
   aegis analyze rubygems/rest-client@1.6.13 --local examples/incidents/rubygems/rest-client-1.6.13/
+  aegis analyze --ecosystem neovim ./packer.nvim
+  aegis analyze --ecosystem neovim ./packer.nvim --baseline ~/.cache/aegis/packer.nvim.json
 
 
 .SH OPTIONS
+\fB--baseline\fP=""
+	path to a prior --json output; exits 1 when the current scan adds new capabilities
+
+.PP
+\fB--ecosystem\fP=""
+	interpret the positional argument as a directory for the given ecosystem (currently: neovim)
+
+.PP
 \fB--evidence\fP[=false]
 	include file:line snippets for each detected capability
 
