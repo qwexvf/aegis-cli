@@ -89,6 +89,12 @@ func (ip *ImagePresenter) OnImageResult(r usecase.ImageResult) {
 		ip.p.dim(), ip.p.reset(),
 		strings.Join(summary, " • "))
 
+	if r.Truncated {
+		fmt.Fprintf(ip.p.w, "%s[aegis]%s %swarning%s scan truncated at global memory cap — result is partial; rerun on the focused image layer or raise the cap\n",
+			ip.p.dim(), ip.p.reset(),
+			ip.p.yellow(), ip.p.reset())
+	}
+
 	for _, d := range r.Deps {
 		hasAdv := len(d.Advisories) > 0
 		hasCaps := d.Fingerprint != nil && d.Fingerprint.Analyzed && len(d.Fingerprint.Capabilities) > 0
@@ -126,6 +132,7 @@ type imageJSONResult struct {
 	ImagePath           string         `json:"image_path"`
 	Enriched            bool           `json:"enriched"`
 	CapabilitiesScanned bool           `json:"capabilities_scanned"`
+	Truncated           bool           `json:"truncated,omitempty"`
 	Total               int            `json:"total"`
 	Deps                []imageJSONDep `json:"deps"`
 }
@@ -155,6 +162,7 @@ func toImageJSONResult(r usecase.ImageResult) imageJSONResult {
 		ImagePath:           r.ImagePath,
 		Enriched:            r.Enriched,
 		CapabilitiesScanned: r.CapabilitiesScanned,
+		Truncated:           r.Truncated,
 		Total:               len(r.Deps),
 		Deps:                make([]imageJSONDep, 0, len(r.Deps)),
 	}

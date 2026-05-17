@@ -13,7 +13,7 @@ func BenchmarkOverlayLayers_Tiny(b *testing.B) {
 	}
 	tarball := buildTarBytes(b, files)
 	for b.Loop() {
-		_, _, _ = overlayLayersFull([]v1Layer{&fakeLayer{entries: tarballToEntries(tarball)}}, ScanOpts{}, defaultLockfileNames())
+		_, _, _, _ = overlayLayersFull([]v1Layer{&fakeLayer{entries: tarballToEntries(tarball)}}, ScanOpts{}, defaultLockfileNames())
 	}
 }
 
@@ -26,7 +26,7 @@ func BenchmarkOverlayLayers_1000Files(b *testing.B) {
 	tarball := buildTarBytes(b, files)
 	b.ReportAllocs()
 	for b.Loop() {
-		_, _, _ = overlayLayersFull([]v1Layer{&fakeLayer{entries: tarballToEntries(tarball)}}, ScanOpts{CapturePackageSources: true}, defaultLockfileNames())
+		_, _, _, _ = overlayLayersFull([]v1Layer{&fakeLayer{entries: tarballToEntries(tarball)}}, ScanOpts{CapturePackageSources: true}, defaultLockfileNames())
 	}
 }
 

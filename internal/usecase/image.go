@@ -49,10 +49,13 @@ type ImageScanOpts struct {
 	CapturePackageSources bool
 }
 
-// ImagePackageSet mirrors the adapter's return shape.
+// ImagePackageSet mirrors the adapter's return shape. Truncated is true
+// when the underlying scanner hit a global byte cap; the dep list and
+// source set are partial.
 type ImagePackageSet struct {
-	Deps    []domain.Dependency
-	Sources map[string]domain.PackageSource
+	Deps      []domain.Dependency
+	Sources   map[string]domain.PackageSource
+	Truncated bool
 }
 
 // ImageRequest is the input shape.
@@ -82,6 +85,11 @@ type ImageResult struct {
 	Advisories          map[string][]domain.Advisory
 	Enriched            bool
 	CapabilitiesScanned bool
+	// Truncated is set when the scanner hit a global byte cap during
+	// the layer walk. The dep list and captured sources are partial —
+	// the presenter surfaces this so the user doesn't act on an
+	// incomplete BOM.
+	Truncated bool
 }
 
 // ImagePresenter renders the result. Implementation:
@@ -111,6 +119,7 @@ func (i *Image) Run(ctx context.Context, req ImageRequest) (ImageResult, error) 
 	out := ImageResult{
 		ImagePath: req.Path,
 		Deps:      set.Deps,
+		Truncated: set.Truncated,
 	}
 
 	if req.Capabilities && i.analyzer != nil && len(set.Sources) > 0 {
@@ -152,6 +161,13 @@ func (i *Image) Run(ctx context.Context, req ImageRequest) (ImageResult, error) 
 // matching dep. Best-effort: a single analyzer failure on one package
 // is skipped silently.
 //
+// Scope: only packages whose key matches a lockfile-derived dep are
+// scanned. Uncorrelated sources (e.g. system-bundled npm packages
+// without a lockfile entry) are skipped — without a dep slot the
+// fingerprint has no version to attribute to, so the result would be
+// uncorrelated noise. Surfacing them would require a separate
+// out-of-band finding shape we don't have yet.
+//
 // Parallelism: capped at imageCapWorkers (small fixed pool) because
 // tree-sitter parsing is CPU-bound; over-saturating beyond NumCPU
 // fights the GC, and most images have tens-to-hundreds of packages
@@ -175,10 +191,6 @@ func (i *Image) runCapabilityScan(ctx context.Context, out *ImageResult, sources
 	}
 	jobs := make(chan job, len(sources))
 	for k, src := range sources {
-		// Derive ecosystem from key prefix. Required because the
-		// image walker may surface sources that don't appear in the
-		// lockfile (e.g. system-bundled npm packages, pip-only-in-image
-		// site-packages); we still want to scan them.
 		jobs <- job{key: k, eco: ecosystemFromKey(k), src: src}
 	}
 	close(jobs)
@@ -197,14 +209,6 @@ func (i *Image) runCapabilityScan(ctx context.Context, out *ImageResult, sources
 				if ctx.Err() != nil {
 					return
 				}
-				// Ecosystem comes from the source-key prefix so the
-				// image walker can produce caps even for packages
-				// outside the lockfile (system-bundled npm, pip-only
-				// site-packages). depIdx is optional: when present,
-				// the fingerprint is attached to the dep; when absent
-				// (no lockfile entry), the scan still runs but the
-				// finding has no version to attribute to and is
-				// dropped (intentional — uncorrelated noise).
 				eco := j.eco
 				if eco == "" || !i.analyzer.HasScanner(eco) {
 					continue

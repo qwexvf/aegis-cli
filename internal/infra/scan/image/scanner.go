@@ -90,9 +90,14 @@ type ScanOpts struct {
 // derived dep list and, when ScanOpts.CapturePackageSources was on,
 // the per-package source tree (keyed by `<ecosystem>/<name>@<version>`
 // when version is known; `<ecosystem>/<name>` otherwise).
+//
+// Truncated is set when a global byte cap (maxTotalLockfileBytes or
+// maxTotalPackageBytes) fired during the walk — the result is partial
+// and downstream consumers should warn the user.
 type PackageSet struct {
-	Deps    []domain.Dependency
-	Sources map[string]domain.PackageSource
+	Deps      []domain.Dependency
+	Sources   map[string]domain.PackageSource
+	Truncated bool
 }
 
 // ScanImagePackages is the full-featured entry point. Walks every
@@ -120,14 +125,14 @@ func (s *Scanner) ScanImagePackages(imagePath string, opts ScanOpts) (PackageSet
 	for i, l := range layers {
 		vlayers[i] = l
 	}
-	files, pkgFiles, err := overlayLayersFull(vlayers, opts, s.lockfileNames)
+	files, pkgFiles, truncated, err := overlayLayersFull(vlayers, opts, s.lockfileNames)
 	if err != nil {
 		return PackageSet{}, fmt.Errorf("image: overlay layers: %w", err)
 	}
 
 	deps := s.parseFiles(files)
 	sources := groupPackageSources(pkgFiles, deps)
-	return PackageSet{Deps: deps, Sources: sources}, nil
+	return PackageSet{Deps: deps, Sources: sources, Truncated: truncated}, nil
 }
 
 // parseFiles iterates the overlay's file table, dispatches each
@@ -469,11 +474,11 @@ func groupPackageSources(pkgFiles map[string]map[string][]byte, deps []domain.De
 //
 // The merge step is cheap (map ops, no decode) so all I/O parallelism
 // is preserved.
-func overlayLayersFull(layers []v1Layer, opts ScanOpts, lockfileNames map[string]struct{}) (map[string][]byte, map[string]map[string][]byte, error) {
+func overlayLayersFull(layers []v1Layer, opts ScanOpts, lockfileNames map[string]struct{}) (map[string][]byte, map[string]map[string][]byte, bool, error) {
 	// Decode every layer concurrently into an isolated view.
 	layerViews, err := decodeLayersParallel(layers, opts, lockfileNames)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
 	// Merge views sequentially — order matters for whiteout semantics.
@@ -488,7 +493,7 @@ func overlayLayersFull(layers []v1Layer, opts ScanOpts, lockfileNames map[string
 	for _, v := range layerViews {
 		mergeLayerView(v, files, deleted, pkgFiles, totals)
 	}
-	return files, pkgFiles, nil
+	return files, pkgFiles, totals.truncated, nil
 }
 
 // decodeLayersParallel walks every layer concurrently. Each goroutine
@@ -649,6 +654,7 @@ func mergeLayerView(v *layerView, files map[string][]byte, deleted map[string]st
 	// Captured lockfiles from this layer. Honour global byte cap.
 	for name, body := range v.files {
 		if totals.lockfileBytes >= maxTotalLockfileBytes {
+			totals.truncated = true
 			break
 		}
 		// Re-introduction: clearing the tombstone (sequential merge order
@@ -666,6 +672,7 @@ func mergeLayerView(v *layerView, files map[string][]byte, deleted map[string]st
 		}
 		for rel, body := range pf {
 			if totals.packageBytes >= maxTotalPackageBytes {
+				totals.truncated = true
 				break
 			}
 			totals.packageBytes += len(body)
@@ -676,9 +683,14 @@ func mergeLayerView(v *layerView, files map[string][]byte, deleted map[string]st
 
 // globalCaps carries the running total of bytes captured across all
 // layers. Pointer so the merge step can mutate without per-call wiring.
+// truncated flips to true the first time a per-class cap (lockfile or
+// package source) drops a payload — the scanner surfaces this on the
+// returned PackageSet so the presenter can warn that the result is
+// partial.
 type globalCaps struct {
 	lockfileBytes int
 	packageBytes  int
+	truncated     bool
 }
 
 // stashPackageSource routes name → body into the correct per-package

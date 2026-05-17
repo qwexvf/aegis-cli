@@ -26,7 +26,8 @@ func (a imageScannerAdapter) ScanImagePackages(path string, opts usecase.ImageSc
 		return usecase.ImagePackageSet{}, err
 	}
 	return usecase.ImagePackageSet{
-		Deps:    res.Deps,
-		Sources: res.Sources,
+		Deps:      res.Deps,
+		Sources:   res.Sources,
+		Truncated: res.Truncated,
 	}, nil
 }
