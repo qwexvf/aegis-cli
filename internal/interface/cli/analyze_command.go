@@ -2,10 +2,13 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
@@ -25,10 +28,11 @@ import (
 //	2   fetch / analyze error (couldn't reach a verdict)
 func analyzeCommand(uc *usecase.Analyze, presenter *presentercli.AnalyzePresenter) *cobra.Command {
 	var (
-		evidence  bool
-		jsonOut   bool
-		localPath string
-		ecoFlag   string
+		evidence     bool
+		jsonOut      bool
+		localPath    string
+		ecoFlag      string
+		baselinePath string
 	)
 	cmd := &cobra.Command{
 		Use:   "analyze <pkg-spec>",
@@ -47,12 +51,20 @@ directory containing a Neovim plugin (Lua source, no manifest). Name is
 derived from the directory basename, Version from the git HEAD SHA. No
 registry fetch happens; the AST scanner is the entire signal.
 
+With --baseline <path>, the scanner compares the resulting capabilities
+against a previous --json output (cached at <path>). Exits 1 with a
+diff of new capabilities when the current scan introduces any that
+weren't in the baseline. Plugin managers use this for "did this update
+get worse?" checks — capability shrinkage is fine, capability growth
+is a regression worth surfacing.
+
 Examples:
   aegis analyze lodash@4.17.21
   aegis analyze @solana/web3.js@1.95.4
   aegis analyze npm/event-stream@3.3.6
   aegis analyze rubygems/rest-client@1.6.13 --local examples/incidents/rubygems/rest-client-1.6.13/
-  aegis analyze --ecosystem neovim ./packer.nvim`,
+  aegis analyze --ecosystem neovim ./packer.nvim
+  aegis analyze --ecosystem neovim ./packer.nvim --baseline ~/.cache/aegis/packer.nvim.json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eco, name, version, err := resolveAnalyzeTarget(args[0], ecoFlag, &localPath)
@@ -75,6 +87,20 @@ Examples:
 				// duplicate "aegis: <err>" line in Execute.
 				return &exitCodeError{code: 2, err: runErr, silent: true}
 			}
+			if baselinePath != "" {
+				added, err := capabilityRegression(baselinePath, result)
+				if err != nil {
+					return &exitCodeError{code: 2, err: fmt.Errorf("--baseline: %w", err), silent: false}
+				}
+				if len(added) > 0 {
+					fmt.Fprintf(cmd.ErrOrStderr(),
+						"\n! capability regression vs baseline (%s): added %s\n",
+						baselinePath, strings.Join(added, ", "))
+					return &exitCodeError{code: 1,
+						err:    fmt.Errorf("%s@%s: new capabilities since baseline", name, version),
+						silent: true}
+				}
+			}
 			switch result.Verdict {
 			case domain.VerdictBlock, domain.VerdictPrompt:
 				// Got a verdict, it's bad. Same: presenter already
@@ -94,7 +120,43 @@ Examples:
 		"read package source from this on-disk directory instead of fetching from the registry")
 	cmd.Flags().StringVar(&ecoFlag, "ecosystem", "",
 		"interpret the positional argument as a directory for the given ecosystem (currently: neovim)")
+	cmd.Flags().StringVar(&baselinePath, "baseline", "",
+		"path to a prior --json output; exits 1 when the current scan adds new capabilities")
 	return cmd
+}
+
+// capabilityRegression compares the current analyze result against a
+// previously-saved JSON output (the shape produced by `aegis analyze --json`).
+// Returns the set of capability strings that appear in current but not in
+// the baseline — capability shrinkage and unchanged sets return nil.
+// Errors out only when the baseline file is unreadable or malformed; an
+// absent capabilities field decodes to an empty list (no baseline caps =
+// any current cap is a regression).
+func capabilityRegression(baselinePath string, current usecase.AnalyzeResult) ([]string, error) {
+	raw, err := os.ReadFile(baselinePath)
+	if err != nil {
+		return nil, err
+	}
+	var prior struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := json.Unmarshal(raw, &prior); err != nil {
+		return nil, fmt.Errorf("decode baseline JSON: %w", err)
+	}
+	priorSet := make(map[string]struct{}, len(prior.Capabilities))
+	for _, c := range prior.Capabilities {
+		priorSet[c] = struct{}{}
+	}
+	var added []string
+	for _, c := range current.Fingerprint.Capabilities {
+		name := c.String()
+		if _, ok := priorSet[name]; ok {
+			continue
+		}
+		added = append(added, name)
+	}
+	sort.Strings(added)
+	return added, nil
 }
 
 // resolveAnalyzeTarget unifies the two analyze invocation shapes:

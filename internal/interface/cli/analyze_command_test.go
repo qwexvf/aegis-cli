@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
+	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
 func TestParsePkgSpec(t *testing.T) {
@@ -163,6 +166,86 @@ func TestResolveAnalyzeTarget_UnsupportedEcosystemForDirMode(t *testing.T) {
 	_, _, _, err := resolveAnalyzeTarget("./foo", "npm", &localPath)
 	if err == nil {
 		t.Fatal("expected error: dir mode not implemented for non-neovim")
+	}
+}
+
+func TestCapabilityRegression_NewCaps(t *testing.T) {
+	dir := t.TempDir()
+	baselinePath := filepath.Join(dir, "baseline.json")
+	if err := os.WriteFile(baselinePath, []byte(`{"capabilities":["shell-spawn"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	current := usecase.AnalyzeResult{
+		Fingerprint: domain.Fingerprint{
+			Capabilities: domain.CapabilitySet{domain.CapShellSpawn, domain.CapNetEgress},
+		},
+	}
+	added, err := capabilityRegression(baselinePath, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(added) != 1 || added[0] != "net-egress" {
+		t.Errorf("got %v, want [net-egress]", added)
+	}
+}
+
+func TestCapabilityRegression_NoNewCaps(t *testing.T) {
+	dir := t.TempDir()
+	baselinePath := filepath.Join(dir, "baseline.json")
+	if err := os.WriteFile(baselinePath, []byte(`{"capabilities":["shell-spawn","net-egress"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	current := usecase.AnalyzeResult{
+		Fingerprint: domain.Fingerprint{
+			Capabilities: domain.CapabilitySet{domain.CapShellSpawn},
+		},
+	}
+	added, err := capabilityRegression(baselinePath, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(added) != 0 {
+		t.Errorf("capability shrinkage must not regress; got added=%v", added)
+	}
+}
+
+func TestCapabilityRegression_MissingBaseline(t *testing.T) {
+	_, err := capabilityRegression("/no/such/path.json", usecase.AnalyzeResult{})
+	if err == nil {
+		t.Fatal("expected error for missing baseline")
+	}
+}
+
+func TestCapabilityRegression_MalformedJSON(t *testing.T) {
+	dir := t.TempDir()
+	baselinePath := filepath.Join(dir, "baseline.json")
+	if err := os.WriteFile(baselinePath, []byte(`{ not json`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := capabilityRegression(baselinePath, usecase.AnalyzeResult{})
+	if err == nil {
+		t.Fatal("expected error for malformed baseline")
+	}
+}
+
+func TestCapabilityRegression_EmptyBaselineCapsTreatsAnyAsNew(t *testing.T) {
+	dir := t.TempDir()
+	baselinePath := filepath.Join(dir, "baseline.json")
+	// JSON without capabilities field → caps list decodes as nil.
+	if err := os.WriteFile(baselinePath, []byte(`{"verdict":"safe"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	current := usecase.AnalyzeResult{
+		Fingerprint: domain.Fingerprint{
+			Capabilities: domain.CapabilitySet{domain.CapShellSpawn},
+		},
+	}
+	added, err := capabilityRegression(baselinePath, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(added) != 1 || added[0] != "shell-spawn" {
+		t.Errorf("absent baseline caps must treat current caps as new; got %v", added)
 	}
 }
 
