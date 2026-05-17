@@ -152,6 +152,19 @@
   (#eq? @_t "package")
   (#eq? @_f "cpath")) @cap.install-hook-exec
 
+;; ---- plugin-spec build hook -------------------------------------------
+
+;; `build = "<shell-string>"` field inside a plugin spec table. Used by
+;; lazy.nvim / packer.nvim / vim.pack to declare a post-install shell
+;; command. Captured as @build-string so the Go scanner can pass the
+;; body to heuristics.ScriptMatchesMalwarePattern — same matcher that
+;; flags `curl | sh` in npm scripts and `build.rs` payloads. The Go
+;; side only emits install-hook-suspicious when the matcher fires.
+(field
+  name: (identifier) @_field
+  value: (string (string_content) @build-string)
+  (#eq? @_field "build"))
+
 ;; ---- raw IP literal ---------------------------------------------------
 
 ;; Any string content containing http(s)://NNN.NNN.NNN.NNN
