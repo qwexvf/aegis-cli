@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -25,6 +28,7 @@ func analyzeCommand(uc *usecase.Analyze, presenter *presentercli.AnalyzePresente
 		evidence  bool
 		jsonOut   bool
 		localPath string
+		ecoFlag   string
 	)
 	cmd := &cobra.Command{
 		Use:   "analyze <pkg-spec>",
@@ -38,14 +42,20 @@ read from the on-disk directory at <path> instead. The spec is still
 required as a label for the result. Useful for fixture-based testing
 (examples/incidents/...) and for analysing a tree before publish.
 
+With --ecosystem neovim, the positional argument is interpreted as a
+directory containing a Neovim plugin (Lua source, no manifest). Name is
+derived from the directory basename, Version from the git HEAD SHA. No
+registry fetch happens; the AST scanner is the entire signal.
+
 Examples:
   aegis analyze lodash@4.17.21
   aegis analyze @solana/web3.js@1.95.4
   aegis analyze npm/event-stream@3.3.6
-  aegis analyze rubygems/rest-client@1.6.13 --local examples/incidents/rubygems/rest-client-1.6.13/`,
+  aegis analyze rubygems/rest-client@1.6.13 --local examples/incidents/rubygems/rest-client-1.6.13/
+  aegis analyze --ecosystem neovim ./packer.nvim`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			eco, name, version, err := parsePkgSpec(args[0])
+			eco, name, version, err := resolveAnalyzeTarget(args[0], ecoFlag, &localPath)
 			if err != nil {
 				return err
 			}
@@ -82,7 +92,63 @@ Examples:
 		"emit a machine-readable JSON object to stdout (suppresses human output)")
 	cmd.Flags().StringVar(&localPath, "local", "",
 		"read package source from this on-disk directory instead of fetching from the registry")
+	cmd.Flags().StringVar(&ecoFlag, "ecosystem", "",
+		"interpret the positional argument as a directory for the given ecosystem (currently: neovim)")
 	return cmd
+}
+
+// resolveAnalyzeTarget unifies the two analyze invocation shapes:
+//
+//   - `analyze [eco/]name@version [--local <dir>]` — the canonical
+//     pkg-spec path, used for every registry-backed ecosystem.
+//   - `analyze --ecosystem <eco> <dir>` — the manifestless-source path,
+//     currently used only by EcoNeovim where plugins have no registry
+//     and no pkg-spec syntax. Name is derived from the directory
+//     basename, Version from the git HEAD SHA (or "unknown" when the
+//     dir isn't a git checkout).
+//
+// When the manifestless path is taken, the localPath pointer is updated
+// in place so the use case sees the directory as LocalPath without the
+// caller having to also pass --local.
+func resolveAnalyzeTarget(positional, ecoFlag string, localPath *string) (domain.Ecosystem, string, string, error) {
+	if ecoFlag == "" {
+		eco, name, version, err := parsePkgSpec(positional)
+		return eco, name, version, err
+	}
+	if !isKnownEcosystem(ecoFlag) {
+		return "", "", "", fmt.Errorf("--ecosystem %q: unknown ecosystem", ecoFlag)
+	}
+	eco := domain.Ecosystem(ecoFlag)
+	if eco != domain.EcoNeovim {
+		return "", "", "", fmt.Errorf("--ecosystem %s: manifestless dir mode is only implemented for neovim today", eco)
+	}
+	dir := positional
+	if *localPath == "" {
+		*localPath = dir
+	}
+	name := filepath.Base(strings.TrimRight(dir, "/"))
+	if name == "" || name == "." || name == "/" {
+		return "", "", "", fmt.Errorf("--ecosystem %s: could not derive plugin name from %q", eco, dir)
+	}
+	version := gitHeadSHA(dir)
+	if version == "" {
+		version = "unknown"
+	}
+	return eco, name, version, nil
+}
+
+// gitHeadSHA returns the short commit SHA at HEAD of the given dir, or
+// the empty string when dir isn't a git checkout. Best-effort: any git
+// failure (missing binary, detached HEAD without commits, bare repo)
+// yields "" and the caller falls back to a placeholder version.
+func gitHeadSHA(dir string) string {
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--short", "HEAD")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out.String())
 }
 
 // parsePkgSpec parses [ecosystem/]name@version. Handles scoped

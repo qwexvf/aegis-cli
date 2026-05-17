@@ -99,3 +99,77 @@ func TestExitCodeError_SilentFlagPropagates(t *testing.T) {
 type simpleErr struct{ msg string }
 
 func (e *simpleErr) Error() string { return e.msg }
+
+func TestResolveAnalyzeTarget_PkgSpecPath(t *testing.T) {
+	localPath := ""
+	eco, name, ver, err := resolveAnalyzeTarget("lodash@4.17.21", "", &localPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if eco != domain.EcoNpm || name != "lodash" || ver != "4.17.21" {
+		t.Errorf("got (%q, %q, %q), want (npm, lodash, 4.17.21)", eco, name, ver)
+	}
+	if localPath != "" {
+		t.Errorf("pkg-spec path must NOT mutate localPath; got %q", localPath)
+	}
+}
+
+func TestResolveAnalyzeTarget_NeovimDirMode(t *testing.T) {
+	localPath := ""
+	eco, name, ver, err := resolveAnalyzeTarget("/tmp/my-plugin.nvim", "neovim", &localPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if eco != domain.EcoNeovim {
+		t.Errorf("eco = %q, want neovim", eco)
+	}
+	if name != "my-plugin.nvim" {
+		t.Errorf("name = %q, want my-plugin.nvim (basename of arg)", name)
+	}
+	// /tmp/my-plugin.nvim doesn't exist → gitHeadSHA returns "" → fallback "unknown"
+	if ver != "unknown" {
+		t.Errorf("ver = %q, want unknown (no git repo)", ver)
+	}
+	if localPath != "/tmp/my-plugin.nvim" {
+		t.Errorf("localPath = %q, want /tmp/my-plugin.nvim (dir arg should be copied through)", localPath)
+	}
+}
+
+func TestResolveAnalyzeTarget_NeovimRespectsExistingLocalFlag(t *testing.T) {
+	// When the user passes --local explicitly, the dir arg is still used
+	// as the positional but localPath stays as the user set it.
+	localPath := "/explicit/path"
+	_, _, _, err := resolveAnalyzeTarget("/some/dir", "neovim", &localPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if localPath != "/explicit/path" {
+		t.Errorf("explicit --local must NOT be overwritten; got %q", localPath)
+	}
+}
+
+func TestResolveAnalyzeTarget_UnknownEcosystem(t *testing.T) {
+	localPath := ""
+	_, _, _, err := resolveAnalyzeTarget("./foo", "bogus", &localPath)
+	if err == nil {
+		t.Fatal("expected error for unknown ecosystem")
+	}
+}
+
+func TestResolveAnalyzeTarget_UnsupportedEcosystemForDirMode(t *testing.T) {
+	// --ecosystem npm (or any non-neovim) with a directory positional
+	// should fail: dir-mode is only implemented for neovim today.
+	localPath := ""
+	_, _, _, err := resolveAnalyzeTarget("./foo", "npm", &localPath)
+	if err == nil {
+		t.Fatal("expected error: dir mode not implemented for non-neovim")
+	}
+}
+
+func TestResolveAnalyzeTarget_EmptyDirArg(t *testing.T) {
+	localPath := ""
+	_, _, _, err := resolveAnalyzeTarget("/", "neovim", &localPath)
+	if err == nil {
+		t.Fatal(`expected error: "/" doesn't yield a valid plugin name`)
+	}
+}

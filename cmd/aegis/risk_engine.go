@@ -21,6 +21,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/golang"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/java"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/js"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/lua"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/php"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/py"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/ruby"
@@ -60,6 +61,7 @@ func buildASTDispatcher() *ast.Dispatcher {
 	tryRegister("PHP", domain.EcoPackagist, func() (ast.LanguageScanner, error) { return php.New() })
 	tryRegister("C#", domain.EcoNuGet, func() (ast.LanguageScanner, error) { return csharp.New() })
 	tryRegister("Gleam", domain.EcoGleam, func() (ast.LanguageScanner, error) { return gleam.New() })
+	tryRegister("Lua", domain.EcoNeovim, func() (ast.LanguageScanner, error) { return lua.New() })
 	return dispatcher
 }
 
