@@ -340,7 +340,7 @@ func TestOverlayLayers_GlobalLockfileCap_SetsTruncated(t *testing.T) {
 	// 70 lockfiles × 4 MB each = 280 MB > 256 MB cap.
 	body := bytes.Repeat([]byte("x"), maxFileBytes)
 	entries := make([]tarEntry, 0, 70)
-	for i := 0; i < 70; i++ {
+	for i := range 70 {
 		entries = append(entries, tarEntry{
 			name: fmt.Sprintf("app%d/package-lock.json", i),
 			body: body,
