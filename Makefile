@@ -61,6 +61,10 @@ test-e2e:                       ## run end-to-end CLI tests (examples/incidents)
 test-e2e-real:                  ## run e2e tests including real downloaded fixtures (AEGIS_REAL_INCIDENTS=1)
 	@AEGIS_REAL_INCIDENTS=1 bash tests/e2e/incidents.sh
 
+.PHONY: test-e2e-image
+test-e2e-image:                 ## run image scanner e2e tests (requires docker)
+	@bash tests/e2e/image.sh
+
 .PHONY: fetch-real-incidents
 fetch-real-incidents:           ## download + neutralize real malicious packages into examples/incidents-real/
 	@bash scripts/fetch-real-incidents.sh

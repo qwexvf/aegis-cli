@@ -115,6 +115,73 @@ func compareFixVersion(a, b string) int {
 	return 0
 }
 
+// isSafePkgName reports whether name only contains characters that
+// are safe to interpolate into a shell command line without quoting:
+//
+//	[A-Za-z0-9._@/+-]
+//
+// Covers every legitimate package name across npm (incl. scoped
+// `@scope/name`), PyPI, Cargo, Go modules (`golang.org/x/...`), Maven
+// coordinates (`group:artifact` — `:` excluded; Maven path rendered
+// separately), RubyGems, NuGet, Packagist, Gleam. Anything outside
+// this charset (whitespace, `;`, `|`, `$`, backtick, quote, etc.)
+// makes the name shell-unsafe and UpgradeCommand refuses to render.
+func isSafePkgName(name string) bool {
+	if name == "" || len(name) > 256 {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		if !isSafeNameByte(name[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// isSafeNameByte is the per-byte ASCII allowlist used by isSafePkgName
+// and isSafeVersion. ":" is allowed because Maven coords contain it,
+// but the Maven branch of UpgradeCommand splits before interpolating.
+func isSafeNameByte(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z',
+		c >= 'A' && c <= 'Z',
+		c >= '0' && c <= '9':
+		return true
+	}
+	switch c {
+	case '.', '_', '-', '+', '/', '@', ':', '~':
+		return true
+	}
+	return false
+}
+
+// isSafeVersion validates the targetVersion injected into upgrade
+// commands. Stricter than name validation because we have less reason
+// to allow exotic chars in versions; `^` and other range operators are
+// excluded so an attacker who taints a FixedIn field can't smuggle
+// `1.0.0; rm -rf /` past us. Accepts: digits, letters, `.+-_`. Covers
+// every semver and PEP 440 shape we've seen in real OSV data.
+func isSafeVersion(v string) bool {
+	if v == "" || len(v) > 128 {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		switch {
+		case c >= 'a' && c <= 'z',
+			c >= 'A' && c <= 'Z',
+			c >= '0' && c <= '9':
+			continue
+		}
+		switch c {
+		case '.', '+', '-', '_':
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // parseLeadingInt reads the leading numeric prefix of s. Returns (n,
 // true) when s starts with at least one digit; (0, false) otherwise.
 // Used by compareFixVersion to handle "1.2.10" > "1.2.9" correctly.
@@ -136,7 +203,22 @@ func parseLeadingInt(s string) (int, bool) {
 // for dep. When targetVersion is non-empty, the command pins to that
 // version; otherwise it falls back to the ecosystem's "latest" verb.
 // Returns "" when no command shape is known.
+//
+// Security: package names and target versions are validated against a
+// strict identifier charset before being interpolated. The output is
+// intended to be safe to `eval` or pipe to `sh` (e.g. via `aegis fix
+// --script | sh`). Any name/version containing shell metacharacters,
+// whitespace, or anything outside the per-ecosystem identifier alphabet
+// causes UpgradeCommand to return "" — the caller surfaces the offending
+// dep so the user can investigate manually rather than executing a
+// crafted upgrade line.
 func UpgradeCommand(dep Dependency, targetVersion string) string {
+	if !isSafePkgName(dep.Name) {
+		return ""
+	}
+	if targetVersion != "" && !isSafeVersion(targetVersion) {
+		return ""
+	}
 	name := dep.Name
 	pinned := targetVersion != ""
 	switch dep.Ecosystem {

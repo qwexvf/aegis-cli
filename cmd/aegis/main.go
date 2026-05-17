@@ -358,7 +358,13 @@ func main() {
 	fixPresenter := cli.NewFixPresenter(presenter)
 	fix := usecase.NewFix(store, fixPresenter)
 	imagePresenter := cli.NewImagePresenter(presenter)
-	image := usecase.NewImage(imagescan.NewScanner(), vulnLookup, imagePresenter)
+	imageAnalyzer := buildASTDispatcher() // may be nil; image use case tolerates
+	image := usecase.NewImage(
+		imageScannerAdapter{inner: imagescan.NewScanner()},
+		vulnLookup,
+		imageAnalyzer,
+		imagePresenter,
+	)
 
 	// Optionally attach the risk engine (AST scanner) + submit
 	// pipeline. The implementation is selected at compile time via

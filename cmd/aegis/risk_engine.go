@@ -28,21 +28,22 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 )
 
-func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiClient *aegisapi.Client, httpClient *http.Client) {
+// buildASTDispatcher returns the cross-language AST scanner dispatcher
+// (tree-sitter scanners per ecosystem). Returns nil when the JS scanner
+// — the only one that's truly required — fails to construct; callers
+// must treat nil as "no risk engine available" and degrade gracefully.
+//
+// Extracted so multiple use cases (snapshot, analyze, image) can share
+// one dispatcher with one HTTP pool and consistent ecosystem coverage.
+func buildASTDispatcher() *ast.Dispatcher {
 	jsScanner, err := js.New()
 	if err != nil {
-		// Embedded queries malformed = developer bug. Don't refuse to
-		// run; degrade to no risk engine and warn.
 		fmt.Fprintln(os.Stderr, "aegis: JS scanner init failed:", err)
-		return
+		return nil
 	}
 	dispatcher := ast.NewDispatcher()
 	dispatcher.Register(domain.EcoNpm, jsScanner)
 
-	// Non-JS scanners are best-effort: a constructor failure means the
-	// embedded queries don't compile (developer bug), but the rest of
-	// the gate (OSV lookup, source-pattern heuristics, install-hook
-	// detection) still runs for those ecosystems. Warn and continue.
 	tryRegister := func(name string, eco domain.Ecosystem, ctor func() (ast.LanguageScanner, error)) {
 		s, err := ctor()
 		if err != nil {
@@ -59,6 +60,14 @@ func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiC
 	tryRegister("PHP", domain.EcoPackagist, func() (ast.LanguageScanner, error) { return php.New() })
 	tryRegister("C#", domain.EcoNuGet, func() (ast.LanguageScanner, error) { return csharp.New() })
 	tryRegister("Gleam", domain.EcoGleam, func() (ast.LanguageScanner, error) { return gleam.New() })
+	return dispatcher
+}
+
+func attachRiskEngine(snapshot *usecase.Snapshot, analyze *usecase.Analyze, apiClient *aegisapi.Client, httpClient *http.Client) {
+	dispatcher := buildASTDispatcher()
+	if dispatcher == nil {
+		return
+	}
 
 	fetcher := jspkgsource.New(jspkgsource.WithHTTPClient(httpClient))
 	snapshot.WithRiskEngine(
