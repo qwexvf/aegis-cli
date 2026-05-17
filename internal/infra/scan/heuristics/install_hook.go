@@ -133,6 +133,16 @@ var base64PipedPattern = regexp.MustCompile(
 var suspiciousHookHostPattern = regexp.MustCompile(
 	`(?i)\b(curl|wget|fetch)\b[^;|]*\b(pastebin\.com|paste\.ee|hastebin\.com|transfer\.sh|file\.io|0x0\.st|ngrok\.io|trycloudflare\.com|discord(?:app)?\.com/api/webhooks|api\.telegram\.org/bot)`)
 
+// ScriptMatchesMalwarePattern is the exported entry point for other
+// infra packages (e.g. the Lua AST scanner) that need to flag a single
+// shell-snippet — Neovim plugin specs use `build = "..."` strings that
+// look like install hooks but don't reach NormalizedPackage.Hooks.
+// Returns true when the body matches any download-execute / inline-eval /
+// base64-piped / suspicious-host / silent-exit pattern.
+func ScriptMatchesMalwarePattern(body string) bool {
+	return scriptMatchesMalwarePattern(body)
+}
+
 func scriptMatchesMalwarePattern(body string) bool {
 	body = strings.TrimSpace(body)
 	if body == "" {

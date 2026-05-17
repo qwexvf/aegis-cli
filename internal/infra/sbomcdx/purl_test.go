@@ -22,6 +22,7 @@ func TestPURL(t *testing.T) {
 		{"composer", domain.Dependency{Ecosystem: domain.EcoPackagist, Name: "symfony/console", Version: "6.4.0"}, "pkg:composer/symfony/console@6.4.0"},
 		{"nuget", domain.Dependency{Ecosystem: domain.EcoNuGet, Name: "Newtonsoft.Json", Version: "13.0.3"}, "pkg:nuget/Newtonsoft.Json@13.0.3"},
 		{"hex", domain.Dependency{Ecosystem: domain.EcoGleam, Name: "gleam_stdlib", Version: "0.42.0"}, "pkg:hex/gleam_stdlib@0.42.0"},
+		{"neovim-plain", domain.Dependency{Ecosystem: domain.EcoNeovim, Name: "telescope.nvim", Version: "a4ed6831b7748a2ddc4e3d6207baf3df56cba6dd"}, "pkg:generic/telescope.nvim@a4ed6831b7748a2ddc4e3d6207baf3df56cba6dd"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
