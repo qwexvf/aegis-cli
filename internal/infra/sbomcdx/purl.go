@@ -85,6 +85,13 @@ func purlType(eco domain.Ecosystem) (string, bool) {
 		return packageurl.TypeNuget, true
 	case domain.EcoGleam:
 		return packageurl.TypeHex, true
+	case domain.EcoNeovim:
+		// Neovim plugins are git-distributed with no canonical registry.
+		// PURL spec recommends `pkg:generic/<name>@<commit-sha>` for this
+		// shape. A future enhancement could promote to `pkg:github/...`
+		// when the source URL is known (requires plumbing URL through
+		// domain.Dependency — Cloud schema bump, deferred).
+		return packageurl.TypeGeneric, true
 	}
 	return "", false
 }

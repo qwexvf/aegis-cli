@@ -27,6 +27,7 @@ import (
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/heuristics"
 
 	tslua "github.com/tree-sitter-grammars/tree-sitter-lua/bindings/go"
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -41,6 +42,10 @@ type Scanner struct {
 	query *ts.Query
 
 	captureToCap map[uint]domain.Capability
+	// buildStringCapture is the index of the @build-string capture used
+	// to flag `build = "..."` install hooks in plugin specs. -1 when the
+	// query doesn't define it (older queries.scm).
+	buildStringCapture int
 
 	cursors sync.Pool
 }
@@ -54,18 +59,23 @@ func New() (*Scanner, error) {
 	}
 
 	captureToCap := map[uint]domain.Capability{}
+	buildStringCapture := -1
 	for i, name := range q.CaptureNames() {
-		if strings.HasPrefix(name, "cap.") {
+		switch {
+		case strings.HasPrefix(name, "cap."):
 			if c := capabilityFor(name); c != 0 {
 				captureToCap[uint(i)] = c
 			}
+		case name == "build-string":
+			buildStringCapture = i
 		}
 	}
 
 	return &Scanner{
-		lang:         lang,
-		query:        q,
-		captureToCap: captureToCap,
+		lang:               lang,
+		query:              q,
+		captureToCap:       captureToCap,
+		buildStringCapture: buildStringCapture,
 		cursors: sync.Pool{New: func() any {
 			return ts.NewQueryCursor()
 		}},
@@ -99,6 +109,21 @@ func (s *Scanner) AnalyzeFile(path string, body []byte, f *ast.Findings) {
 				if f.CollectEvidence {
 					line := int(cap.Node.StartPosition().Row) + 1
 					f.AddEvidence(c, path, line, string(cap.Node.Utf8Text(body)))
+				}
+				continue
+			}
+			// @build-string capture: only emit install-hook-suspicious
+			// when the shell snippet matches the existing malware-pattern
+			// matcher (same one used for npm scripts + Cargo build.rs).
+			// Benign `build = ":TSUpdate"` strings don't trip it.
+			if s.buildStringCapture >= 0 && int(cap.Index) == s.buildStringCapture {
+				snippet := string(cap.Node.Utf8Text(body))
+				if heuristics.ScriptMatchesMalwarePattern(snippet) {
+					f.AddCapability(domain.CapInstallHookSuspicious)
+					if f.CollectEvidence {
+						line := int(cap.Node.StartPosition().Row) + 1
+						f.AddEvidence(domain.CapInstallHookSuspicious, path, line, snippet)
+					}
 				}
 			}
 		}

