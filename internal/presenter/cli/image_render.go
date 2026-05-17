@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
@@ -65,28 +66,39 @@ func (ip *ImagePresenter) OnImageResult(r usecase.ImageResult) {
 	}
 	withVuln := 0
 	totalVuln := 0
+	withCaps := 0
 	for _, d := range r.Deps {
 		if len(d.Advisories) > 0 {
 			withVuln++
 			totalVuln += len(d.Advisories)
 		}
+		if d.Fingerprint != nil && d.Fingerprint.Analyzed && len(d.Fingerprint.Capabilities) > 0 {
+			withCaps++
+		}
 	}
+
+	var summary []string
+	summary = append(summary, fmt.Sprintf("%d deps extracted", len(r.Deps)))
 	if r.Enriched {
-		fmt.Fprintf(ip.p.w, "%s[aegis]%s %d deps extracted • %d advisories across %d packages\n",
-			ip.p.dim(), ip.p.reset(), len(r.Deps), totalVuln, withVuln)
-	} else {
-		fmt.Fprintf(ip.p.w, "%s[aegis]%s %d deps extracted (run with --enrich for vuln lookup)\n",
-			ip.p.dim(), ip.p.reset(), len(r.Deps))
+		summary = append(summary, fmt.Sprintf("%d advisories across %d pkgs", totalVuln, withVuln))
 	}
+	if r.CapabilitiesScanned {
+		summary = append(summary, fmt.Sprintf("%d pkgs with capabilities", withCaps))
+	}
+	fmt.Fprintf(ip.p.w, "%s[aegis]%s %s\n",
+		ip.p.dim(), ip.p.reset(),
+		strings.Join(summary, " • "))
+
 	for _, d := range r.Deps {
-		if len(d.Advisories) == 0 {
+		hasAdv := len(d.Advisories) > 0
+		hasCaps := d.Fingerprint != nil && d.Fingerprint.Analyzed && len(d.Fingerprint.Capabilities) > 0
+		if !hasAdv && !hasCaps {
 			continue
 		}
 		fmt.Fprintf(ip.p.w, "\n  %s/%s@%s\n", d.Ecosystem, d.Name, d.Version)
 		for _, a := range d.Advisories {
-			sev := a.Severity
 			color := ip.p.dim()
-			switch sev {
+			switch a.Severity {
 			case domain.SevCritical, domain.SevHigh:
 				color = ip.p.red()
 			case domain.SevMedium:
@@ -97,23 +109,33 @@ func (ip *ImagePresenter) OnImageResult(r usecase.ImageResult) {
 				color, a.ID, ip.p.reset(),
 				a.Severity, a.Summary)
 		}
+		if hasCaps {
+			for _, c := range d.Fingerprint.Capabilities {
+				fmt.Fprintf(ip.p.w, "    %s+%s %scap%s %s\n",
+					ip.p.yellow(), ip.p.reset(),
+					ip.p.dim(), ip.p.reset(),
+					c)
+			}
+		}
 	}
 }
 
 // --- JSON shapes -------------------------------------------------------
 
 type imageJSONResult struct {
-	ImagePath string         `json:"image_path"`
-	Enriched  bool           `json:"enriched"`
-	Total     int            `json:"total"`
-	Deps      []imageJSONDep `json:"deps"`
+	ImagePath           string         `json:"image_path"`
+	Enriched            bool           `json:"enriched"`
+	CapabilitiesScanned bool           `json:"capabilities_scanned"`
+	Total               int            `json:"total"`
+	Deps                []imageJSONDep `json:"deps"`
 }
 
 type imageJSONDep struct {
-	Ecosystem  string              `json:"ecosystem"`
-	Name       string              `json:"name"`
-	Version    string              `json:"version"`
-	Advisories []imageJSONAdvisory `json:"advisories,omitempty"`
+	Ecosystem    string              `json:"ecosystem"`
+	Name         string              `json:"name"`
+	Version      string              `json:"version"`
+	Advisories   []imageJSONAdvisory `json:"advisories,omitempty"`
+	Capabilities []string            `json:"capabilities,omitempty"`
 }
 
 type imageJSONAdvisory struct {
@@ -130,10 +152,11 @@ type imageErrorJSON struct {
 
 func toImageJSONResult(r usecase.ImageResult) imageJSONResult {
 	out := imageJSONResult{
-		ImagePath: r.ImagePath,
-		Enriched:  r.Enriched,
-		Total:     len(r.Deps),
-		Deps:      make([]imageJSONDep, 0, len(r.Deps)),
+		ImagePath:           r.ImagePath,
+		Enriched:            r.Enriched,
+		CapabilitiesScanned: r.CapabilitiesScanned,
+		Total:               len(r.Deps),
+		Deps:                make([]imageJSONDep, 0, len(r.Deps)),
 	}
 	for _, d := range r.Deps {
 		j := imageJSONDep{
@@ -149,6 +172,11 @@ func toImageJSONResult(r usecase.ImageResult) imageJSONResult {
 				URL:      a.URL,
 				FixedIn:  a.FixedIn,
 			})
+		}
+		if d.Fingerprint != nil && d.Fingerprint.Analyzed {
+			for _, c := range d.Fingerprint.Capabilities {
+				j.Capabilities = append(j.Capabilities, c.String())
+			}
 		}
 		out.Deps = append(out.Deps, j)
 	}
