@@ -284,8 +284,26 @@ aegis analyze rubygems/rest-client@1.6.13 \
 | `--evidence` | Include file:line snippets for each detected capability |
 | `--json` | Emit JSON to stdout (suppresses human output) |
 | `--local <path>` | Skip the registry fetcher and read package source from `<path>`. Useful for fixture-based testing and pre-publish self-checks. The spec (`<eco>/<name>@<version>`) is still required as a label. |
+| `--ecosystem <eco>` | Treat the positional argument as a directory for the given ecosystem instead of a `<name>@<version>` spec. Currently implemented for `neovim` — plugins have no registry and no manifest, so Name is derived from the directory basename and Version from the git HEAD SHA. |
+| `--baseline <prior.json>` | Compare the current scan's capabilities against a previously-saved `--json` output. Exits 1 when new capabilities appear. Capability shrinkage is fine; capability growth is a regression. Plugin managers use this to detect "did this update get worse?" on plugin SHA bumps. |
 
 The `--local` mode runs the same AST + heuristics pipeline `snapshot enrich` does, so the capability set is identical for the same input. Real-world incident fixtures ship under `examples/incidents/` (`rubygems/`, `pypi/`, `npm/`, `crates/`, `go/`) and are validated by `tests/e2e/incidents.sh` on every CI run.
+
+### Neovim plugin scanning
+
+```sh
+# Scan a local Neovim plugin checkout (no registry, no manifest)
+aegis analyze --ecosystem neovim ./packer.nvim
+
+# Plugin-manager integration: cache the JSON baseline on install,
+# re-scan on update, fail if new capabilities appeared.
+aegis analyze --ecosystem neovim ./plugins/foo --json \
+  > ~/.cache/aegis/foo-<sha>.json
+aegis analyze --ecosystem neovim ./plugins/foo \
+  --baseline ~/.cache/aegis/foo-<old-sha>.json
+```
+
+Coverage maps Lua AST → existing capabilities: `os.execute` / `vim.fn.system` → `shell-spawn`, `loadstring` / `vim.api.nvim_exec` → `dynamic-eval`, `require("socket.http")` / `vim.uv.new_tcp` → `net-egress`, `os.getenv` / `vim.env.*` → `env-read`, `io.open` / `vim.fn.writefile` → `fs-write-outside-root`, `ffi.load` / `package.cpath = ...` → `install-hook-exec`. Plugin spec `build = "<shell>"` strings feed the same matcher that flags `curl | sh` in npm scripts. No OSV ecosystem for Neovim exists; `--enrich` returns nothing — this path is static-only. See `docs/neovim-plugin-manager-safety-spec.md` for the full plugin-manager integration spec.
 
 ---
 
