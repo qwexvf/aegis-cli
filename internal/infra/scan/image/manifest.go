@@ -50,29 +50,45 @@ type manifestEntry struct {
 func classifyManifestPath(p, base string) (kind manifestKind, nameHint, versionHint string, ok bool) {
 	switch base {
 	case "package.json":
-		// Require node_modules/ ancestor — app-level package.json must not match.
-		idx := strings.LastIndex(p, "node_modules/")
-		if idx < 0 {
-			return 0, "", "", false
-		}
-		rest := p[idx+len("node_modules/"):]
-		// rest = "<pkg>/package.json" or "@scope/<pkg>/package.json"
-		// must have exactly one or two path segments before package.json
-		first, after, hasMore := strings.Cut(rest, "/")
-		if !hasMore || after == "" {
-			return 0, "", "", false
-		}
-		if strings.HasPrefix(first, "@") {
-			name, sub, hasSub := strings.Cut(after, "/")
-			if !hasSub || sub != "package.json" {
+		// Prefer node_modules/ ancestor — app-level package.json must not match.
+		if idx := strings.LastIndex(p, "node_modules/"); idx >= 0 {
+			rest := p[idx+len("node_modules/"):]
+			// rest = "<pkg>/package.json" or "@scope/<pkg>/package.json"
+			first, after, hasMore := strings.Cut(rest, "/")
+			if !hasMore || after == "" {
 				return 0, "", "", false
 			}
-			return mkNpm, first + "/" + name, "", true
+			if strings.HasPrefix(first, "@") {
+				name, sub, hasSub := strings.Cut(after, "/")
+				if !hasSub || sub != "package.json" {
+					return 0, "", "", false
+				}
+				return mkNpm, first + "/" + name, "", true
+			}
+			if after != "package.json" {
+				return 0, "", "", false
+			}
+			return mkNpm, first, "", true
 		}
-		if after != "package.json" {
-			return 0, "", "", false
+		// Fallback for top-level system-installed npm tooling that lives
+		// outside node_modules/ — e.g. /opt/yarn-v1.22.22/package.json,
+		// /usr/local/lib/<tool>/package.json. Restricted to /opt/ + a
+		// versioned dir name so an arbitrary app-level package.json (e.g.
+		// /app/package.json) still doesn't trip the classifier. The
+		// versioned-dir requirement filters out application directories.
+		if strings.HasPrefix(p, "opt/") {
+			rest := p[len("opt/"):]
+			first, sub, hasMore := strings.Cut(rest, "/")
+			if !hasMore || sub != "package.json" {
+				return 0, "", "", false
+			}
+			if !looksVersioned(first) {
+				return 0, "", "", false
+			}
+			// Read name+version from JSON body; path-derived hints aren't reliable.
+			return mkNpm, "", "", true
 		}
-		return mkNpm, first, "", true
+		return 0, "", "", false
 
 	case "METADATA":
 		// Look for parent ".dist-info" segment.
@@ -147,6 +163,30 @@ func classifyManifestPath(p, base string) (kind manifestKind, nameHint, versionH
 		return mkPackagist, vendor + "/" + pkg, "", true
 	}
 	return 0, "", "", false
+}
+
+// looksVersioned reports whether dir name embeds a version-ish suffix —
+// "yarn-v1.22.22", "node-20.0.0", "tool-1.0". Specifically: contains a
+// '-' followed by an optional 'v' then a digit. Filters /opt/<app>/
+// directories that don't carry a version (so the app-level package.json
+// stays out of the manifest walker).
+func looksVersioned(name string) bool {
+	for i := len(name) - 1; i > 0; i-- {
+		if name[i] != '-' {
+			continue
+		}
+		next := name[i+1:]
+		if len(next) == 0 {
+			continue
+		}
+		if next[0] == 'v' && len(next) >= 2 {
+			next = next[1:]
+		}
+		if next[0] >= '0' && next[0] <= '9' {
+			return true
+		}
+	}
+	return false
 }
 
 // splitPyPINameVer splits "requests-2.31.0" into ("requests", "2.31.0").

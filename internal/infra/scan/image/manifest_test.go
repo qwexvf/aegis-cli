@@ -43,6 +43,26 @@ func TestManifestWalk_NpmScopedAndUnscoped(t *testing.T) {
 	}
 }
 
+func TestManifestWalk_NpmOptTopLevel(t *testing.T) {
+	// System-installed npm tooling that ships outside node_modules/ —
+	// e.g. /opt/yarn-v1.22.22/package.json on node:20-alpine.
+	layers := []v1Layer{
+		&fakeLayer{entries: []tarEntry{
+			{name: "opt/yarn-v1.22.22/package.json", body: []byte(`{"name":"yarn","version":"1.22.22"}`)},
+			// versionless /opt/<app>/ must NOT match
+			{name: "opt/myapp/package.json", body: []byte(`{"name":"myapp","version":"1.0.0"}`)},
+		}},
+	}
+	deps := runScan(t, NewScanner(), layers, ScanOpts{})
+	d, ok := findDep(deps, domain.EcoNpm, "yarn")
+	if !ok || d.Version != "1.22.22" || d.Source != "manifest" {
+		t.Errorf("yarn@1.22.22 missing (Source=%q version=%q): %v", d.Source, d.Version, deps)
+	}
+	if _, ok := findDep(deps, domain.EcoNpm, "myapp"); ok {
+		t.Errorf("versionless /opt/myapp/package.json must NOT be synthesized: %v", deps)
+	}
+}
+
 func TestManifestWalk_PyPIDistInfo(t *testing.T) {
 	metadata := []byte("Metadata-Version: 2.1\nName: requests\nVersion: 2.31.0\nSummary: HTTP for Humans\n\n")
 	layers := []v1Layer{
