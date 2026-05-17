@@ -223,7 +223,7 @@ func TestScanImage_LargeImage_BoundedMemory(t *testing.T) {
 	// scanner would buffer ~100 MB; we should top out at maxTotalLockfileBytes.
 	files := make(map[string][]byte, 50)
 	body := make([]byte, 2*1024*1024)
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		files[filepath.Join("apps", "p", string(rune('a'+i)), "package-lock.json")] = body
 	}
 	dst := filepath.Join(t.TempDir(), "img.tar")

@@ -19,7 +19,7 @@ func BenchmarkOverlayLayers_Tiny(b *testing.B) {
 
 func BenchmarkOverlayLayers_1000Files(b *testing.B) {
 	files := make(map[string][]byte, 1000)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		files[filepath.Join("app", "p", string(rune('a'+i%26)), "src", "f.js")] = []byte("var x = 1;\n")
 	}
 	files["app/package-lock.json"] = []byte(`{"name":"x","lockfileVersion":3,"packages":{}}`)

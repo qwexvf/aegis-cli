@@ -254,7 +254,7 @@ func maxIdx4(a, b, c, d int) int {
 		best, bestV = 3, c
 	}
 	if d > bestV {
-		best, bestV = 4, d
+		best = 4
 	}
 	return best
 }
