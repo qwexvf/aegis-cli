@@ -132,7 +132,10 @@ func (c *Catalog) loadCached() ([]byte, bool) {
 	if time.Since(info.ModTime()) > cacheTTL {
 		return nil, false // stale
 	}
-	raw, err := os.ReadFile(p)
+	// security: p is derived from c.cacheDir (composition root) joined
+	// with the constant cacheFile name — not user input. gosec G304
+	// flags any os.ReadFile(var) by default; safe in this context.
+	raw, err := os.ReadFile(p) // #nosec G304 -- cacheDir + constant filename
 	if err != nil {
 		return nil, false
 	}

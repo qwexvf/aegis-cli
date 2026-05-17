@@ -65,8 +65,13 @@ type Product struct {
 }
 
 // LoadFile reads and parses a VEX document from disk.
+//
+// security: path is operator-supplied via the CLI --vex flag. aegis
+// runs as the invoking user, so reading user-readable files is
+// trivially within their privilege — not a path-traversal exploit
+// vector. gosec G304 marker added for future audits.
 func LoadFile(path string) (*Document, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- operator-supplied path; user-owned process
 	if err != nil {
 		return nil, fmt.Errorf("vex: read %s: %w", path, err)
 	}

@@ -23,8 +23,9 @@ func imageCommand(uc *usecase.Image, presenter *presentercli.ImagePresenter) *co
 
 func imageScanCommand(uc *usecase.Image, presenter *presentercli.ImagePresenter) *cobra.Command {
 	var (
-		enrich  bool
-		jsonOut bool
+		enrich       bool
+		capabilities bool
+		jsonOut      bool
 	)
 	c := &cobra.Command{
 		Use:   "scan <image.tar>",
@@ -47,8 +48,9 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			presenter.SetJSONMode(jsonOut)
 			_, err := uc.Run(cmd.Context(), usecase.ImageRequest{
-				Path:   args[0],
-				Enrich: enrich,
+				Path:         args[0],
+				Enrich:       enrich,
+				Capabilities: capabilities,
 			})
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
@@ -60,6 +62,8 @@ Examples:
 	}
 	c.Flags().BoolVar(&enrich, "enrich", false,
 		"run OSV.dev vulnerability lookup against the extracted dependency set")
+	c.Flags().BoolVar(&capabilities, "capabilities", false,
+		"AST-scan every package found inside the image (tree-sitter capability + heuristic detection — finds malware Trivy can't)")
 	c.Flags().BoolVar(&jsonOut, "json", false,
 		"emit machine-readable JSON on stdout (suppresses human output)")
 	return c
