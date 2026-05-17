@@ -4,6 +4,26 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.26.0](https://github.com/qwexvf/aegis-cli/compare/v0.25.0...v0.26.0) (2026-05-17)
+
+
+### Added
+
+* **image:** per-package manifest walker — `aegis image scan` now synthesizes deps from `node_modules/<pkg>/package.json`, `*.dist-info/METADATA`, `*.egg-info/PKG-INFO`, `gems/<name>-<ver>/`, `vendor/<v>/<p>/composer.json`, and `/opt/<tool>-v<ver>/package.json`. Closes the recall gap on distroless and multi-stage images where lockfiles never land in the final image. Lockfile entries win on `(eco, name, version)` collisions; manifest entries carry `Source="manifest"` for provenance. Default ON; `--no-manifest-walk` reverts to lockfile-only behaviour
+* **image:** `node:20-alpine` goes from 0 → 193 npm deps (previously only lockfiles were extracted, and a stock node image ships none); `ruby:3.3-alpine` 52 → 130 gems. `--enrich` against the manifest-synthesized set finds CVEs (e.g. `cross-spawn` ReDoS, `glob` command injection) that lockfile-only scans miss entirely
+* **domain:** `Dependency.Source` field records how a dep was discovered (`"lockfile"` / `"manifest"` / empty). Omitted from JSON when empty, so snapshot wire format is unchanged for the `aegis snapshot create` path
+
+
+### Refactored
+
+* **image:** `mergeLayerView` now takes an `overlayState` struct instead of 7 separate map/pointer arguments — same behaviour, smaller call-site
+
+
+### Docs
+
+* `aegis image scan` and `aegis fix` are now included in the generated man pages and markdown reference (previously omitted from `NewDocsRoot`)
+
+
 ## [0.25.0](https://github.com/qwexvf/aegis-cli/compare/v0.24.0...v0.25.0) (2026-05-16)
 
 

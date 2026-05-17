@@ -1,0 +1,67 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-image-scan - Extract lockfiles from an OCI image tar and (optionally) run OSV vuln lookup
+
+
+.SH SYNOPSIS
+\fBaegis image scan  [flags]\fP
+
+
+.SH DESCRIPTION
+scan reads a local Docker save / OCI image tar, overlays every layer
+(whiteout-aware), extracts any lockfile the locksnap registry recognises,
+and reports the resulting dependency set.
+
+.PP
+By default the scanner also walks per-package manifests
+(node_modules//package.json, *.dist-info/METADATA, gems/-/,
+vendor///composer.json) and synthesizes deps that lockfiles miss —
+common in distroless and multi-stage builds where lockfiles never land
+in the final image. Pass --no-manifest-walk to disable.
+
+.PP
+Pass --enrich to additionally run the configured OSV.dev vulnerability
+lookup against the extracted deps. Without --enrich, scan is purely
+local — useful for SBOM bootstrap and offline workflows.
+
+.PP
+Examples:
+
+.PP
+docker save my-app:latest -o my-app.tar
+  aegis image scan my-app.tar
+  aegis image scan my-app.tar --enrich
+  aegis image scan my-app.tar --no-manifest-walk      # lockfile-only mode
+  aegis image scan my-app.tar --json | jq '.deps[].name'
+
+
+.SH OPTIONS
+\fB--capabilities\fP[=false]
+	AST-scan every package found inside the image (tree-sitter capability + heuristic detection — finds malware Trivy can't)
+
+.PP
+\fB--enrich\fP[=false]
+	run OSV.dev vulnerability lookup against the extracted dependency set
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for scan
+
+.PP
+\fB--json\fP[=false]
+	emit machine-readable JSON on stdout (suppresses human output)
+
+.PP
+\fB--no-manifest-walk\fP[=false]
+	skip per-package manifest scanning (node_modules/, site-packages/, gems/, vendor/) — lockfile-only mode
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis-image(1)\fP

@@ -1,0 +1,60 @@
+.nh
+.TH "AEGIS" "1" "May 2026" "aegis 0.1.0-demo" "Aegis Manual"
+
+.SH NAME
+aegis-fix - Compute the minimal upgrade plan that clears every CVE in the snapshot
+
+
+.SH SYNOPSIS
+\fBaegis fix [flags]\fP
+
+
+.SH DESCRIPTION
+fix loads the saved aegis.lock, groups advisories by dep, and picks the
+highest FixedIn version across each dep's advisories — the smallest single
+upgrade that clears every resolvable CVE.
+
+.PP
+Run after 'aegis snapshot enrich' so each dep carries its advisories.
+
+.PP
+Output modes:
+
+.PP
+aegis fix              human-readable plan
+  aegis fix --json       JSON on stdout (tooling integration)
+  aegis fix --script     only upgrade commands, suitable for: aegis fix --script | sh
+
+.PP
+The plan is informational — fix never writes to your lockfile or runs the
+upgrade commands directly. Review and apply selectively.
+
+
+.SH OPTIONS
+\fB--dir\fP=""
+	project directory to scan (default: cwd)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for fix
+
+.PP
+\fB--json\fP[=false]
+	emit machine-readable JSON on stdout (suppresses human output)
+
+.PP
+\fB--script\fP[=false]
+	emit only upgrade commands, one per line — pipe to sh to apply
+
+.PP
+\fB--strict\fP[=false]
+	exit 1 when any advisory has no upstream fix (forces manual review)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug-level structured logging to stderr
+
+
+.SH SEE ALSO
+\fBaegis(1)\fP
