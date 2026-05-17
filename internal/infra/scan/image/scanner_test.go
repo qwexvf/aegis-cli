@@ -52,7 +52,7 @@ func TestOverlayLayers_AddsFiles(t *testing.T) {
 			{name: "app/package-lock.json", body: []byte(`{"name":"x"}`)},
 		}},
 	}
-	files, _, _, err := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
+	files, _, _, _, _, err := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestOverlayLayers_LaterLayerOverwrites(t *testing.T) {
 			{name: "app/package-lock.json", body: []byte(`{"v":2}`)},
 		}},
 	}
-	files, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
+	files, _, _, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
 	if string(files["app/package-lock.json"]) != `{"v":2}` {
 		t.Errorf("later layer should win; got %q", files["app/package-lock.json"])
 	}
@@ -85,7 +85,7 @@ func TestOverlayLayers_FileWhiteoutRemoves(t *testing.T) {
 			{name: "app/.wh.package-lock.json", body: nil},
 		}},
 	}
-	files, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
+	files, _, _, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
 	if _, ok := files["app/package-lock.json"]; ok {
 		t.Errorf("whiteout should remove file; still present: %v", keys(files))
 	}
@@ -102,7 +102,7 @@ func TestOverlayLayers_OpaqueDirWhiteoutClearsSubtree(t *testing.T) {
 			{name: "app/.wh..wh..opq", body: nil},
 		}},
 	}
-	files, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
+	files, _, _, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
 	if _, ok := files["app/package-lock.json"]; ok {
 		t.Errorf("opaque whiteout should clear app/*; got %v", keys(files))
 	}
@@ -126,7 +126,7 @@ func TestOverlayLayers_ReintroductionAfterWhiteout(t *testing.T) {
 			{name: "app/package-lock.json", body: []byte(`new`)},
 		}},
 	}
-	files, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
+	files, _, _, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
 	if string(files["app/package-lock.json"]) != "new" {
 		t.Errorf("re-introduced file should win; got %q", files["app/package-lock.json"])
 	}
@@ -140,7 +140,7 @@ func TestOverlayLayers_IgnoresNonCandidateFiles(t *testing.T) {
 			{name: "app/package-lock.json", body: []byte(`{}`)},
 		}},
 	}
-	files, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
+	files, _, _, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
 	if len(files) != 1 {
 		t.Errorf("only registered lockfile should be captured; got %v", keys(files))
 	}
@@ -154,7 +154,7 @@ func TestOverlayLayers_FileSizeCap(t *testing.T) {
 			{name: "app/package-lock.json", body: big},
 		}},
 	}
-	files, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
+	files, _, _, _, _, _ := overlayLayersFull(layers, ScanOpts{}, defaultLockfileNames())
 	body := files["app/package-lock.json"]
 	if len(body) > maxFileBytes {
 		t.Errorf("file size cap not enforced: got %d bytes, cap %d", len(body), maxFileBytes)
@@ -277,7 +277,7 @@ func TestScanImagePackages_CapturesPackageSources(t *testing.T) {
 			{name: "app/node_modules/lodash/README.md", body: []byte(`# lodash`)}, // not a source file, skipped
 		}},
 	}
-	files, pkgFiles, _, err := overlayLayersFull(layers, ScanOpts{CapturePackageSources: true}, defaultLockfileNames())
+	files, pkgFiles, _, _, _, err := overlayLayersFull(layers, ScanOpts{CapturePackageSources: true}, defaultLockfileNames())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +305,7 @@ func TestScanImagePackages_CapturesDisabledWhenFlagOff(t *testing.T) {
 			{name: "app/node_modules/lodash/index.js", body: []byte(`eval("x");`)},
 		}},
 	}
-	_, pkgFiles, _, err := overlayLayersFull(layers, ScanOpts{CapturePackageSources: false}, defaultLockfileNames())
+	_, pkgFiles, _, _, _, err := overlayLayersFull(layers, ScanOpts{CapturePackageSources: false}, defaultLockfileNames())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +346,7 @@ func TestOverlayLayers_GlobalLockfileCap_SetsTruncated(t *testing.T) {
 			body: body,
 		})
 	}
-	_, _, truncated, err := overlayLayersFull([]v1Layer{&fakeLayer{entries: entries}}, ScanOpts{}, defaultLockfileNames())
+	_, _, _, _, truncated, err := overlayLayersFull([]v1Layer{&fakeLayer{entries: entries}}, ScanOpts{}, defaultLockfileNames())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -85,6 +85,12 @@ type Dependency struct {
 	// calls `lodash.merge`. The field is informational only — the
 	// reachability layer doesn't try to map symbols → CVEs itself.
 	UsedSymbols []string `json:",omitempty"`
+	// Source records how this dep was discovered: "lockfile" when a
+	// parsed lockfile produced it, "manifest" when synthesized from a
+	// per-package manifest (node_modules/<pkg>/package.json, *.dist-info/
+	// METADATA, gems/<name>-<ver>/, vendor/<v>/<p>/composer.json). Empty
+	// for older snapshots. Debug aid when an unexpected entry appears.
+	Source string `json:",omitempty"`
 }
 
 // Reachability classifies whether a dep is referenced by the user's

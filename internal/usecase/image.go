@@ -47,6 +47,10 @@ type ImageScanner interface {
 // so adapter and use case can compile without an import cycle.
 type ImageScanOpts struct {
 	CapturePackageSources bool
+	// DisableManifestWalk turns off the per-package manifest walker
+	// (node_modules/<pkg>/package.json, *.dist-info/METADATA, gems/, vendor/).
+	// Default zero value keeps the walker ON.
+	DisableManifestWalk bool
 }
 
 // ImagePackageSet mirrors the adapter's return shape. Truncated is true
@@ -71,6 +75,10 @@ type ImageRequest struct {
 	// over each. Each dep's Fingerprint.Capabilities is populated.
 	// Costs more memory and CPU than --enrich.
 	Capabilities bool
+	// NoManifestWalk skips the per-package manifest walker — only
+	// lockfiles are parsed. Reduces recall but matches v0.25.0 and
+	// earlier behaviour. Default false (walker ON).
+	NoManifestWalk bool
 }
 
 // ImageResult is what the use case returns. Deps is always populated
@@ -110,6 +118,7 @@ func (i *Image) Run(ctx context.Context, req ImageRequest) (ImageResult, error) 
 
 	set, err := i.scanner.ScanImagePackages(req.Path, ImageScanOpts{
 		CapturePackageSources: req.Capabilities && i.analyzer != nil,
+		DisableManifestWalk:   req.NoManifestWalk,
 	})
 	if err != nil {
 		i.presenter.OnImageError(fmt.Errorf("scan: %w", err))
