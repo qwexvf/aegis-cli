@@ -16,9 +16,12 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/reporterid"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/cocoapods"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/csharp"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/dart"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/gleam"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/golang"
+	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/haskell"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/java"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/js"
 	"github.com/qwexvf/aegis-cli/internal/infra/scan/ast/lua"
@@ -62,6 +65,9 @@ func buildASTDispatcher() *ast.Dispatcher {
 	tryRegister("C#", domain.EcoNuGet, func() (ast.LanguageScanner, error) { return csharp.New() })
 	tryRegister("Gleam", domain.EcoGleam, func() (ast.LanguageScanner, error) { return gleam.New() })
 	tryRegister("Lua", domain.EcoNeovim, func() (ast.LanguageScanner, error) { return lua.New() })
+	tryRegister("CocoaPods", domain.EcoCocoaPods, func() (ast.LanguageScanner, error) { return cocoapods.New() })
+	tryRegister("Dart", domain.EcoPub, func() (ast.LanguageScanner, error) { return dart.New() })
+	tryRegister("Haskell", domain.EcoHackage, func() (ast.LanguageScanner, error) { return haskell.New() })
 	return dispatcher
 }
 

@@ -11,6 +11,7 @@ require (
 	github.com/package-url/packageurl-go v0.1.6
 	github.com/qwexvf/depusage v0.1.1
 	github.com/spf13/cobra v1.10.2
+	github.com/tree-sitter-grammars/tree-sitter-lua v0.5.0
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-c-sharp v0.23.5
 	github.com/tree-sitter/tree-sitter-go v0.25.0
@@ -25,6 +26,7 @@ require (
 )
 
 require (
+	github.com/UserNobody14/tree-sitter-dart v0.0.0-20260520003023-a9bdfa3db2fb // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.18.2 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -37,7 +39,7 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/tree-sitter-grammars/tree-sitter-lua v0.5.0 // indirect
+	github.com/tree-sitter/tree-sitter-haskell v0.23.1 // indirect
 	github.com/vbatts/tar-split v0.12.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
