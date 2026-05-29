@@ -307,6 +307,33 @@ func isAnalyzable(eco domain.Ecosystem, path string) bool {
 			return false
 		}
 		return true
+	case domain.EcoCocoaPods:
+		// CocoaPods .podspec files are Ruby DSL evaluated at `pod
+		// install`. The .podspec.json variant is metadata-only with
+		// no executable code.
+		return strings.HasSuffix(path, ".podspec")
+	case domain.EcoPub:
+		// Dart/Flutter source. Skip generated *.g.dart / *.freezed.dart
+		// (codegen output) and *_test.dart.
+		if !strings.HasSuffix(path, ".dart") {
+			return false
+		}
+		if strings.HasSuffix(path, ".g.dart") || strings.HasSuffix(path, ".freezed.dart") {
+			return false
+		}
+		if strings.HasSuffix(path, "_test.dart") {
+			return false
+		}
+		return true
+	case domain.EcoHackage:
+		// Haskell source. Skip *_test.hs / Spec.hs and HLint outputs.
+		if !strings.HasSuffix(path, ".hs") && !strings.HasSuffix(path, ".lhs") {
+			return false
+		}
+		if strings.HasSuffix(path, "_test.hs") || strings.HasSuffix(path, "Spec.hs") {
+			return false
+		}
+		return true
 	}
 	return false
 }
