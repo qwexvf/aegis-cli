@@ -97,7 +97,7 @@ func (c *Client) FetchMaintainerSignal(ctx context.Context, pkg, version string)
 		return domain.MaintainerSignal{}, err
 	}
 
-	var current, previous int = -1, -1
+	current, previous := -1, -1
 	for i, r := range p.Releases {
 		if r.Version == version {
 			current = i
