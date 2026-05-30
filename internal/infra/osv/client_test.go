@@ -217,3 +217,168 @@ func TestLookup_VulnFetchErrorSurfaceStub(t *testing.T) {
 		t.Error("stub should carry a URL so user can pivot upstream")
 	}
 }
+
+// TestOsvEcosystem locks the OSV ecosystem vocabulary. OSV rejects an
+// unknown or mis-cased ecosystem with HTTP 400, so exact strings matter;
+// ecosystems OSV doesn't cover must map to "" so the caller drops them.
+func TestOsvEcosystem(t *testing.T) {
+	tests := []struct {
+		eco  domain.Ecosystem
+		want string
+	}{
+		{domain.EcoNpm, "npm"},
+		{domain.EcoPyPI, "PyPI"},
+		{domain.EcoCrates, "crates.io"},
+		{domain.EcoGo, "Go"},
+		{domain.EcoRubyGems, "RubyGems"},
+		{domain.EcoMaven, "Maven"},
+		{domain.EcoPackagist, "Packagist"},
+		{domain.EcoNuGet, "NuGet"},
+		{domain.EcoGleam, "Hex"},
+		{domain.EcoPub, "Pub"},
+		{domain.EcoSwiftPM, "SwiftURL"},
+		{domain.EcoCRAN, "CRAN"},
+		{domain.EcoHackage, "Hackage"},
+		// No OSV ecosystem — must be dropped, not sent.
+		{domain.EcoCPAN, ""},
+		{domain.EcoCocoaPods, ""},
+		{domain.EcoNeovim, ""},
+	}
+	for _, tt := range tests {
+		if got := osvEcosystem(tt.eco); got != tt.want {
+			t.Errorf("osvEcosystem(%v) = %q, want %q", tt.eco, got, tt.want)
+		}
+	}
+}
+
+// TestOsvPackageName covers SwiftURL name normalization: lockfiles store
+// the full clone URL but OSV keys packages by the bare repo path.
+func TestOsvPackageName(t *testing.T) {
+	tests := []struct {
+		eco  domain.Ecosystem
+		name string
+		want string
+	}{
+		{domain.EcoSwiftPM, "https://github.com/vapor/vapor.git", "github.com/vapor/vapor"},
+		{domain.EcoSwiftPM, "https://github.com/Alamofire/Alamofire.git", "github.com/Alamofire/Alamofire"},
+		{domain.EcoSwiftPM, "github.com/vapor/vapor", "github.com/vapor/vapor"},
+		{domain.EcoSwiftPM, "http://example.com/pkg.git", "example.com/pkg"},
+		// Non-Swift names pass through untouched.
+		{domain.EcoNpm, "lodash", "lodash"},
+		{domain.EcoGo, "github.com/foo/bar", "github.com/foo/bar"},
+	}
+	for _, tt := range tests {
+		q := domain.AdvisoryQuery{Ecosystem: tt.eco, Name: tt.name}
+		if got := osvPackageName(q); got != tt.want {
+			t.Errorf("osvPackageName(%v, %q) = %q, want %q", tt.eco, tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestLookup_SkipsUnsupportedEcosystems verifies that deps in ecosystems
+// OSV doesn't cover are dropped from the batch (not sent), the remaining
+// results realign to the original queries, and SwiftURL names are
+// normalized on the wire. Regression for the HTTP-400-poisons-whole-batch
+// bug where one CPAN/CocoaPods dep killed enrichment for every dep.
+func TestLookup_SkipsUnsupportedEcosystems(t *testing.T) {
+	var sentEcosystems []string
+	var sentNames []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/querybatch":
+			var req struct {
+				Queries []struct {
+					Package struct {
+						Name      string `json:"name"`
+						Ecosystem string `json:"ecosystem"`
+					} `json:"package"`
+				} `json:"queries"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode batch: %v", err)
+			}
+			results := make([]string, 0, len(req.Queries))
+			for _, q := range req.Queries {
+				sentEcosystems = append(sentEcosystems, q.Package.Ecosystem)
+				sentNames = append(sentNames, q.Package.Name)
+				// hex dep gets a vuln, the rest are clean.
+				if q.Package.Ecosystem == "Hex" {
+					results = append(results, `{"vulns":[{"id":"GHSA-test-hex-0001","modified":"2026-01-01"}]}`)
+				} else {
+					results = append(results, `{"vulns":[]}`)
+				}
+			}
+			fmt.Fprintf(w, `{"results":[%s]}`, joinJSON(results))
+		case "/v1/vulns/GHSA-test-hex-0001":
+			fmt.Fprintln(w, `{"id":"GHSA-test-hex-0001","summary":"test","database_specific":{"severity":"HIGH"}}`)
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c := New(WithBaseURL(srv.URL), WithHTTPClient(srv.Client()), WithoutDiskCache())
+	queries := []domain.AdvisoryQuery{
+		{Ecosystem: domain.EcoCPAN, Name: "Try-Tiny", Version: "0.30"},                               // unsupported → dropped
+		{Ecosystem: domain.EcoGleam, Name: "plug", Version: "1.14.0"},                                // Hex → has vuln
+		{Ecosystem: domain.EcoCocoaPods, Name: "Alamofire", Version: "5.6.4"},                        // unsupported → dropped
+		{Ecosystem: domain.EcoSwiftPM, Name: "https://github.com/vapor/vapor.git", Version: "4.0.0"}, // normalized
+	}
+	results, err := c.Lookup(context.Background(), queries)
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+
+	// Only the 2 OSV-supported ecosystems hit the wire.
+	if len(sentEcosystems) != 2 {
+		t.Fatalf("sent %d queries to OSV, want 2: %v", len(sentEcosystems), sentEcosystems)
+	}
+	for _, e := range sentEcosystems {
+		if e == "cpan" || e == "CPAN" || e == "cocoapods" {
+			t.Errorf("unsupported ecosystem %q leaked into batch", e)
+		}
+	}
+	// SwiftURL name normalized on the wire.
+	swiftSent := false
+	for _, n := range sentNames {
+		if n == "github.com/vapor/vapor" {
+			swiftSent = true
+		}
+		if n == "https://github.com/vapor/vapor.git" {
+			t.Errorf("SwiftURL name sent un-normalized: %q", n)
+		}
+	}
+	if !swiftSent {
+		t.Errorf("normalized SwiftURL name not found in %v", sentNames)
+	}
+
+	// Results realign: hex dep has the advisory, dropped deps are empty (non-nil).
+	hex := results["hex/plug@1.14.0"]
+	if len(hex) != 1 || hex[0].ID != "GHSA-test-hex-0001" {
+		t.Errorf("plug advisories = %+v, want 1 with GHSA-test-hex-0001", hex)
+	}
+	for _, key := range []string{"cpan/Try-Tiny@0.30", "cocoapods/Alamofire@5.6.4"} {
+		got, ok := results[key]
+		if !ok {
+			t.Errorf("%s missing from results", key)
+		}
+		if got == nil {
+			t.Errorf("%s should be non-nil empty slice", key)
+		}
+		if len(got) != 0 {
+			t.Errorf("%s should have 0 advisories, got %d", key, len(got))
+		}
+	}
+}
+
+func joinJSON(parts []string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += ","
+		}
+		out += p
+	}
+	return out
+}
