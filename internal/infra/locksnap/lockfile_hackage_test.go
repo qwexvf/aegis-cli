@@ -38,20 +38,36 @@ func TestParseCabalFreeze_Basic(t *testing.T) {
 	}
 }
 
-func TestParseCabalFreeze_SkipsAnyPrefix(t *testing.T) {
-	raw := []byte(`constraints: any.base ==4.17.2.0,
-             aeson ==2.1.2.1
+// Real cabal-install 3.x freeze files prefix nearly every constraint
+// with "any."; the prefix must be stripped, not used to skip the entry.
+// Flag lines (no "==") are ignored.
+func TestParseCabalFreeze_AnyPrefixStripped(t *testing.T) {
+	raw := []byte(`active-repositories: hackage.haskell.org:merge
+constraints: any.aeson ==2.1.2.1,
+             any.base ==4.17.2.0,
+             aeson -cffi,
+             any.bytestring ==0.11.5.3
 `)
 	deps, err := parseCabalFreeze(raw, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// any.base should be skipped
-	if len(deps) != 1 {
-		t.Fatalf("want 1 dep (any.base skipped), got %d: %v", len(deps), deps)
+	if len(deps) != 3 {
+		t.Fatalf("want 3 deps (aeson, base, bytestring; flag line ignored), got %d: %v", len(deps), deps)
 	}
-	if deps[0].Name != "aeson" {
-		t.Errorf("expected aeson, got %q", deps[0].Name)
+	byName := make(map[string]string)
+	for _, d := range deps {
+		if d.Ecosystem != domain.EcoHackage {
+			t.Errorf("%s ecosystem = %v; want hackage", d.Name, d.Ecosystem)
+		}
+		byName[d.Name] = d.Version
+	}
+	for name, want := range map[string]string{"aeson": "2.1.2.1", "base": "4.17.2.0", "bytestring": "0.11.5.3"} {
+		if got, ok := byName[name]; !ok {
+			t.Errorf("missing %s (any. prefix not stripped?)", name)
+		} else if got != want {
+			t.Errorf("%s version = %q; want %q", name, got, want)
+		}
 	}
 }
 

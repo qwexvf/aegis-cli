@@ -10,15 +10,18 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/domain"
 )
 
-// parseCabalFreeze parses cabal's cabal.project.freeze. Format:
+// parseCabalFreeze parses cabal's cabal.project.freeze. cabal-install 3.x
+// qualifies almost every constraint with an "any." prefix:
 //
-//	constraints: aeson ==2.1.2.1,
-//	             base ==4.17.2.0,
-//	             bytestring ==0.11.5.3
+//	constraints: any.aeson ==2.1.2.1,
+//	             any.base ==4.17.2.0,
+//	             aeson -cffi,
+//	             any.bytestring ==0.11.5.3
 //
 // The first package may appear on the same line as "constraints:".
-// Subsequent packages are indented continuation lines.
-// The "==" operator is cabal's exact-version pin.
+// Subsequent packages are indented continuation lines. Only "=="
+// (cabal's exact-version pin) lines yield a dependency; flag lines like
+// "aeson -cffi" carry no "==" and are skipped.
 var cabalEntryPattern = regexp.MustCompile(`(\S+)\s+==(\S+?),?\s*$`)
 
 func parseCabalFreeze(raw []byte, _ map[string]bool) ([]domain.Dependency, error) {
@@ -37,10 +40,11 @@ func parseCabalFreeze(raw []byte, _ map[string]bool) ([]domain.Dependency, error
 			continue
 		}
 		name, ver := m[1], m[2]
-		// Skip GHC boot libraries that aren't on Hackage.
-		if strings.HasPrefix(name, "any.") {
-			continue
-		}
+		// cabal qualifies constraints with "any." (any.aeson ==1.0.0);
+		// strip it to recover the bare Hackage package name. Without
+		// this, modern freeze files — which prefix nearly every entry —
+		// parse to zero deps.
+		name = strings.TrimPrefix(name, "any.")
 		out = append(out, domain.Dependency{
 			Ecosystem: domain.EcoHackage,
 			Name:      name,
