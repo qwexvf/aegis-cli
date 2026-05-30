@@ -148,6 +148,17 @@ type dependencyDTO struct {
 	Fingerprint  *fingerprintDTO `json:"fp,omitempty"`
 	Reachability string          `json:"reach,omitempty"`   // "used"|"unused"|"" (unknown)
 	UsedSymbols  []string        `json:"symbols,omitempty"` // bound names referenced from this dep
+	// Enrichment data fetched from the network. Persisted so `aegis ci`
+	// can gate on it after the save→enrich→reload cycle, and so a
+	// re-enrich doesn't re-query unchanged deps (see the nil-vs-empty
+	// Advisories contract on domain.Dependency).
+	Advisories          []domain.Advisory `json:"advisories,omitempty"`
+	License             string            `json:"license,omitempty"`
+	Deprecated          bool              `json:"deprecated,omitempty"`
+	DeprecatedReason    string            `json:"deprecated_reason,omitempty"`
+	ProvenanceStatus    string            `json:"provenance_status,omitempty"`
+	ProvenanceSourceURI string            `json:"provenance_source_uri,omitempty"`
+	ProvenanceCommit    string            `json:"provenance_commit,omitempty"`
 }
 
 type fingerprintDTO struct {
@@ -175,13 +186,20 @@ func fromDomain(s domain.Snapshot) fileSchema {
 	}
 	for i, d := range s.Deps {
 		out.Deps[i] = dependencyDTO{
-			Ecosystem:    string(d.Ecosystem),
-			Name:         d.Name,
-			Version:      d.Version,
-			Integrity:    d.Integrity,
-			Direct:       d.Direct,
-			Reachability: reachabilityToWire(d.Reachability),
-			UsedSymbols:  d.UsedSymbols,
+			Ecosystem:           string(d.Ecosystem),
+			Name:                d.Name,
+			Version:             d.Version,
+			Integrity:           d.Integrity,
+			Direct:              d.Direct,
+			Reachability:        reachabilityToWire(d.Reachability),
+			UsedSymbols:         d.UsedSymbols,
+			Advisories:          d.Advisories,
+			License:             d.License,
+			Deprecated:          d.Deprecated,
+			DeprecatedReason:    d.DeprecatedReason,
+			ProvenanceStatus:    d.ProvenanceStatus,
+			ProvenanceSourceURI: d.ProvenanceSourceURI,
+			ProvenanceCommit:    d.ProvenanceCommit,
 		}
 		if d.Fingerprint != nil {
 			out.Deps[i].Fingerprint = fpToDTO(*d.Fingerprint)
@@ -245,13 +263,20 @@ func (s fileSchema) toDomain() domain.Snapshot {
 	}
 	for i, d := range s.Deps {
 		out.Deps[i] = domain.Dependency{
-			Ecosystem:    domain.Ecosystem(d.Ecosystem),
-			Name:         d.Name,
-			Version:      d.Version,
-			Integrity:    d.Integrity,
-			Direct:       d.Direct,
-			Reachability: reachabilityFromWire(d.Reachability),
-			UsedSymbols:  d.UsedSymbols,
+			Ecosystem:           domain.Ecosystem(d.Ecosystem),
+			Name:                d.Name,
+			Version:             d.Version,
+			Integrity:           d.Integrity,
+			Direct:              d.Direct,
+			Reachability:        reachabilityFromWire(d.Reachability),
+			UsedSymbols:         d.UsedSymbols,
+			Advisories:          d.Advisories,
+			License:             d.License,
+			Deprecated:          d.Deprecated,
+			DeprecatedReason:    d.DeprecatedReason,
+			ProvenanceStatus:    d.ProvenanceStatus,
+			ProvenanceSourceURI: d.ProvenanceSourceURI,
+			ProvenanceCommit:    d.ProvenanceCommit,
 		}
 		if d.Fingerprint != nil {
 			fp := dtoToFp(*d.Fingerprint)

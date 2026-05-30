@@ -183,3 +183,86 @@ func TestStore_CompressionShrinksLargeSnapshot(t *testing.T) {
 		t.Errorf("zstd compression looks too weak: %d bytes (expected <10KB for 500-dep dummy)", stat.Size())
 	}
 }
+
+// TestStore_PreservesEnrichment guards the network-fetched enrichment
+// fields (advisories, license, deprecated, provenance). These were
+// silently dropped by the on-disk DTO, so `aegis ci` reloaded a snapshot
+// with no advisories and never gated on known CVEs. Round-trip them.
+func TestStore_PreservesEnrichment(t *testing.T) {
+	store := newStoreT(t)
+	dir := t.TempDir()
+
+	src := domain.Snapshot{
+		SchemaVersion: domain.SnapshotSchemaVersion,
+		CreatedAt:     time.Now().UTC(),
+		Deps: []domain.Dependency{{
+			Ecosystem: domain.EcoNpm,
+			Name:      "lodash",
+			Version:   "4.17.4",
+			Advisories: []domain.Advisory{
+				{
+					ID:       "GHSA-35jh-r3h4-6jhm",
+					Severity: domain.SevHigh,
+					Summary:  "Command Injection in lodash",
+					URL:      "https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm",
+					Source:   "osv",
+					FixedIn:  "4.17.21",
+				},
+			},
+			License:             "MIT",
+			Deprecated:          true,
+			DeprecatedReason:    "use lodash-es",
+			ProvenanceStatus:    "missing",
+			ProvenanceSourceURI: "https://github.com/lodash/lodash",
+			ProvenanceCommit:    "abc123",
+		}},
+	}
+	store.Save(dir, src)
+
+	got, _, err := store.Load(dir)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	d := got.Deps[0]
+	if len(d.Advisories) != 1 {
+		t.Fatalf("advisories lost: got %d, want 1", len(d.Advisories))
+	}
+	a := d.Advisories[0]
+	if a.ID != "GHSA-35jh-r3h4-6jhm" || a.Severity != domain.SevHigh || a.FixedIn != "4.17.21" {
+		t.Errorf("advisory fields lost: %+v", a)
+	}
+	if d.License != "MIT" {
+		t.Errorf("license lost: %q", d.License)
+	}
+	if !d.Deprecated || d.DeprecatedReason != "use lodash-es" {
+		t.Errorf("deprecated lost: %v / %q", d.Deprecated, d.DeprecatedReason)
+	}
+	if d.ProvenanceStatus != "missing" || d.ProvenanceCommit != "abc123" {
+		t.Errorf("provenance lost: %+v", d)
+	}
+}
+
+// A dep looked up and found clean keeps an (omitted→nil) advisory slice;
+// a vulnerable dep keeps its advisories. Either way Save→Load must not
+// invent or drop entries.
+func TestStore_EnrichmentRoundTripStable(t *testing.T) {
+	store := newStoreT(t)
+	dir := t.TempDir()
+	src := domain.Snapshot{
+		SchemaVersion: domain.SnapshotSchemaVersion,
+		CreatedAt:     time.Now().UTC(),
+		Deps: []domain.Dependency{
+			{Ecosystem: domain.EcoNpm, Name: "clean", Version: "1.0.0"},
+			{Ecosystem: domain.EcoNpm, Name: "vuln", Version: "1.0.0",
+				Advisories: []domain.Advisory{{ID: "GHSA-aaaa-bbbb-cccc", Severity: domain.SevCritical}}},
+		},
+	}
+	store.Save(dir, src)
+	got, _, _ := store.Load(dir)
+	if len(got.Deps[0].Advisories) != 0 {
+		t.Errorf("clean dep gained advisories: %+v", got.Deps[0].Advisories)
+	}
+	if len(got.Deps[1].Advisories) != 1 || got.Deps[1].Advisories[0].Severity != domain.SevCritical {
+		t.Errorf("vuln dep advisories lost: %+v", got.Deps[1].Advisories)
+	}
+}
