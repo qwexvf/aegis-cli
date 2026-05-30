@@ -159,12 +159,33 @@ func (c *Client) batchIDs(ctx context.Context, queries []domain.AdvisoryQuery) (
 		Results []batchResult `json:"results"`
 	}
 
-	req := batchReq{Queries: make([]batchQuery, len(queries))}
+	// Build the batch from only OSV-supported ecosystems. supportedIdx
+	// maps each sent query back to its index in the input slice so the
+	// parallel results realign. Deps OSV can't cover are skipped — even
+	// one unsupported ecosystem makes OSV 400 the entire batch.
+	req := batchReq{Queries: make([]batchQuery, 0, len(queries))}
+	supportedIdx := make([]int, 0, len(queries))
 	for i, q := range queries {
-		req.Queries[i].Package.Name = q.Name
-		req.Queries[i].Package.Ecosystem = osvEcosystem(q.Ecosystem)
-		req.Queries[i].Version = q.Version
+		osvEco := osvEcosystem(q.Ecosystem)
+		if osvEco == "" {
+			continue
+		}
+		var bq batchQuery
+		bq.Package.Name = osvPackageName(q)
+		bq.Package.Ecosystem = osvEco
+		bq.Version = q.Version
+		req.Queries = append(req.Queries, bq)
+		supportedIdx = append(supportedIdx, i)
 	}
+
+	ids := make([][]string, len(queries))
+	for i := range ids {
+		ids[i] = []string{}
+	}
+	if len(req.Queries) == 0 {
+		return ids, nil
+	}
+
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("osv batch marshal: %w", err)
@@ -195,16 +216,15 @@ func (c *Client) batchIDs(ctx context.Context, queries []domain.AdvisoryQuery) (
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, fmt.Errorf("osv batch decode: %w", err)
 	}
-	if len(parsed.Results) != len(queries) {
+	if len(parsed.Results) != len(req.Queries) {
 		// OSV is documented to always return one result per query;
 		// surface the violation rather than silently misalign.
 		return nil, fmt.Errorf("osv batch: result count %d != query count %d",
-			len(parsed.Results), len(queries))
+			len(parsed.Results), len(req.Queries))
 	}
 
-	ids := make([][]string, len(queries))
-	for i, r := range parsed.Results {
-		ids[i] = make([]string, 0, len(r.Vulns))
+	for j, r := range parsed.Results {
+		origIdx := supportedIdx[j]
 		for _, v := range r.Vulns {
 			// Defense in depth: OSV is trusted, but the ID flows
 			// into URL paths (osv.dev/vulnerability/<id>) and
@@ -213,7 +233,7 @@ func (c *Client) batchIDs(ctx context.Context, queries []domain.AdvisoryQuery) (
 			if !isValidOSVID(v.ID) {
 				continue
 			}
-			ids[i] = append(ids[i], v.ID)
+			ids[origIdx] = append(ids[origIdx], v.ID)
 		}
 	}
 	return ids, nil
@@ -549,9 +569,11 @@ func firstLine(s string) string {
 }
 
 // osvEcosystem maps the domain Ecosystem enum onto OSV's string
-// vocabulary. OSV uses "npm" / "PyPI" / "crates.io" / "Go" /
-// "RubyGems" / "Maven" — exact spelling and case matters per the
-// OSV ecosystems documentation (osv.dev/docs/data-sources).
+// vocabulary. Exact spelling and case matters per the OSV ecosystems
+// documentation (osv.dev/docs/data-sources) — OSV rejects an unknown
+// or mis-cased ecosystem with HTTP 400, and a single bad entry fails
+// the whole batch. Ecosystems OSV doesn't cover (Perl/CPAN, CocoaPods,
+// Neovim) return "" so the caller drops them from the query.
 func osvEcosystem(eco domain.Ecosystem) string {
 	switch eco {
 	case domain.EcoNpm:
@@ -566,8 +588,36 @@ func osvEcosystem(eco domain.Ecosystem) string {
 		return "RubyGems"
 	case domain.EcoMaven:
 		return "Maven"
+	case domain.EcoPackagist:
+		return "Packagist"
+	case domain.EcoNuGet:
+		return "NuGet"
+	case domain.EcoGleam: // hex.pm — Gleam, Elixir, Erlang
+		return "Hex"
+	case domain.EcoPub:
+		return "Pub"
+	case domain.EcoSwiftPM:
+		return "SwiftURL"
+	case domain.EcoCRAN:
+		return "CRAN"
+	case domain.EcoHackage:
+		return "Hackage"
 	}
-	return string(eco)
+	return ""
+}
+
+// osvPackageName returns the package name in OSV's vocabulary. Most
+// ecosystems use the name verbatim; SwiftURL keys packages by the repo
+// URL with the scheme and .git suffix stripped (github.com/vapor/vapor),
+// while lockfiles store the full clone URL.
+func osvPackageName(q domain.AdvisoryQuery) string {
+	if q.Ecosystem != domain.EcoSwiftPM {
+		return q.Name
+	}
+	n := strings.TrimSuffix(q.Name, ".git")
+	n = strings.TrimPrefix(n, "https://")
+	n = strings.TrimPrefix(n, "http://")
+	return n
 }
 
 // loadCachedAdvisory returns a previously-fetched advisory, or false
