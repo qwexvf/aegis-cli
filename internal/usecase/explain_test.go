@@ -177,3 +177,49 @@ func TestCapabilityDescription_AllCapsHaveOne(t *testing.T) {
 		}
 	}
 }
+
+// explain must factor advisories into the verdict (mirroring ci) — otherwise
+// it reports "safe" for a dep ci blocks on a CVE. Regression for the
+// explain/ci verdict mismatch.
+func TestExplain_VerdictIncludesAdvisories(t *testing.T) {
+	store := newFakeStore()
+	store.saved["/proj"] = domain.Snapshot{Deps: []domain.Dependency{{
+		Ecosystem: domain.EcoNpm, Name: "p", Version: "1.0.0",
+		Fingerprint: &domain.Fingerprint{Analyzed: true}, // clean AST
+		Advisories: []domain.Advisory{
+			{ID: "GHSA-x", Severity: domain.SevHigh}, // high → block
+		},
+	}}}
+	ex := NewExplain(store, nil, &explainCapturingPresenter{})
+	result, err := ex.Run(context.Background(), ExplainRequest{
+		ProjectDir: "/proj", Ecosystem: domain.EcoNpm, Name: "p", Version: "1.0.0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Verdict != domain.VerdictBlock {
+		t.Errorf("verdict = %s, want block (high advisory must drive verdict)", result.Verdict)
+	}
+}
+
+// A bare name@version that defaults to npm must still resolve a dep that
+// lives under another ecosystem in the snapshot.
+func TestExplain_FindsNonNpmDepByNameVersion(t *testing.T) {
+	store := newFakeStore()
+	store.saved["/proj"] = domain.Snapshot{Deps: []domain.Dependency{{
+		Ecosystem: domain.EcoPyPI, Name: "jinja2", Version: "2.10",
+		Fingerprint: &domain.Fingerprint{Analyzed: true},
+	}}}
+	ex := NewExplain(store, nil, &explainCapturingPresenter{})
+	result, err := ex.Run(context.Background(), ExplainRequest{
+		ProjectDir: "/proj",
+		Ecosystem:  domain.EcoNpm, // default — user typed bare "jinja2@2.10"
+		Name:       "jinja2", Version: "2.10",
+	})
+	if err != nil {
+		t.Fatalf("should find the pypi dep by name+version: %v", err)
+	}
+	if result.Ecosystem != domain.EcoPyPI {
+		t.Errorf("ecosystem = %s, want pypi (real ecosystem from snapshot)", result.Ecosystem)
+	}
+}
