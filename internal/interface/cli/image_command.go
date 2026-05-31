@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"fmt"
+
+	"github.com/qwexvf/aegis-cli/internal/domain"
 	presentercli "github.com/qwexvf/aegis-cli/internal/presenter/cli"
 	"github.com/qwexvf/aegis-cli/internal/usecase"
 	"github.com/spf13/cobra"
@@ -27,6 +30,7 @@ func imageScanCommand(uc *usecase.Image, presenter *presentercli.ImagePresenter)
 		capabilities   bool
 		jsonOut        bool
 		noManifestWalk bool
+		failOnStr      string
 	)
 	c := &cobra.Command{
 		Use:   "scan <image.tar>",
@@ -55,7 +59,18 @@ Examples:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			presenter.SetJSONMode(jsonOut)
-			_, err := uc.Run(cmd.Context(), usecase.ImageRequest{
+			// --fail-on gates on CVE severity, which needs the OSV lookup.
+			var failOn domain.Severity
+			gate := failOnStr != ""
+			if gate {
+				var perr error
+				failOn, perr = parseSeverity(failOnStr)
+				if perr != nil {
+					return &exitCodeError{code: 2, err: perr, silent: false}
+				}
+				enrich = true // severity gate requires advisories
+			}
+			result, err := uc.Run(cmd.Context(), usecase.ImageRequest{
 				Path:           args[0],
 				Enrich:         enrich,
 				Capabilities:   capabilities,
@@ -65,6 +80,18 @@ Examples:
 			cmd.SilenceUsage = true
 			if err != nil {
 				return &exitCodeError{code: 2, err: err, silent: true}
+			}
+			if gate {
+				worst := domain.SevInfo
+				for _, advs := range result.Advisories {
+					if s := domain.MaxSeverity(advs); domain.SeverityAtLeast(s, worst) {
+						worst = s
+					}
+				}
+				if domain.SeverityAtLeast(worst, failOn) && worst != domain.SevInfo {
+					return &exitCodeError{code: 1, silent: true,
+						err: fmt.Errorf("image scan: found advisories at or above %s severity", failOn)}
+				}
 			}
 			return nil
 		},
@@ -77,5 +104,7 @@ Examples:
 		"skip per-package manifest scanning (node_modules/, site-packages/, gems/, vendor/) — lockfile-only mode")
 	c.Flags().BoolVar(&jsonOut, "json", false,
 		"emit machine-readable JSON on stdout (suppresses human output)")
+	c.Flags().StringVar(&failOnStr, "fail-on", "",
+		"exit non-zero when a CVE at or above this severity is found: low|medium|high|critical (implies --enrich)")
 	return c
 }

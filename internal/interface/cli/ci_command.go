@@ -88,6 +88,10 @@ deps incur AST scan cost.`,
 				return &exitCodeError{code: 2, silent: false,
 					err: fmt.Errorf("--allow-licenses and --deny-licenses are mutually exclusive; pass only one")}
 			}
+			if jsonOut && sarifOut {
+				return &exitCodeError{code: 2, silent: false,
+					err: fmt.Errorf("--json and --sarif are mutually exclusive; pass only one")}
+			}
 			presenter.SetJSONMode(jsonOut)
 			presenter.SetQuietMode(quiet)
 

@@ -133,6 +133,7 @@ func NewRoot(d Deps) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "aegis",
 		Short:         "Aegis supply-chain CLI — install gate for npm, bun, yarn, pnpm",
+		Version:       Version, // enables `aegis --version`
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
@@ -155,6 +156,8 @@ func NewRoot(d Deps) *cobra.Command {
 	}
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false,
 		"enable debug-level structured logging to stderr")
+	// Match the `version` subcommand's output (commit + build date).
+	root.SetVersionTemplate(fmt.Sprintf("aegis %s (commit %s, built %s)\n", Version, Commit, Date))
 
 	root.AddGroup(
 		&cobra.Group{ID: groupGate, Title: "Install gate:"},

@@ -60,3 +60,18 @@ func TestVerdictForAdvisories(t *testing.T) {
 		})
 	}
 }
+
+func TestSeverityAtLeast(t *testing.T) {
+	if !SeverityAtLeast(SevHigh, SevMedium) {
+		t.Error("high >= medium")
+	}
+	if !SeverityAtLeast(SevHigh, SevHigh) {
+		t.Error("high >= high")
+	}
+	if SeverityAtLeast(SevLow, SevCritical) {
+		t.Error("low should not be >= critical")
+	}
+	if !SeverityAtLeast(SevCritical, SevInfo) {
+		t.Error("critical >= info")
+	}
+}
