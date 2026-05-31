@@ -156,7 +156,7 @@ func parseSeverity(s string) (domain.Severity, error) {
 	case "critical":
 		return domain.SevCritical, nil
 	}
-	return "", fmt.Errorf("invalid --fail-on %q: want one of low|medium|high|critical", s)
+	return "", fmt.Errorf("invalid --min-severity %q: want one of low|medium|high|critical", s)
 }
 
 func renderActionsResult(out io.Writer, r usecase.ActionsScanResult, asJSON, asSARIF bool, baseDir string) {

@@ -82,7 +82,11 @@ deps incur AST scan cost.`,
 
 			failOn, err := parseFailOn(failOnStr)
 			if err != nil {
-				return err
+				return &exitCodeError{code: 2, err: err, silent: false}
+			}
+			if allowLicenses != "" && denyLicenses != "" {
+				return &exitCodeError{code: 2, silent: false,
+					err: fmt.Errorf("--allow-licenses and --deny-licenses are mutually exclusive; pass only one")}
 			}
 			presenter.SetJSONMode(jsonOut)
 			presenter.SetQuietMode(quiet)
