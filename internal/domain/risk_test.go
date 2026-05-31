@@ -45,6 +45,28 @@ func TestRiskScore_EmptyAnalyzedReturnsZero(t *testing.T) {
 	}
 }
 
+// Heuristic-only ecosystems (no AST scanner) merge capabilities onto a
+// fingerprint that was never marked Analyzed. Those caps MUST still score —
+// otherwise install-hook/curl|sh/typosquat malware on CRAN/CPAN/SwiftURL
+// rates safe with risk 0. Regression for the no-AST-ecosystem scoring gap.
+func TestRiskScore_UnanalyzedWithCapabilitiesStillScores(t *testing.T) {
+	fp := &Fingerprint{
+		Analyzed:     false,
+		Capabilities: NewCapabilitySet(CapInstallHookSuspicious, CapTyposquatRisk),
+	}
+	r := RiskScore(fp)
+	if r.Score == 0 {
+		t.Fatal("unanalyzed fingerprint with heuristic capabilities must score > 0")
+	}
+	if r.Score != WeightInstallHookSuspicious+WeightTyposquatRisk {
+		t.Errorf("score = %d, want %d", r.Score, WeightInstallHookSuspicious+WeightTyposquatRisk)
+	}
+	// A truly empty, unanalyzed fingerprint must still score 0.
+	if RiskScore(&Fingerprint{Analyzed: false}).Score != 0 {
+		t.Error("empty unanalyzed fingerprint should be 0")
+	}
+}
+
 func TestRiskScore_InstallHookAlone(t *testing.T) {
 	r := RiskScore(analyzed(withHook(PhasePostInstall, "scripts.postinstall", "sha-x")))
 	if r.Score != WeightInstallHook {

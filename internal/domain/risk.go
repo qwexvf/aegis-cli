@@ -186,7 +186,15 @@ type RiskAssessment struct {
 // RiskScore evaluates a Fingerprint in isolation. Pure function — no
 // I/O, no time, no env. Empty / unanalyzed fingerprints return zero.
 func RiskScore(fp *Fingerprint) RiskAssessment {
-	if fp == nil || !fp.Analyzed {
+	if fp == nil {
+		return RiskAssessment{}
+	}
+	// A zero/un-enriched fingerprint scores nothing. But heuristic-only
+	// ecosystems (no AST scanner: CRAN, CPAN, SwiftURL, …) carry merged
+	// heuristic capabilities/hooks without Analyzed=true — those MUST
+	// still be scored, otherwise install-hook / curl|sh / typosquat
+	// malware on those ecosystems rates safe with risk 0.
+	if !fp.Analyzed && len(fp.Capabilities) == 0 && len(fp.Hooks) == 0 {
 		return RiskAssessment{}
 	}
 
