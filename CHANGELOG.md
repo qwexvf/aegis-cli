@@ -4,6 +4,38 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.28.0](https://github.com/qwexvf/aegis-cli/compare/v0.27.0...v0.28.0) (2026-05-31)
+
+A correctness-and-coverage release driven by a large persona-QA pass (dev /
+security-engineer / red-team scenarios run against the real binary). The
+headline fixes make CVE, license, and deprecation gating actually fire, and
+recover OSV coverage for seven ecosystems.
+
+
+### Security
+
+* **gate:** the install gate (`aegis npm/pnpm/yarn/bun`) and `recheck` no longer **fail open** when the Cloud API is unreachable. They now fall back to the same offline AST + heuristic engine `ci`/`analyze` use, so a Cloud outage can't silently install an unverified (or known-malicious) package. `recheck --fail-on-error` makes CI refuse a green pass when a dep couldn't be checked at all
+* **ci:** CVE gating works end-to-end. Advisories (and license/deprecation/provenance) are now persisted in `aegis.lock`, so the save→enrich→reload→score path actually sees them — a project with a known HIGH CVE now exits non-zero instead of passing
+
+### Added
+
+* **fix:** `aegis fix --script` now emits upgrade commands for Pub/Dart, SwiftPM, CRAN/R, Hackage, CPAN, and CocoaPods (previously a silent no-op); hex/Elixir deps get a `mix`-or-`gleam` hint instead of a wrong blanket `gleam deps update`
+* **sbom:** `--format spdx --include-vulns` now emits a SECURITY `externalRef` (referenceType `advisory`) per advisory — SPDX previously reported zero vulns while CycloneDX found them
+* **cli:** `aegis --version` flag; `aegis image scan --fail-on=<severity>` exits non-zero on a CVE at/above the threshold; `aegis recheck --fail-on-error`
+* **cli:** `aegis ci` and `aegis actions scan` now error (exit 2) when `--json` and `--sarif` are passed together instead of silently dropping `--sarif`
+
+### Fixed
+
+* **osv:** CVE lookup was silently 400'ing for Hex, Pub, SwiftURL, CRAN, Hackage, NuGet, and Packagist — the ecosystem string was sent lowercase/mis-cased and one bad entry failed the whole batch. Map each to OSV's exact vocabulary, drop ecosystems OSV doesn't cover (CPAN/CocoaPods/Neovim) from the query, and normalize SwiftURL names to the bare repo path
+* **risk:** heuristic capabilities (install-hook-suspicious, typosquat, obfuscated-payload) are now scored on ecosystems with no AST scanner (CRAN/CPAN/SwiftURL/…). Previously they were detected but not scored, so curl|sh / typosquat malware on those ecosystems rated safe with risk 0
+* **fix:** `fix` never recommends a downgrade. OSV lists one fixed-version per affected range, so a backport (e.g. minimist 1.2.0 → 0.2.1) could be emitted as a downgrade by `fix --script | sh`; a FixedIn at or below the installed version is now treated as unresolved
+* **hackage:** `cabal.project.freeze` from cabal-install 3.x parsed to zero deps — every constraint is `any.`-prefixed and the parser skipped them. Strip the prefix and keep the dependency
+* **enrich:** npm licenses now resolve (the abbreviated install-v1 packument omits the `license` field; fetch the full per-version document). deps.dev deprecation now parses (`isDeprecated` is a top-level field, not nested). `--deny-licenses`/`--allow-licenses`/`--fail-on-deprecated` now gate on real data
+* **explain:** verdict now folds in advisories (matches `ci` — was AST-only, so it reported "safe" for a CVE-blocked dep), and a bare `name@version` resolves deps under any ecosystem in the snapshot, not just npm
+* **cli:** `--allow-licenses` + `--deny-licenses` together is rejected (documented mutually exclusive); usage/config errors return exit 2 (not 1); `actions scan`'s invalid-severity error names `--min-severity`
+* **parsers:** `go.sum` rejects garbage / control-char lines (requires the canonical `<module> <vX.Y.Z> <h1:hash>` shape); `requirements.txt` rejects NUL bytes / junk in the version field
+* **heuristics:** the malware-pattern matcher collapses split string-literal concatenations (`"cur" + "l … | sh"`) before scanning, defeating a common install-hook obfuscation
+
 ## [0.27.0](https://github.com/qwexvf/aegis-cli/compare/v0.26.0...v0.27.0) (2026-05-18)
 
 

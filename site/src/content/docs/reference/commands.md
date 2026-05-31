@@ -257,6 +257,7 @@ aegis recheck --json
 |---|---|---|
 | `--all` | off | Include transitive deps (default: only direct, matching what the user explicitly installed) |
 | `--fail-on-prompt` | off | Exit non-zero on prompt verdicts (default: only `block` fails) |
+| `--fail-on-error` | off | Exit non-zero when a dep couldn't be checked at all (Cloud + local offline engine both unreachable) — refuses a green pass on an unchecked set |
 | `--json` | off | Emit JSON to stdout |
 | `--quiet` | off | Summary line only |
 
@@ -583,6 +584,7 @@ aegis image scan my-app.tar --json | jq '.deps[].name'
 | `--enrich` | `false` | Run OSV.dev vulnerability lookup against the extracted dependency set |
 | `--capabilities` | `false` | AST-scan every package found inside the image (tree-sitter capability + heuristic detection — finds malware Trivy can't) |
 | `--no-manifest-walk` | `false` | Skip per-package manifest scanning, return lockfile-derived deps only |
+| `--fail-on` | (off) | Exit non-zero when a CVE at or above this severity is found: `low\|medium\|high\|critical`. Implies `--enrich` |
 | `--json` | `false` | Machine-readable JSON on stdout |
 
 **Provenance** — every dep in the JSON output carries a `source` field: `"lockfile"` (parsed from a known lockfile), `"manifest"` (synthesized from a per-package manifest), or omitted for older snapshots. Use it to audit how a particular dep was discovered.
