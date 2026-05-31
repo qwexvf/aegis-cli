@@ -186,6 +186,23 @@ func TestRecheck_PerDepErrorCountsAsErrorBucket(t *testing.T) {
 	}
 }
 
+// With --fail-on-error, an unchecked dep (Cloud + local both unreachable)
+// must NOT report a green pass — recheck verified nothing.
+func TestRecheck_FailOnErrorRefusesGreenWhenUnchecked(t *testing.T) {
+	scanner := &fakeScanner{deps: []domain.Dependency{direct("a", "1"), direct("b", "1")}}
+	checker := &recheckFakeChecker{err: errors.New("cloud + local unreachable")}
+	pres := &recheckCapturingPresenter{}
+	rc := NewRecheck(scanner, checker, pres)
+
+	result, _ := rc.Run(context.Background(), RecheckRequest{ProjectDir: "/proj", FailOnError: true})
+	if result.Passed {
+		t.Error("with --fail-on-error, an all-errored recheck must not pass")
+	}
+	if result.Summary.Errors != 2 {
+		t.Errorf("summary.errors = %d, want 2", result.Summary.Errors)
+	}
+}
+
 func TestRecheck_FindingsSortedBlockBeforePrompt(t *testing.T) {
 	scanner := &fakeScanner{deps: []domain.Dependency{
 		direct("z-prompt", "1"),

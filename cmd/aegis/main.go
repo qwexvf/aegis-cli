@@ -161,10 +161,27 @@ func main() {
 	}
 	scanner := locksnap.NewScanner()
 
+	// analyze is built early (before the gate) because the gate's checker
+	// falls back to it when the Cloud API is unreachable. It's a pointer
+	// configured in-place below (heuristics, risk engine, allowlist), so
+	// the fallback sees the fully-wired engine at call time.
+	analyzePresenter := cli.NewAnalyzePresenter(presenter)
+	analyze := usecase.NewAnalyze(analyzePresenter)
+	if os.Getenv("AEGIS_NO_HEURISTICS") == "" {
+		analyze.WithHeuristics(heuristicsAdapter{})
+	}
+
+	// gateChecker tries the Cloud API first, then the local offline engine
+	// so a Cloud outage doesn't silently install unverified packages.
+	gateChecker := usecase.DecisionChecker(fallbackChecker{
+		primary:  apiClient,
+		fallback: localChecker{analyze: analyze},
+	})
+
 	// Use cases.
 	gate := usecase.NewInstallGate(usecase.InstallGateDeps{
 		Resolver:  resolver,
-		Checker:   apiClient,
+		Checker:   gateChecker,
 		Cache:     cache,
 		Audit:     audit,
 		Confirm:   confirm,
@@ -337,15 +354,11 @@ func main() {
 			}
 		}
 	}
-	analyzePresenter := cli.NewAnalyzePresenter(presenter)
-	analyze := usecase.NewAnalyze(analyzePresenter)
-	if os.Getenv("AEGIS_NO_HEURISTICS") == "" {
-		analyze.WithHeuristics(heuristicsAdapter{})
-	}
 	ciPresenter := cli.NewCIPresenter(presenter)
 	ci := usecase.NewCI(snapshot, ciPresenter)
 	recheckPresenter := cli.NewRecheckPresenter(presenter)
-	recheck := usecase.NewRecheck(scanner, apiClient, recheckPresenter)
+	// recheck shares the gate's Cloud→local fallback checker.
+	recheck := usecase.NewRecheck(scanner, gateChecker, recheckPresenter)
 	explainPresenter := cli.NewExplainPresenter(presenter)
 	explain := usecase.NewExplain(store, analyze, explainPresenter)
 	hookPresenter := cli.NewHookPresenter(presenter)
