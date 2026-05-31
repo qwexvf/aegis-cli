@@ -46,6 +46,10 @@ docker save my-app:latest -o my-app.tar
 	run OSV.dev vulnerability lookup against the extracted dependency set
 
 .PP
+\fB--fail-on\fP=""
+	exit non-zero when a CVE at or above this severity is found: low|medium|high|critical (implies --enrich)
+
+.PP
 \fB-h\fP, \fB--help\fP[=false]
 	help for scan
 
