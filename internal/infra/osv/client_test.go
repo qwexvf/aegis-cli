@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -308,7 +309,7 @@ func TestLookup_SkipsUnsupportedEcosystems(t *testing.T) {
 					results = append(results, `{"vulns":[]}`)
 				}
 			}
-			fmt.Fprintf(w, `{"results":[%s]}`, joinJSON(results))
+			fmt.Fprintf(w, `{"results":[%s]}`, strings.Join(results, ","))
 		case "/v1/vulns/GHSA-test-hex-0001":
 			fmt.Fprintln(w, `{"id":"GHSA-test-hex-0001","summary":"test","database_specific":{"severity":"HIGH"}}`)
 		default:
@@ -370,15 +371,4 @@ func TestLookup_SkipsUnsupportedEcosystems(t *testing.T) {
 			t.Errorf("%s should have 0 advisories, got %d", key, len(got))
 		}
 	}
-}
-
-func joinJSON(parts []string) string {
-	out := ""
-	for i, p := range parts {
-		if i > 0 {
-			out += ","
-		}
-		out += p
-	}
-	return out
 }
