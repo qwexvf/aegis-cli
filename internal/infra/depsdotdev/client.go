@@ -87,14 +87,15 @@ func (c *Client) Lookup(ctx context.Context, queries []domain.AdvisoryQuery) (ma
 	return out, nil
 }
 
+// versionResp mirrors the deps.dev GetVersion response. These fields are
+// at the TOP level of the document — there is no "version" wrapper — so
+// nesting them caused isDeprecated/advisoryKeys to silently never populate.
 type versionResp struct {
-	Version struct {
-		AdvisoryKeys []struct {
-			ID string `json:"id"`
-		} `json:"advisoryKeys"`
-		IsDeprecated     bool   `json:"isDeprecated"`
-		DeprecatedReason string `json:"deprecatedReason"`
-	} `json:"version"`
+	AdvisoryKeys []struct {
+		ID string `json:"id"`
+	} `json:"advisoryKeys"`
+	IsDeprecated     bool   `json:"isDeprecated"`
+	DeprecatedReason string `json:"deprecatedReason"`
 }
 
 type advisoryResp struct {
@@ -144,8 +145,8 @@ func (c *Client) fetchAdvisories(ctx context.Context, system, name, version stri
 		return nil, fmt.Errorf("deps.dev decode: %w", err)
 	}
 
-	out := make([]domain.Advisory, 0, len(vr.Version.AdvisoryKeys))
-	for _, key := range vr.Version.AdvisoryKeys {
+	out := make([]domain.Advisory, 0, len(vr.AdvisoryKeys))
+	for _, key := range vr.AdvisoryKeys {
 		adv, err := c.fetchOneAdvisory(ctx, key.ID)
 		if err != nil {
 			out = append(out, domain.Advisory{
@@ -256,7 +257,7 @@ func (c *Client) FetchDeprecated(ctx context.Context, eco domain.Ecosystem, name
 	if err := json.Unmarshal(raw, &vr); err != nil {
 		return false, "", fmt.Errorf("deps.dev health decode: %w", err)
 	}
-	return vr.Version.IsDeprecated, vr.Version.DeprecatedReason, nil
+	return vr.IsDeprecated, vr.DeprecatedReason, nil
 }
 
 // depsSystem maps domain.Ecosystem to the deps.dev system name.
