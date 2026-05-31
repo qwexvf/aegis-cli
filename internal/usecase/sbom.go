@@ -124,9 +124,10 @@ func (s *Sbom) generateCycloneDX(snap domain.Snapshot, out io.Writer, opts SbomO
 
 func (s *Sbom) generateSPDX(snap domain.Snapshot, out io.Writer, opts SbomOptions) (components, vulns int, err error) {
 	doc := sbomcdx.BuildSPDX(snap, sbomcdx.SPDXOptions{
-		AegisVersion: s.aegisVersion,
-		Project:      opts.Project,
-		Timestamp:    time.Now().UTC(),
+		AegisVersion:           s.aegisVersion,
+		Project:                opts.Project,
+		Timestamp:              time.Now().UTC(),
+		IncludeVulnerabilities: opts.IncludeVulnerabilities,
 	})
 
 	var buf bytes.Buffer
@@ -143,7 +144,16 @@ func (s *Sbom) generateSPDX(snap domain.Snapshot, out io.Writer, opts SbomOption
 
 	// len(doc.Packages) includes the root project package, subtract 1.
 	components = max(len(doc.Packages)-1, 0)
-	return components, 0, nil
+	if opts.IncludeVulnerabilities {
+		for _, d := range snap.Deps {
+			for _, a := range d.Advisories {
+				if !a.VEXSuppressed {
+					vulns++
+				}
+			}
+		}
+	}
+	return components, vulns, nil
 }
 
 // attachAdvisories overwrites Advisories on each dep with fresh lookup

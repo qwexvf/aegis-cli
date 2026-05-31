@@ -16,6 +16,10 @@ type SPDXOptions struct {
 	Project      string
 	Timestamp    time.Time
 	SerialNumber string // used as the UUID suffix in documentNamespace
+	// IncludeVulnerabilities attaches each Dependency.Advisories[] entry as
+	// an SPDX 2.3 SECURITY externalRef (referenceType "advisory") on the
+	// package — SPDX's native way to carry vulnerability data.
+	IncludeVulnerabilities bool
 }
 
 // spdxDocument is the top-level SPDX 2.3 JSON document.
@@ -144,11 +148,24 @@ func BuildSPDX(snap domain.Snapshot, opts SPDXOptions) spdxDocument {
 		}
 
 		if purl := PURL(d); purl != "" {
-			pkg.ExternalRefs = []spdxExternalRef{{
+			pkg.ExternalRefs = append(pkg.ExternalRefs, spdxExternalRef{
 				ReferenceCategory: "PACKAGE-MANAGER",
 				ReferenceType:     "purl",
 				ReferenceLocator:  purl,
-			}}
+			})
+		}
+
+		if opts.IncludeVulnerabilities {
+			for _, a := range d.Advisories {
+				if a.VEXSuppressed {
+					continue
+				}
+				pkg.ExternalRefs = append(pkg.ExternalRefs, spdxExternalRef{
+					ReferenceCategory: "SECURITY",
+					ReferenceType:     "advisory",
+					ReferenceLocator:  advisoryLocator(a),
+				})
+			}
 		}
 
 		doc.Packages = append(doc.Packages, pkg)
@@ -162,6 +179,18 @@ func spdxLicense(license string) string {
 		return "NOASSERTION"
 	}
 	return license
+}
+
+// advisoryLocator returns the SECURITY externalRef locator for an advisory:
+// its canonical URL, falling back to the osv.dev page for the ID.
+func advisoryLocator(a domain.Advisory) string {
+	if a.URL != "" {
+		return a.URL
+	}
+	if a.ID != "" {
+		return "https://osv.dev/vulnerability/" + a.ID
+	}
+	return "NOASSERTION"
 }
 
 // spdxIDInvalid matches characters not allowed in SPDX identifiers.

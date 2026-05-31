@@ -87,6 +87,59 @@ func TestBuildSPDX_PackageFields(t *testing.T) {
 	}
 }
 
+// With IncludeVulnerabilities, each advisory becomes a SECURITY externalRef
+// (referenceType "advisory"). Regression for SPDX silently emitting 0 vulns
+// while CycloneDX reported them.
+func TestBuildSPDX_IncludeVulnerabilities(t *testing.T) {
+	snap := domain.Snapshot{
+		Project: "proj",
+		Deps: []domain.Dependency{{
+			Ecosystem: domain.EcoNpm, Name: "lodash", Version: "4.17.21", Direct: true,
+			Advisories: []domain.Advisory{
+				{ID: "GHSA-aaaa", Severity: domain.SevHigh, URL: "https://osv.dev/vulnerability/GHSA-aaaa"},
+				{ID: "GHSA-bbbb", Severity: domain.SevMedium},                    // no URL → osv.dev fallback
+				{ID: "GHSA-cccc", Severity: domain.SevHigh, VEXSuppressed: true}, // suppressed → omitted
+			},
+		}},
+	}
+	doc := BuildSPDX(snap, SPDXOptions{AegisVersion: "v0.0.0-test", IncludeVulnerabilities: true})
+
+	var sec []spdxExternalRef
+	for _, p := range doc.Packages {
+		for _, r := range p.ExternalRefs {
+			if r.ReferenceCategory == "SECURITY" {
+				sec = append(sec, r)
+			}
+		}
+	}
+	if len(sec) != 2 {
+		t.Fatalf("want 2 SECURITY refs (one VEX-suppressed dropped), got %d: %+v", len(sec), sec)
+	}
+	for _, r := range sec {
+		if r.ReferenceType != "advisory" {
+			t.Errorf("referenceType = %q, want advisory", r.ReferenceType)
+		}
+	}
+	if sec[1].ReferenceLocator != "https://osv.dev/vulnerability/GHSA-bbbb" {
+		t.Errorf("URL-less advisory should fall back to osv.dev page, got %q", sec[1].ReferenceLocator)
+	}
+}
+
+// Without IncludeVulnerabilities, no SECURITY refs are emitted.
+func TestBuildSPDX_VulnsOmittedByDefault(t *testing.T) {
+	snap := domain.Snapshot{Deps: []domain.Dependency{{
+		Ecosystem: domain.EcoNpm, Name: "x", Version: "1", Advisories: []domain.Advisory{{ID: "GHSA-z"}},
+	}}}
+	doc := BuildSPDX(snap, SPDXOptions{})
+	for _, p := range doc.Packages {
+		for _, r := range p.ExternalRefs {
+			if r.ReferenceCategory == "SECURITY" {
+				t.Errorf("no SECURITY ref expected without IncludeVulnerabilities: %+v", r)
+			}
+		}
+	}
+}
+
 func TestBuildSPDX_Relationships(t *testing.T) {
 	snap := domain.Snapshot{
 		Project: "proj",
