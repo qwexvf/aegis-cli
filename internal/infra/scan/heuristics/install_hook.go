@@ -143,11 +143,41 @@ func ScriptMatchesMalwarePattern(body string) bool {
 	return scriptMatchesMalwarePattern(body)
 }
 
+// concatJoinPattern collapses adjacent string-literal concatenations
+// (`"cur" + "l"` → `"curl"`) so split-string obfuscation can't hide a
+// curl|sh / eval payload from the matchers below. It joins across the
+// quote-plus-quote seam in JS/TS/Python source.
+var concatJoinPattern = regexp.MustCompile(`["']\s*\+\s*["']`)
+
+// deobfuscateConcat repeatedly joins split string literals until stable,
+// handling chains like `"c"+"u"+"r"+"l"`.
+func deobfuscateConcat(body string) string {
+	for range 50 {
+		next := concatJoinPattern.ReplaceAllString(body, "")
+		if next == body {
+			break
+		}
+		body = next
+	}
+	return body
+}
+
 func scriptMatchesMalwarePattern(body string) bool {
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return false
 	}
+	if matchMalwarePatterns(body) {
+		return true
+	}
+	// Re-check with split-string concatenations collapsed.
+	if d := deobfuscateConcat(body); d != body && matchMalwarePatterns(d) {
+		return true
+	}
+	return false
+}
+
+func matchMalwarePatterns(body string) bool {
 	for _, re := range downloadExecPatterns {
 		if re.MatchString(body) {
 			return true

