@@ -115,6 +115,11 @@ func TestUpgradeCommand_PinnedVsLatest(t *testing.T) {
 		{"go pinned", Dependency{Ecosystem: EcoGo, Name: "golang.org/x/crypto"}, "v0.17.0", "go get golang.org/x/crypto@v0.17.0"},
 		{"cargo pinned", Dependency{Ecosystem: EcoCrates, Name: "serde"}, "1.0.193", "cargo update -p serde --precise 1.0.193"},
 		{"nuget pinned", Dependency{Ecosystem: EcoNuGet, Name: "Newtonsoft.Json"}, "13.0.3", "dotnet add package Newtonsoft.Json --version 13.0.3"},
+		{"pub pinned", Dependency{Ecosystem: EcoPub, Name: "http"}, "0.13.6", "dart pub upgrade http  # target: 0.13.6 (pin in pubspec.yaml)"},
+		{"cocoapods latest", Dependency{Ecosystem: EcoCocoaPods, Name: "Alamofire"}, "", "pod update Alamofire"},
+		{"cpan pinned", Dependency{Ecosystem: EcoCPAN, Name: "Try-Tiny"}, "0.31", "cpanm Try-Tiny@0.31"},
+		{"hackage pinned", Dependency{Ecosystem: EcoHackage, Name: "aeson"}, "2.1.0", "cabal install --constraint=\"aeson ==2.1.0\""},
+		{"cran latest", Dependency{Ecosystem: EcoCRAN, Name: "ggplot2"}, "", "R -e 'install.packages(\"ggplot2\")'"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -123,5 +128,47 @@ func TestUpgradeCommand_PinnedVsLatest(t *testing.T) {
 				t.Errorf("UpgradeCommand = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// BuildFixPlan must never recommend a downgrade. OSV lists one fixed-version
+// per affected range, so a backport branch (e.g. minimist 0.2.1, fixing the
+// 0.x range) can appear as FixedIn for a 1.2.0 install. That is not a valid
+// forward fix and `fix --script | sh` must not emit it.
+func TestBuildFixPlan_NoDowngrade(t *testing.T) {
+	snap := Snapshot{Deps: []Dependency{{
+		Ecosystem: EcoNpm, Name: "minimist", Version: "1.2.0",
+		Advisories: []Advisory{
+			{ID: "GHSA-backport", Severity: SevMedium, FixedIn: "0.2.1"}, // downgrade — must be rejected
+		},
+	}}}
+	plan := BuildFixPlan(snap)
+	if len(plan.Items) != 1 {
+		t.Fatalf("want 1 item, got %d", len(plan.Items))
+	}
+	it := plan.Items[0]
+	if it.TargetVersion != "" {
+		t.Errorf("target = %q; a downgrade must not become the target", it.TargetVersion)
+	}
+	if len(it.ResolvedAdvisories) != 0 {
+		t.Errorf("downgrade-only advisory must be unresolved, got %d resolved", len(it.ResolvedAdvisories))
+	}
+	if len(it.UnresolvedAdvisories) != 1 {
+		t.Errorf("want 1 unresolved, got %d", len(it.UnresolvedAdvisories))
+	}
+}
+
+// A real forward fix (alongside a downgrade backport) is still selected.
+func TestBuildFixPlan_PrefersForwardFix(t *testing.T) {
+	snap := Snapshot{Deps: []Dependency{{
+		Ecosystem: EcoNpm, Name: "minimist", Version: "1.2.0",
+		Advisories: []Advisory{
+			{ID: "GHSA-a", Severity: SevMedium, FixedIn: "0.2.1"}, // downgrade, reject
+			{ID: "GHSA-b", Severity: SevHigh, FixedIn: "1.2.6"},   // forward, accept
+		},
+	}}}
+	plan := BuildFixPlan(snap)
+	if plan.Items[0].TargetVersion != "1.2.6" {
+		t.Errorf("target = %q, want 1.2.6", plan.Items[0].TargetVersion)
 	}
 }
