@@ -23,6 +23,7 @@ func recheckCommand(uc *usecase.Recheck, presenter *presentercli.RecheckPresente
 	var (
 		all          bool
 		failOnPrompt bool
+		failOnError  bool
 		jsonOut      bool
 		quiet        bool
 	)
@@ -50,6 +51,7 @@ transitive deps.`,
 				ProjectDir:   cwd,
 				IncludeAll:   all,
 				FailOnPrompt: failOnPrompt,
+				FailOnError:  failOnError,
 			})
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
@@ -70,6 +72,8 @@ transitive deps.`,
 		"include transitive deps (default: direct only)")
 	cmd.Flags().BoolVar(&failOnPrompt, "fail-on-prompt", false,
 		"exit non-zero on prompt verdicts (default: only block fails)")
+	cmd.Flags().BoolVar(&failOnError, "fail-on-error", false,
+		"exit non-zero when a dep could not be checked (Cloud + local both unreachable)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false,
 		"emit machine-readable JSON to stdout")
 	cmd.Flags().BoolVar(&quiet, "quiet", false,

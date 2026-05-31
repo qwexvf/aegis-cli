@@ -36,6 +36,7 @@ type RecheckRequest struct {
 	ProjectDir   string
 	IncludeAll   bool // include transitive deps; default is direct-only
 	FailOnPrompt bool // treat prompt verdicts as failures (default: only block fails)
+	FailOnError  bool // treat check errors (e.g. Cloud + local both unreachable) as failures
 }
 
 // RecheckFinding is one dep that came back blocked or prompt.
@@ -106,7 +107,7 @@ func (rc *Recheck) Run(ctx context.Context, req RecheckRequest) (RecheckResult, 
 	rc.presenter.OnRecheckBegin(len(deps))
 	raws := rc.runWorkers(ctx, deps)
 
-	result := rc.summarize(deps, raws, req.FailOnPrompt)
+	result := rc.summarize(deps, raws, req.FailOnPrompt, req.FailOnError)
 	// Stable severity order for output. Block first, then prompt;
 	// same-kind alphabetical.
 	slices.SortFunc(result.Findings, func(a, b RecheckFinding) int {
@@ -186,7 +187,7 @@ type rawResult struct {
 // summarize partitions raw results into the buckets + findings list.
 // findings = anything that would have failed (block always, prompt
 // when FailOnPrompt is true).
-func (rc *Recheck) summarize(deps []domain.Dependency, raws []rawResult, failOnPrompt bool) RecheckResult {
+func (rc *Recheck) summarize(deps []domain.Dependency, raws []rawResult, failOnPrompt, failOnError bool) RecheckResult {
 	out := RecheckResult{
 		Summary:  RecheckSummary{Total: len(deps)},
 		Passed:   true,
@@ -195,6 +196,12 @@ func (rc *Recheck) summarize(deps []domain.Dependency, raws []rawResult, failOnP
 	for _, raw := range raws {
 		if raw.err != nil {
 			out.Summary.Errors++
+			// A check that couldn't run verified nothing. Under
+			// --fail-on-error, refuse to report a green pass for an
+			// unchecked dependency set (Cloud + local both unreachable).
+			if failOnError {
+				out.Passed = false
+			}
 			continue
 		}
 		switch raw.decision.Kind {

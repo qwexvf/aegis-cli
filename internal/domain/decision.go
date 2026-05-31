@@ -36,6 +36,10 @@ const (
 	SourceAPI   DecisionSource = "api"
 	SourceCache DecisionSource = "cache"
 	SourceError DecisionSource = "error"
+	// SourceLocal marks a decision produced by the offline AST + heuristic
+	// engine — used when the Cloud API is unreachable so the gate still
+	// verifies instead of failing open.
+	SourceLocal DecisionSource = "local"
 )
 
 // Decision is everything the gate knows about one (Spec, ResolvedVersion)
