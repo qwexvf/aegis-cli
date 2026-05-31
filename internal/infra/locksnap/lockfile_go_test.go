@@ -37,3 +37,26 @@ golang.org/x/sys v0.43.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 		t.Errorf("x/sys = %q", versions["golang.org/x/sys"])
 	}
 }
+
+// go.sum lines that aren't real entries (wrong field count, missing v-prefix
+// or h1: hash, control-char module names) must be rejected, not smuggled in
+// as deps.
+func TestParseGoSum_RejectsGarbage(t *testing.T) {
+	raw := []byte(`github.com/real/mod v1.2.3 h1:abc=
+github.com/real/mod v1.2.3/go.mod h1:abc=
+hello world this is not a go.sum line
+github.com/evil/mod notaversion h1:xyz=
+github.com/evil/mod v1.0.0 notahash
+exploit` + "\x00" + `inject v1.0.0 h1:zzz=
+`)
+	deps, err := parseGoSum(raw, nil)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("want 1 valid dep, got %d: %+v", len(deps), deps)
+	}
+	if deps[0].Name != "github.com/real/mod" || deps[0].Version != "v1.2.3" {
+		t.Errorf("unexpected dep: %+v", deps[0])
+	}
+}

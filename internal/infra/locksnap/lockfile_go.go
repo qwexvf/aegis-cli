@@ -4,10 +4,21 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
 )
+
+// goModulePathPattern matches the characters a Go module path may contain.
+// Go escapes uppercase letters as "!x", so paths are effectively lowercase
+// plus digits and a few separators. This rejects control chars, spaces, and
+// other junk that should never appear in a go.sum module field.
+var goModulePathPattern = regexp.MustCompile(`^[a-zA-Z0-9._~/!+-]+$`)
+
+func isValidGoModulePath(s string) bool {
+	return s != "" && len(s) <= 512 && goModulePathPattern.MatchString(s)
+}
 
 // parseGoSum parses Go's go.sum file. Each entry is two lines:
 //
@@ -32,14 +43,23 @@ func parseGoSum(raw []byte, _ map[string]bool) ([]domain.Dependency, error) {
 		if line == "" {
 			continue
 		}
-		// Field 1: module path. Field 2: version (possibly with
-		// "/go.mod" suffix on the second line of each pair).
+		// A go.sum line is exactly: "<module> <version> <h1:hash>".
+		// Version is a semver ("vX.Y.Z", possibly "/go.mod"-suffixed);
+		// the hash is base64 prefixed with "h1:". Anything else is not a
+		// go.sum entry — reject it so arbitrary/garbage text (or a
+		// control-char-laden module name) can't be smuggled in as a dep.
 		fields := strings.Fields(line)
-		if len(fields) < 2 {
+		if len(fields) != 3 {
 			continue
 		}
 		module := fields[0]
 		version := strings.TrimSuffix(fields[1], "/go.mod")
+		if !strings.HasPrefix(version, "v") || !strings.HasPrefix(fields[2], "h1:") {
+			continue
+		}
+		if !isValidGoModulePath(module) {
+			continue
+		}
 		key := module + "@" + version
 		if seen[key] {
 			continue

@@ -5,9 +5,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/qwexvf/aegis-cli/internal/domain"
+)
+
+// PEP 508 package name and PEP 440 version charsets. Used to reject lines
+// carrying NUL bytes, control characters, or other junk in the version
+// field (e.g. "foo==1.0\x00malicious") rather than persisting them.
+var (
+	pyNamePattern    = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	pyVersionPattern = regexp.MustCompile(`^[A-Za-z0-9._!+*-]+$`)
 )
 
 // Python ecosystem covers four common lockfile shapes:
@@ -138,6 +147,11 @@ func parseRequirementsTxt(raw []byte, _ map[string]bool) ([]domain.Dependency, e
 			ver = strings.TrimSpace(ver[:sc])
 		}
 		if name == "" || ver == "" {
+			continue
+		}
+		// Reject malformed name/version (control chars, embedded NUL,
+		// trailing junk) instead of persisting it into the snapshot.
+		if !pyNamePattern.MatchString(name) || !pyVersionPattern.MatchString(ver) {
 			continue
 		}
 		out = append(out, domain.Dependency{
