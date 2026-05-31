@@ -146,6 +146,15 @@ func (e *Explain) findInSnapshot(req ExplainRequest) (domain.Dependency, bool) {
 			return d, true
 		}
 	}
+	// Fallback: a bare `name@version` defaults req.Ecosystem to npm, but
+	// the dep may live under another ecosystem in the snapshot. Match on
+	// name+version alone so `explain` works for pypi/hex/pub/... deps
+	// without an explicit ecosystem prefix.
+	for _, d := range snap.Deps {
+		if d.Name == req.Name && d.Version == req.Version {
+			return d, true
+		}
+	}
 	return domain.Dependency{}, false
 }
 
@@ -156,7 +165,17 @@ func (e *Explain) scoreFromSnapshot(dep domain.Dependency) ExplainResult {
 	risk := domain.RiskScore(dep.Fingerprint).
 		ApplyAllowlist(dep.Ecosystem, dep.Name, dep.Version, e.allowlist).
 		DowngradeUnused(dep.Reachability, unusedSuppressEnabled())
-	verdict := domain.Verdict(risk, domain.RiskAssessment{})
+	astVerdict := domain.Verdict(risk, domain.RiskAssessment{})
+	// Advisories drive the verdict too — mirror ci's scoreSnapshot so
+	// explain doesn't say "safe" for a dep that ci blocks on a CVE.
+	var active []domain.Advisory
+	for _, a := range dep.Advisories {
+		if a.VEXSuppressed || a.FunctionUnreachable {
+			continue
+		}
+		active = append(active, a)
+	}
+	verdict := max(astVerdict, domain.VerdictForAdvisories(active))
 	return ExplainResult{
 		Source:      "snapshot",
 		Ecosystem:   dep.Ecosystem,
