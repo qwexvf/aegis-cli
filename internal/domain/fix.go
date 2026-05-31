@@ -59,6 +59,15 @@ func BuildFixPlan(snap Snapshot) FixPlan {
 				unresolved = append(unresolved, a)
 				continue
 			}
+			// Only a forward upgrade clears the advisory. A FixedIn at or
+			// below the installed version is a backport on an older major
+			// range (OSV lists one fixed-version per affected range), not a
+			// valid fix for THIS install — never emit a downgrade. Treat it
+			// as unresolved so `fix --script | sh` can't silently downgrade.
+			if compareFixVersion(a.FixedIn, d.Version) <= 0 {
+				unresolved = append(unresolved, a)
+				continue
+			}
 			resolved = append(resolved, a)
 			if target == "" || compareFixVersion(a.FixedIn, target) > 0 {
 				target = a.FixedIn
@@ -266,8 +275,40 @@ func UpgradeCommand(dep Dependency, targetVersion string) string {
 			return fmt.Sprintf("dotnet add package %s --version %s", name, targetVersion)
 		}
 		return fmt.Sprintf("dotnet add package %s", name)
+	case EcoPub:
+		if pinned {
+			return fmt.Sprintf("dart pub upgrade %s  # target: %s (pin in pubspec.yaml)", name, targetVersion)
+		}
+		return fmt.Sprintf("dart pub upgrade %s", name)
+	case EcoCocoaPods:
+		if pinned {
+			return fmt.Sprintf("pod update %s  # target: %s (pin in Podfile)", name, targetVersion)
+		}
+		return fmt.Sprintf("pod update %s", name)
+	case EcoCPAN:
+		if pinned {
+			return fmt.Sprintf("cpanm %s@%s", name, targetVersion)
+		}
+		return fmt.Sprintf("cpanm %s", name)
+	case EcoHackage:
+		if pinned {
+			return fmt.Sprintf("cabal install --constraint=\"%s ==%s\"", name, targetVersion)
+		}
+		return fmt.Sprintf("cabal install %s", name)
+	case EcoCRAN:
+		if pinned {
+			return fmt.Sprintf("R -e 'remotes::install_version(\"%s\", \"%s\")'", name, targetVersion)
+		}
+		return fmt.Sprintf("R -e 'install.packages(\"%s\")'", name)
 	case EcoGleam:
-		return "gleam deps update"
+		// hex.pm serves both Gleam and Elixir, and the dep doesn't record
+		// which lockfile it came from — so a blanket `gleam deps update`
+		// is wrong for Elixir/mix projects and drops the package name.
+		// Emit a manual hint naming the package + both toolchains instead.
+		if pinned {
+			return fmt.Sprintf("# upgrade %s to %s: `mix deps.update %s` (Elixir) or `gleam update %s` (Gleam)", name, targetVersion, name, name)
+		}
+		return fmt.Sprintf("# upgrade %s: `mix deps.update %s` (Elixir) or `gleam update %s` (Gleam)", name, name, name)
 	}
 	return ""
 }
