@@ -116,6 +116,12 @@ func MaxSeverity(advs []Advisory) Severity {
 	return max
 }
 
+// SeverityAtLeast reports whether a is at least as severe as b. Used by
+// severity-threshold gates (e.g. `aegis image scan --fail-on`).
+func SeverityAtLeast(a, b Severity) bool {
+	return severityRank(a) >= severityRank(b)
+}
+
 // VerdictForAdvisories maps an advisory list onto the same
 // VerdictKind enum the AST scorer uses, so CI can fold both signals
 // into one number with `max(astVerdict, advisoryVerdict)`. Mapping

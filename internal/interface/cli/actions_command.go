@@ -85,7 +85,11 @@ func actionsScanCommand(uc *usecase.Actions) *cobra.Command {
 			}
 			failOn, err := parseSeverity(failOnStr)
 			if err != nil {
-				return err
+				return &exitCodeError{code: 2, err: err, silent: false}
+			}
+			if jsonOut && sarifOut {
+				return &exitCodeError{code: 2, silent: false,
+					err: fmt.Errorf("--json and --sarif are mutually exclusive; pass only one")}
 			}
 			var ignore domain.ActionsIgnoreSet
 			if projectDir != "" {
