@@ -11,15 +11,12 @@ import (
 
 func TestFetchDeprecated_ParsesIsDeprecated(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Mirror real deps.dev response shape.
+		// Mirror real deps.dev response: isDeprecated is TOP-level, not
+		// nested under a "version" key.
 		_, _ = w.Write([]byte(`{
 		  "versionKey":{"system":"NPM","name":"request","version":"2.88.2"},
 		  "isDeprecated": true,
-		  "deprecatedReason": "request has been deprecated",
-		  "version":{
-		    "isDeprecated": true,
-		    "deprecatedReason": "request has been deprecated"
-		  }
+		  "deprecatedReason": "request has been deprecated"
 		}`))
 	}))
 	defer srv.Close()
@@ -39,7 +36,7 @@ func TestFetchDeprecated_ParsesIsDeprecated(t *testing.T) {
 
 func TestFetchDeprecated_NotDeprecated(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"version":{"isDeprecated": false, "deprecatedReason":""}}`))
+		_, _ = w.Write([]byte(`{"versionKey":{"system":"NPM"},"isDeprecated": false, "deprecatedReason":""}`))
 	}))
 	defer srv.Close()
 	c := New(WithBaseURL(srv.URL))

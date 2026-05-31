@@ -474,16 +474,88 @@ func (c *Client) fetchPackumentLocked(ctx context.Context, pkg string) (*packume
 }
 
 // FetchLicense returns the SPDX license identifier for a specific version
-// from the npm registry. Returns "" when the packument has no license field.
-// The packument is cached in-memory so concurrent calls for the same package
-// pay only one network round-trip.
+// from the npm registry. Returns "" (nil error) when the version document
+// has no license field.
+//
+// It fetches the per-version document (/<pkg>/<version>) rather than the
+// cached packument: the resolve path requests the abbreviated install-v1
+// packument, which strips the `license` field entirely — so reading it from
+// there always yielded "".
 func (c *Client) FetchLicense(ctx context.Context, name, version string) (string, error) {
-	p, err := c.fetchPackument(ctx, name)
+	if name == "" || version == "" {
+		return "", nil
+	}
+	encoded := url.PathEscape(name)
+	if strings.HasPrefix(name, "@") {
+		encoded = strings.Replace(encoded, "/", "%2F", 1)
+	}
+	reqURL := c.baseURL + "/" + encoded + "/" + url.PathEscape(version)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return "", err
 	}
-	if v, ok := p.Versions[version]; ok {
-		return v.License, nil
+	resp, err := httpx.Do(ctx, c.http, req, c.retry)
+	if err != nil {
+		return "", fmt.Errorf("registry fetch %s@%s: %w", name, version, err)
 	}
-	return "", nil
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return "", nil
+	}
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("registry fetch %s@%s: HTTP %d", name, version, resp.StatusCode)
+	}
+	raw, err := httpx.ReadCapped(resp.Body, httpx.MaxJSONResponseBytes)
+	if err != nil {
+		return "", err
+	}
+	return parseNpmLicense(raw), nil
+}
+
+// parseNpmLicense extracts an SPDX id from a version document, tolerating the
+// three historical npm shapes: string ("MIT"), object ({"type":"MIT"}), and
+// the legacy `licenses` array ([{"type":"MIT"}]).
+func parseNpmLicense(raw []byte) string {
+	var doc struct {
+		License  json.RawMessage `json:"license"`
+		Licenses json.RawMessage `json:"licenses"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return ""
+	}
+	if s := npmLicenseField(doc.License); s != "" {
+		return s
+	}
+	return npmLicenseField(doc.Licenses)
+}
+
+func npmLicenseField(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil && s != "" {
+		return s
+	}
+	var obj struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(raw, &obj) == nil && obj.Type != "" {
+		return obj.Type
+	}
+	var arr []struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(raw, &arr) == nil {
+		var types []string
+		for _, e := range arr {
+			if e.Type != "" {
+				types = append(types, e.Type)
+			}
+		}
+		if len(types) > 0 {
+			return strings.Join(types, " OR ")
+		}
+	}
+	return ""
 }
