@@ -111,3 +111,19 @@ func TestParsePipfileLock(t *testing.T) {
 		t.Errorf("pytest = %q", versions["pytest"])
 	}
 }
+
+// requirements.txt versions carrying NUL bytes / control chars / junk must be
+// rejected rather than persisted into the snapshot.
+func TestParseRequirementsTxt_RejectsMalformedVersion(t *testing.T) {
+	raw := []byte("good==1.2.3\nevil==1.0.0\x00rm -rf\nbad name==1.0\n")
+	deps, err := parseRequirementsTxt(raw, nil)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("want 1 valid dep, got %d: %+v", len(deps), deps)
+	}
+	if deps[0].Name != "good" || deps[0].Version != "1.2.3" {
+		t.Errorf("unexpected dep: %+v", deps[0])
+	}
+}
