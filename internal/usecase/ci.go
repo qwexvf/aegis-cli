@@ -53,6 +53,12 @@ type CIRequest struct {
 	// deprecated by its registry. Default false — deprecated is shown but
 	// does not contribute to the verdict threshold.
 	FailOnDeprecated bool
+	// FailOnUnscanned makes CI fail-closed (at Block level) when enrichment
+	// was requested but a dep could not be scanned — fetch failure, network
+	// outage, unpublished version. Default false preserves the fail-open
+	// behaviour (unscanned deps score safe); opt in for air-gapped / offline
+	// runners where a silent "couldn't fetch → safe" is the dangerous case.
+	FailOnUnscanned bool
 }
 
 // CIFinding is one dep that crossed the FailOn threshold. Both Risk
@@ -354,6 +360,21 @@ func (c *CI) scoreSnapshot(snap domain.Snapshot, req CIRequest) CIResult {
 		// Deprecated gate (opt-in via --fail-on-deprecated).
 		if d.Deprecated && req.FailOnDeprecated && verdict < domain.VerdictReview {
 			verdict = domain.VerdictReview
+		}
+
+		// Unscanned gate (opt-in via --fail-on-unscanned). When
+		// enrichment was requested but this dep has no analyzed
+		// fingerprint, the gate never actually inspected it (fetch
+		// failure, offline runner, unpublished version). Fail closed
+		// instead of letting it score safe.
+		if req.Enrich && req.FailOnUnscanned && (d.Fingerprint == nil || !d.Fingerprint.Analyzed) {
+			if verdict < domain.VerdictBlock {
+				verdict = domain.VerdictBlock
+			}
+			risk.Flags = append(risk.Flags, domain.RiskFlag{
+				Code:   "unscanned",
+				Detail: "enrichment requested but this dependency could not be scanned (fetch failure / offline) — failing closed per --fail-on-unscanned",
+			})
 		}
 
 		switch verdict {

@@ -47,33 +47,35 @@ func (ra RiskAssessment) ApplyAllowlist(eco Ecosystem, name, version string, set
 }
 
 // capabilityForFlag maps a RiskFlag.Code to the Capability the
-// allowlist key uses. The mapping is intentionally explicit (not a
-// table-driven approach) so changes to flag codes force compile-time
-// updates here.
+// allowlist key uses. Most flag codes ARE the capability's String()
+// (risk.go emits add(c.String(), ...)), so the general path is a
+// reverse lookup. Only the codes that diverge from String() — the
+// install-hook hook flags, the credential-shaped env-read flag, and
+// the drift "capability-added" flag — need an explicit case.
+//
+// Codes with no capability (e.g. "size-anomaly", "provenance-missing")
+// fall through the lookup and are never suppressed.
 func capabilityForFlag(f RiskFlag) (Capability, bool) {
 	switch f.Code {
 	case "install-hook", "install-hook-added", "install-hook-changed":
 		return CapInstallHookExec, true
-	case "shell-spawn":
-		return CapShellSpawn, true
-	case "dynamic-eval":
-		return CapDynamicEval, true
-	case "base64-decode":
-		return CapBase64Decode, true
-	case "net-egress":
-		return CapNetEgress, true
 	case "env-cred-read":
+		// Code diverges from CapEnvRead.String() ("env-read").
 		return CapEnvRead, true
-	case "fs-write-outside-root":
-		return CapFSWriteOutsideRoot, true
-	case "raw-ip-literal":
-		return CapRawIPLiteral, true
 	case "capability-added":
 		// drift flag — Capability name is embedded in Detail like:
 		//   "new capability since prior version: shell-spawn"
 		return parseCapabilityFromDetail(f.Detail)
 	}
-	// "size-anomaly" and unknown codes: not allowlist-able.
+	// General case: the flag code is the capability's String() for
+	// every AST and heuristic capability (suspicious-url,
+	// obfuscated-payload, install-hook-suspicious, binary-dropper,
+	// typosquat-risk, tarball-source-drift, …). Without this, those
+	// heuristic flags were accepted by `allowlist add`/`test` but
+	// never actually suppressed by analyze/ci.
+	if c, ok := capabilityNameLookup[f.Code]; ok {
+		return c, true
+	}
 	return 0, false
 }
 
