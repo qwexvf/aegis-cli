@@ -76,6 +76,9 @@ func snapshotShowCommand(uc *usecase.Snapshot) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "show",
 		Short: "Print the saved snapshot. By default only direct deps are shown.",
+		// show always reads aegis.lock from cwd; it takes no positional
+		// args. Reject stray args instead of silently ignoring them.
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {

@@ -51,6 +51,30 @@ func TestApplyAllowlist_MatchingRuleSuppressesAndZerosScore(t *testing.T) {
 	}
 }
 
+// Regression: heuristic-only capability flags (suspicious-url,
+// obfuscated-payload, install-hook-suspicious, …) used to be accepted
+// by `allowlist add`/`test` but never actually suppressed, because
+// capabilityForFlag's hand-maintained switch had no case for them.
+// The flag code IS the capability's String(), so they must suppress.
+func TestApplyAllowlist_HeuristicFlagsSuppress(t *testing.T) {
+	for _, c := range []Capability{
+		CapSuspiciousURL, CapObfuscatedPayload, CapInstallHookSuspicious,
+		CapBinaryDropper, CapTyposquatRisk,
+	} {
+		in := RiskAssessment{
+			Score: 50,
+			Flags: []RiskFlag{{Code: c.String(), Detail: "x", Weight: 50}},
+		}
+		set := mustSet(t,
+			AllowRule{Ecosystem: EcoNpm, Name: "pkg", Capability: c, Reason: "ok"})
+		out := in.ApplyAllowlist(EcoNpm, "pkg", "1.0.0", set)
+		if out.Score != 0 || !out.Flags[0].Suppressed {
+			t.Errorf("%s: expected suppressed+score 0, got score=%d suppressed=%v",
+				c.String(), out.Score, out.Flags[0].Suppressed)
+		}
+	}
+}
+
 func TestApplyAllowlist_PartialSuppressionLeavesOtherFlags(t *testing.T) {
 	in := RiskAssessment{
 		Score: WeightShellSpawn + WeightDynamicEval,

@@ -66,15 +66,17 @@ func TestCheckAPI_ServerErrorWarns(t *testing.T) {
 	}
 }
 
-func TestCheckAPI_NetworkErrorFails(t *testing.T) {
+func TestCheckAPI_NetworkErrorWarns(t *testing.T) {
 	t.Setenv("AEGIS_API_URL", "http://127.0.0.1:9") // discard port — connection refused
 	api, err := aegisapi.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := checkAPI(context.Background(), api)
-	if r.Status != doctorFail {
-		t.Errorf("unreachable should FAIL, got %v (detail: %s)", r.Status, r.Detail)
+	// Cloud is optional — an unreachable API is advisory (WARN), not a
+	// failure, so `aegis doctor` exits 0 for an offline-only OSS user.
+	if r.Status != doctorWarn {
+		t.Errorf("unreachable should WARN, got %v (detail: %s)", r.Status, r.Detail)
 	}
 }
 

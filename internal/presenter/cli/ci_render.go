@@ -218,19 +218,31 @@ func (cp *CIPresenter) renderFlagBlock(label, marker string, flags []domain.Risk
 }
 
 // renderSummary prints the final PASS/FAIL line with per-bucket counts.
+//
+// In --quiet mode the summary is the command's only output, so it goes
+// to stdout (the same writer as JSON) without a leading newline — that
+// makes `aegis ci --quiet > summary.txt` capture the one-liner. In the
+// default verbose mode the summary is diagnostic output and stays on
+// stderr alongside the per-finding detail, leaving stdout clean.
 func (cp *CIPresenter) renderSummary(r usecase.CIResult) {
+	w := cp.p.w
+	lead := "\n"
+	if cp.quiet {
+		w = cp.jsonOut
+		lead = ""
+	}
 	s := r.Summary
 	bucket := fmt.Sprintf("%d total • %d safe • %d review • %d prompt • %d block",
 		s.Total, s.Safe, s.Review, s.Prompt, s.Blocked)
 	if r.Passed {
-		fmt.Fprintf(cp.p.w, "\n%s[aegis]%s %s%sPASS%s — %s (threshold: %s)\n",
-			cp.p.dim(), cp.p.reset(),
+		fmt.Fprintf(w, "%s%s[aegis]%s %s%sPASS%s — %s (threshold: %s)\n",
+			lead, cp.p.dim(), cp.p.reset(),
 			cp.p.green(), cp.p.bold(), cp.p.reset(),
 			bucket, r.FailOn)
 		return
 	}
-	fmt.Fprintf(cp.p.w, "\n%s[aegis]%s %s%sFAIL%s — %d finding(s) ≥ %s  (%s)\n",
-		cp.p.dim(), cp.p.reset(),
+	fmt.Fprintf(w, "%s%s[aegis]%s %s%sFAIL%s — %d finding(s) ≥ %s  (%s)\n",
+		lead, cp.p.dim(), cp.p.reset(),
 		cp.p.red(), cp.p.bold(), cp.p.reset(),
 		len(r.Findings), r.FailOn, bucket)
 }

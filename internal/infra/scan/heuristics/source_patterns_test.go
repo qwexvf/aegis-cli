@@ -429,6 +429,38 @@ func TestDetectSourcePatterns_ShellFetcher(t *testing.T) {
 	}
 }
 
+// Regression: split-string obfuscation must not hide a C2 host or
+// decode-exec payload from the source-pattern matchers. Previously the
+// concat-collapse defense only covered the install-hook script matcher.
+func TestDetectSourcePatterns_SplitStringObfuscation(t *testing.T) {
+	tests := []struct {
+		name string
+		js   string
+		want domain.Capability
+	}{
+		{
+			name: "split C2 host",
+			js:   `var u = "https://" + "paste" + "bin" + ".com" + "/raw/x"; fetch(u);`,
+			want: domain.CapSuspiciousURL,
+		},
+		{
+			name: "split base64 marker in eval",
+			js:   `eval(Buffer.from("Y29uc29sZS5sb2coKTs=", 'bas' + 'e64').toString())`,
+			want: domain.CapObfuscatedPayload,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			caps := checkSourcePatterns(NormalizedPackage{
+				Files: map[string][]byte{"index.js": []byte(tc.js)},
+			})
+			if !slices.Contains(caps, tc.want) {
+				t.Errorf("expected %s detected through split-string obfuscation, got %v", tc.want.String(), caps)
+			}
+		})
+	}
+}
+
 func TestDetectSourcePatterns_Minified(t *testing.T) {
 	js := strings.Repeat("var x=1;", 1000) + `eval(atob("YWJj"))` + strings.Repeat("var y=2;", 1000)
 	caps := checkSourcePatterns(NormalizedPackage{
