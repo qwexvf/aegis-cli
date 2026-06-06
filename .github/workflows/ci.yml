@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
       - name: go test -race
         run: go test -race ./...
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
       # Install from source so the linter binary is compiled with the
       # same Go toolchain as the project. The pre-built golangci-lint
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
       - name: build aegis
         run: make build-release
@@ -72,7 +72,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
       - uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8  # v7
         with:
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
       - name: install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
       - name: build aegis
         run: make build-release
@@ -128,7 +128,7 @@ jobs:
 
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
 
       # Build from source — scan with the exact binary under test.
