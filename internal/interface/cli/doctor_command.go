@@ -118,9 +118,12 @@ func checkAPI(ctx context.Context, api *aegisapi.Client) doctorResult {
 	}
 	status, err := api.Ping(ctx)
 	if err != nil {
+		// Cloud is optional — every OSS feature works offline. An
+		// unreachable API is advisory (WARN), not a failure, so
+		// `aegis doctor` still exits 0 for an offline-only user.
 		return doctorResult{
-			Name: "api", Status: doctorFail,
-			Detail: fmt.Sprintf("%s unreachable: %v", api.BaseURL(), err),
+			Name: "api", Status: doctorWarn,
+			Detail: fmt.Sprintf("%s unreachable (Cloud optional — OSS features work offline): %v", api.BaseURL(), err),
 		}
 	}
 	// Any 2xx-4xx means the server replied. 5xx hints at server-side

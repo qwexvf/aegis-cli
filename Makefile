@@ -2,15 +2,23 @@ BINARY := aegis
 BIN_DIR := bin
 PKG := ./cmd/aegis
 
+# Version stamp for local/dev builds so `aegis version` and `doctor`
+# report something traceable instead of the 0.1.0-demo source default.
+# Releases are stamped separately by goreleaser; this just covers
+# `make build`. Falls back to "dev" outside a git checkout.
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION_PKG := github.com/qwexvf/aegis-cli/internal/interface/cli
+VERSION_LDFLAGS := -X $(VERSION_PKG).Version=$(VERSION)
+
 # Stripped release build: drop debug symbols + DWARF.
 # Typical reduction: 20-30% on a Go binary.
-RELEASE_LDFLAGS := -s -w
+RELEASE_LDFLAGS := -s -w $(VERSION_LDFLAGS)
 
 # --- targets ----------------------------------------------------------
 
 .PHONY: build
 build:                          ## debug-friendly build (default)
-	go build -o $(BIN_DIR)/$(BINARY) $(PKG)
+	go build -ldflags='$(VERSION_LDFLAGS)' -o $(BIN_DIR)/$(BINARY) $(PKG)
 
 .PHONY: build-release
 build-release:                  ## stripped release build

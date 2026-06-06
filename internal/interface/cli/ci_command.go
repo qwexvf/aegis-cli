@@ -37,6 +37,7 @@ func ciCommand(uc *usecase.CI, actions *usecase.Actions, presenter *presentercli
 		allowLicenses    string
 		vexPath          string
 		failOnDeprecated bool
+		failOnUnscanned  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "ci",
@@ -107,6 +108,7 @@ deps incur AST scan cost.`,
 				LicensePolicy:        parseLicensePolicy(allowLicenses, denyLicenses),
 				SuppressedAdvisories: suppressed,
 				FailOnDeprecated:     failOnDeprecated,
+				FailOnUnscanned:      failOnUnscanned,
 			})
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
@@ -248,6 +250,8 @@ deps incur AST scan cost.`,
 		"path to an OpenVEX document (.vex JSON); advisories with status 'not_affected' are suppressed")
 	cmd.Flags().BoolVar(&failOnDeprecated, "fail-on-deprecated", false,
 		"treat deprecated packages as a finding at Review level")
+	cmd.Flags().BoolVar(&failOnUnscanned, "fail-on-unscanned", false,
+		"fail closed: treat deps that couldn't be scanned (fetch failure / offline) as a Block finding instead of scoring them safe")
 	return cmd
 }
 

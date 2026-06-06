@@ -26,26 +26,33 @@ func checkSourcePatterns(pkg NormalizedPackage) []domain.Capability {
 		if len(body) > scanCap {
 			body = body[:scanCap]
 		}
-		if !found.suspURL && containsSuspiciousURL(body) {
-			found.suspURL = true
-		}
-		if !found.obfuscation && isJSSource(filename) && obfuscatedPayloadPattern.Match(body) {
-			found.obfuscation = true
-		}
-		if !found.obfuscation && isRubySource(filename) && rubyObfuscatedPayloadPattern.Match(body) {
-			found.obfuscation = true
-		}
-		if !found.obfuscation && isPythonSource(filename) && pythonObfuscatedPayloadPattern.Match(body) {
-			found.obfuscation = true
-		}
-		if !found.obfuscation && isRSource(filename) && rObfuscatedPayloadPattern.Match(body) {
-			found.obfuscation = true
-		}
-		if !found.obfuscation && isPerlSource(filename) && perlObfuscatedPayloadPattern.Match(body) {
-			found.obfuscation = true
-		}
-		if !found.shellFetcher && shellFetcherPattern.Match(body) {
-			found.shellFetcher = true
+		// Scan both the raw body and a split-string-collapsed view so
+		// obfuscation like "paste"+"bin"+".com" or eval('at'+'ob'(...))
+		// can't hide a C2 host or decode-exec payload from the regex /
+		// substring matchers. The collapsed view is only built when a
+		// concat seam is present, so clean files pay nothing.
+		for _, b := range concatVariants(body) {
+			if !found.suspURL && containsSuspiciousURL(b) {
+				found.suspURL = true
+			}
+			if !found.obfuscation && isJSSource(filename) && obfuscatedPayloadPattern.Match(b) {
+				found.obfuscation = true
+			}
+			if !found.obfuscation && isRubySource(filename) && rubyObfuscatedPayloadPattern.Match(b) {
+				found.obfuscation = true
+			}
+			if !found.obfuscation && isPythonSource(filename) && pythonObfuscatedPayloadPattern.Match(b) {
+				found.obfuscation = true
+			}
+			if !found.obfuscation && isRSource(filename) && rObfuscatedPayloadPattern.Match(b) {
+				found.obfuscation = true
+			}
+			if !found.obfuscation && isPerlSource(filename) && perlObfuscatedPayloadPattern.Match(b) {
+				found.obfuscation = true
+			}
+			if !found.shellFetcher && shellFetcherPattern.Match(b) {
+				found.shellFetcher = true
+			}
 		}
 		if found.obfuscation && found.suspURL && found.shellFetcher && found.malwareIOC {
 			break

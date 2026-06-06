@@ -54,9 +54,14 @@ the findings count on success. Use --no-wait for fire-and-forget CI steps.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if os.Getenv("AEGIS_API_KEY") == "" {
-				fmt.Fprintln(os.Stderr, "aegis: AEGIS_API_KEY is not set — export it before running cloud analyze")
-				fmt.Fprintln(os.Stderr, "  export AEGIS_API_KEY=<your-key>")
-				return &exitCodeError{code: 1, err: fmt.Errorf("AEGIS_API_KEY not set"), silent: true}
+				// Cloud-gated command with no credential: print an upsell
+				// hint and exit 0, never 1. A CI step that drops in
+				// `aegis cloud analyze` must not hard-fail the build just
+				// because Cloud isn't wired up (OSS-first contract).
+				w := cmd.OutOrStdout()
+				fmt.Fprintln(w, "Deep sandbox analysis runs on Aegis Cloud — not configured.")
+				fmt.Fprintln(w, "  Set AEGIS_API_KEY to connect: export AEGIS_API_KEY=<your-key>")
+				return nil
 			}
 
 			ecosystem, name, version, err := parsePackageArg(args[0])
