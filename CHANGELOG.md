@@ -4,6 +4,44 @@ All notable releases of `aegis-cli`. Format follows [Keep a Changelog](https://k
 
 For binary downloads + cosign + SLSA verification: see the matching [GitHub Release](https://github.com/qwexvf/aegis-cli/releases).
 
+## [0.29.1](https://github.com/qwexvf/aegis-cli/compare/v0.29.0...v0.29.1) (2026-06-06)
+
+Dependency-maintenance release — no CLI behaviour change.
+
+### Build
+
+* **deps:** bump the `go-deps` group (2 modules)
+* **ci:** bump `actions/cache` 4.3.0 → 5.0.5, plus `actions/attest-build-provenance`, `sigstore/cosign-installer`, and the `gha-deps` action group
+* **site:** bump 13 docs-site npm deps (astro 6.2.1 → 6.4.2, tailwindcss 4.2 → 4.3, react 19.2.5 → 19.2.6, shadcn, lucide-react, @base-ui/react, …)
+
+## [0.29.0](https://github.com/qwexvf/aegis-cli/compare/v0.28.0...v0.29.0) (2026-06-06)
+
+A correctness release from a second persona-QA pass (frontend / security /
+PM / platform). Closes suppression, obfuscation-evasion, SARIF-coverage, and
+offline fail-open gaps surfaced during real-world testing.
+
+### Security
+
+* **allowlist:** heuristic capability flags (`suspicious-url`, `obfuscated-payload`, `install-hook-suspicious`, `binary-dropper`, `typosquat-risk`, …) are now actually suppressed. They were accepted by `allowlist add`/`test` but `capabilityForFlag`'s partial switch never mapped them, so suppression silently no-op'd in `analyze`/`ci`. Now a reverse lookup covers every capability
+* **heuristics:** split-string concat-collapse extended to the `suspicious-url` and base64/obfuscation matchers, so `"paste" + "bin" + ".com"` can no longer evade C2-host / decode-exec detection (previously only the install-hook matcher collapsed concats)
+
+### Added
+
+* **ci:** `aegis ci --fail-on-unscanned` — fail closed (Block) when enrichment couldn't scan a dep (offline / fetch failure / unpublished version) instead of scoring it safe. Default unchanged (fail-open); opt in for air-gapped runners
+
+### Fixed
+
+* **sarif:** every `ci` finding now emits at least one SARIF result — advisory (CVE), license violation, deprecation, drift flags, and a fallback for flagless blocks. Such findings appeared in `--json` but vanished from `--sarif`, so they were invisible in the GitHub Security tab
+* **cloud:** `aegis cloud analyze` with no `AEGIS_API_KEY` prints an upsell hint and exits 0 (OSS-first contract), not exit 1 — a Cloud step no longer hard-fails CI when Cloud isn't wired up
+* **ci:** `--quiet` writes its summary line to stdout (scriptable) instead of stderr
+* **doctor:** an unreachable Cloud API is `WARN`, not `FAIL` — `doctor` exits 0 for offline-only OSS users (Cloud is optional)
+* **snapshot:** `snapshot show` rejects stray positional args instead of silently ignoring them and reading cwd's `aegis.lock`
+* **build:** `make build` stamps the version from `git describe` so local builds report a real version instead of `0.1.0-demo`
+
+### Build
+
+* **deps:** Go toolchain 1.26.3 → 1.26.4, clearing stdlib advisories GO-2026-5037 (`crypto/x509`) and GO-2026-5039 (`net/textproto`)
+
 ## [0.28.0](https://github.com/qwexvf/aegis-cli/compare/v0.27.0...v0.28.0) (2026-05-31)
 
 A correctness-and-coverage release driven by a large persona-QA pass (dev /
