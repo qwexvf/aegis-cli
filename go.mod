@@ -1,6 +1,6 @@
 module github.com/qwexvf/aegis-cli
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/CycloneDX/cyclonedx-go v0.10.0
