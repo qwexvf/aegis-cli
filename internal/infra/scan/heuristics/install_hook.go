@@ -162,6 +162,17 @@ func deobfuscateConcat(body string) string {
 	return body
 }
 
+// concatVariants returns the source bytes to scan: always the original,
+// plus a split-string-collapsed copy when (and only when) a concat seam
+// (`"x" + "y"`) is present. Lets the source-pattern matchers see through
+// obfuscation without paying a second scan on clean files.
+func concatVariants(body []byte) [][]byte {
+	if !concatJoinPattern.Match(body) {
+		return [][]byte{body}
+	}
+	return [][]byte{body, []byte(deobfuscateConcat(string(body)))}
+}
+
 func scriptMatchesMalwarePattern(body string) bool {
 	body = strings.TrimSpace(body)
 	if body == "" {

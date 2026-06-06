@@ -92,6 +92,50 @@ func TestCIToSARIF_SuppressedFlag(t *testing.T) {
 	}
 }
 
+// Regression: a finding that crossed the threshold without a capability
+// flag (CVE advisory, license violation, or a fetch-failure block with
+// no signal at all) must still produce a SARIF result — previously such
+// findings were present in --json but vanished from --sarif.
+func TestCIToSARIF_FlaglessFindingsStayVisible(t *testing.T) {
+	result := usecase.CIResult{
+		Findings: []usecase.CIFinding{
+			{ // advisory-only block, no risk flags
+				Dep: domain.Dependency{
+					Ecosystem: domain.EcoNpm, Name: "vuln", Version: "1.0.0",
+					Advisories: []domain.Advisory{
+						{ID: "CVE-2021-23337", Severity: domain.SevHigh, Summary: "command injection"},
+					},
+				},
+				Verdict: domain.VerdictBlock,
+			},
+			{ // license violation, no flags or advisories
+				Dep:              domain.Dependency{Ecosystem: domain.EcoNpm, Name: "gpl", Version: "2.0.0"},
+				LicenseViolation: "GPL-3.0 violates policy",
+				Verdict:          domain.VerdictBlock,
+			},
+			{ // fetch-failure block: nothing at all → must hit the fallback
+				Dep:     domain.Dependency{Ecosystem: domain.EcoNpm, Name: "ghost", Version: "9.9.9"},
+				Verdict: domain.VerdictBlock,
+			},
+		},
+		Passed: false,
+	}
+	log := sarif.CIToSARIF(result, "test")
+	results := log.Runs[0].Results
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results (one per flagless finding), got %d", len(results))
+	}
+	gotRules := map[string]bool{}
+	for _, r := range results {
+		gotRules[r.RuleID] = true
+	}
+	for _, want := range []string{"vulnerable-dependency", "license-violation", "blocked-dependency"} {
+		if !gotRules[want] {
+			t.Errorf("missing SARIF result for rule %q (got rules %v)", want, gotRules)
+		}
+	}
+}
+
 func TestCIToSARIF_ValidJSON(t *testing.T) {
 	log := sarif.CIToSARIF(usecase.CIResult{}, "1.0.0")
 	b, err := sarif.Marshal(log)
