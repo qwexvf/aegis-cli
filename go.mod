@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/UserNobody14/tree-sitter-dart v0.0.0-20260520003023-a9bdfa3db2fb
 	github.com/gleam-lang/tree-sitter-gleam v1.1.1-0.20260430091822-4e4643c2215c
-	github.com/google/go-containerregistry v0.21.6
+	github.com/google/go-containerregistry v0.21.7
 	github.com/klauspost/compress v1.18.6
 	github.com/package-url/packageurl-go v0.1.6
 	github.com/qwexvf/depusage v0.1.1
@@ -23,7 +23,7 @@ require (
 	github.com/tree-sitter/tree-sitter-python v0.25.0
 	github.com/tree-sitter/tree-sitter-ruby v0.23.1
 	github.com/tree-sitter/tree-sitter-rust v0.24.2
-	golang.org/x/sync v0.20.0
+	golang.org/x/sync v0.21.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
