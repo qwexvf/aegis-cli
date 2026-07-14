@@ -26,6 +26,8 @@ dependencies = [
  "aegis-domain",
  "aegis-heuristics",
  "aegis-lockfile",
+ "aegis-net",
+ "aegis-vuln",
  "clap",
  "serde",
  "serde_json",
