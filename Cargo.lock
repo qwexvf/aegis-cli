@@ -31,6 +31,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "aegis-registry"
+version = "0.1.0"
+dependencies = [
+ "aegis-domain",
+ "aegis-net",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aegis-vuln"
 version = "0.1.0"
 dependencies = [
