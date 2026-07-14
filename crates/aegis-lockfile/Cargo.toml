@@ -1,0 +1,28 @@
+[package]
+name = "aegis-lockfile"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lockfile parsers for the aegis supply-chain scanner — one per ecosystem, each behind a Cargo feature."
+
+[dependencies]
+aegis-domain = { path = "../aegis-domain" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Each ecosystem parser is behind its own feature so downstream builds
+# can compile a lean binary with only the languages they use, e.g.
+#   cargo build --no-default-features --features npm,pypi,cargo
+# `default` turns everything on. `serde_json` is always needed (the
+# registry framework + JSON-shaped parsers), so it's a hard dependency
+# rather than a per-feature optional one.
+[features]
+default = ["npm", "pypi", "cargo", "go"]
+npm = []
+pypi = []
+cargo = []
+go = []
+
+[dev-dependencies]
