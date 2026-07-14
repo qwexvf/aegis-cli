@@ -7,10 +7,13 @@ use std::process::ExitCode;
 
 use aegis_ast::{scanner_for, Findings};
 use aegis_domain::{
-    risk_score, verdict, CapabilitySet, Dependency, Ecosystem, Fingerprint, RiskAssessment,
+    risk_score, verdict, AdvisoryQuery, CapabilitySet, Dependency, Ecosystem, Fingerprint,
+    RiskAssessment, Severity,
 };
 use aegis_heuristics::{run_heuristics, NormalizedPackage};
 use aegis_lockfile::{parse_file, DirectMap};
+use aegis_net::UreqClient;
+use aegis_vuln::OsvClient;
 use clap::{Parser, Subcommand};
 use serde::Serialize;
 
@@ -28,6 +31,20 @@ enum Command {
         /// Path to the lockfile (e.g. package-lock.json, Cargo.lock).
         file: String,
         /// Emit machine-readable JSON instead of a text table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// CI gate: parse a lockfile, look up CVEs (OSV), fail on findings.
+    Ci {
+        /// Path to the lockfile.
+        file: String,
+        /// Severity threshold to fail on: critical, high, medium, low.
+        #[arg(long, default_value = "high")]
+        fail_on: String,
+        /// Skip the network CVE lookup (offline / air-gapped).
+        #[arg(long)]
+        offline: bool,
+        /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
     },
@@ -72,12 +89,181 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Command::Parse { file, json } => run_parse(&file, json),
+        Command::Ci {
+            file,
+            fail_on,
+            offline,
+            json,
+        } => run_ci(&file, &fail_on, offline, json),
         Command::Analyze {
             dir,
             name,
             ecosystem,
             json,
         } => run_analyze(&dir, name.as_deref(), &ecosystem, json),
+    }
+}
+
+// --- ci ------------------------------------------------------------
+
+/// Severity ordering for the fail-on threshold (higher = more severe).
+fn severity_rank(s: Severity) -> u8 {
+    match s {
+        Severity::Info => 0,
+        Severity::Low => 1,
+        Severity::Medium => 2,
+        Severity::High => 3,
+        Severity::Critical => 4,
+    }
+}
+
+fn parse_severity(s: &str) -> Option<Severity> {
+    Some(match s.to_lowercase().as_str() {
+        "critical" => Severity::Critical,
+        "high" => Severity::High,
+        "medium" | "moderate" => Severity::Medium,
+        "low" => Severity::Low,
+        _ => return None,
+    })
+}
+
+#[derive(Serialize)]
+struct FindingView {
+    ecosystem: String,
+    name: String,
+    version: String,
+    advisory: String,
+    severity: String,
+    summary: String,
+    fixed_in: String,
+}
+
+#[derive(Serialize)]
+struct CiView {
+    fail_on: String,
+    failed: bool,
+    findings: Vec<FindingView>,
+}
+
+fn run_ci(file: &str, fail_on: &str, offline: bool, json: bool) -> ExitCode {
+    let Some(threshold) = parse_severity(fail_on) else {
+        eprintln!("aegis: unknown --fail-on severity: {fail_on}");
+        return ExitCode::from(2);
+    };
+    let bytes = match std::fs::read(file) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("aegis: cannot read {file}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let basename = Path::new(file)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(file);
+    let deps = match parse_file(basename, &bytes, &DirectMap::new()) {
+        Ok(Some(d)) => d,
+        Ok(None) => {
+            eprintln!("aegis: no parser for lockfile '{basename}'");
+            return ExitCode::from(2);
+        }
+        Err(e) => {
+            eprintln!("aegis: failed to parse {basename}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
+    // Look up CVEs unless offline.
+    let queries: Vec<AdvisoryQuery> = deps
+        .iter()
+        .filter(|d| !d.version.is_empty())
+        .map(|d| AdvisoryQuery {
+            ecosystem: d.ecosystem,
+            name: d.name.clone(),
+            version: d.version.clone(),
+        })
+        .collect();
+
+    let mut findings: Vec<FindingView> = Vec::new();
+    if !offline {
+        let client = UreqClient::new();
+        match OsvClient::default().lookup(&client, &queries) {
+            Ok(results) => {
+                for q in &queries {
+                    for adv in results.get(&q.key()).map(|v| v.as_slice()).unwrap_or(&[]) {
+                        findings.push(FindingView {
+                            ecosystem: q.ecosystem.as_str().to_string(),
+                            name: q.name.clone(),
+                            version: q.version.clone(),
+                            advisory: adv.id.clone(),
+                            severity: adv.severity.as_str().to_string(),
+                            summary: adv.summary.clone(),
+                            fixed_in: adv.fixed_in.clone(),
+                        });
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("aegis: CVE lookup failed: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    }
+
+    // Gate: fail when any finding meets the severity threshold.
+    let failed = findings.iter().any(|f| {
+        parse_severity(&f.severity)
+            .map(|s| severity_rank(s) >= severity_rank(threshold))
+            .unwrap_or(false)
+    });
+
+    if json {
+        let view = CiView {
+            fail_on: threshold.as_str().to_string(),
+            failed,
+            findings,
+        };
+        match serde_json::to_string_pretty(&view) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("aegis: json encode failed: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        let scanned = queries.len();
+        if offline {
+            println!("scanned {scanned} deps (offline — no CVE lookup)");
+        } else {
+            println!(
+                "scanned {scanned} deps, {} advisories found",
+                findings.len()
+            );
+        }
+        for f in &findings {
+            println!(
+                "  [{}] {}/{}@{} — {} ({}){}",
+                f.severity,
+                f.ecosystem,
+                f.name,
+                f.version,
+                f.advisory,
+                f.summary,
+                if f.fixed_in.is_empty() {
+                    String::new()
+                } else {
+                    format!(" → fixed in {}", f.fixed_in)
+                }
+            );
+        }
+        println!("verdict: {}", if failed { "FAIL" } else { "pass" });
+    }
+
+    // Exit 0 clean, 1 on findings ≥ threshold, matching the Go gate.
+    if failed {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
     }
 }
 
