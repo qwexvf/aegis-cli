@@ -10,8 +10,37 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  8 crates · 92 lib tests (all green) · clippy + rustfmt clean · 13 commits
-  Runnable `aegis` binary with 3 working commands (one hits live OSV).
+  8 crates · 113 tests (all green) · clippy + rustfmt clean · 26 commits
+  Runnable `aegis` binary with 4 commands: parse / analyze / ci / run.
+  Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
+
+-------------------------------------------------------------------------------
+ PHASE STATUS  (plan has 12 phases, 0-11)
+-------------------------------------------------------------------------------
+  P0  scaffold + parity harness ...... PARTIAL  scaffold done; harness NOT built
+  P1  domain ......................... DONE
+  P2  lockfile (24 parsers) .......... DONE
+  P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,
+                                       per-ecosystem version resolvers
+  P4  heuristics ..................... PARTIAL  3 detectors done (secrets,
+                                       typosquat, source-patterns); ~8 manifest/
+                                       tarball detectors left
+  P5  AST + reach .................... PARTIAL  9 grammars + JS constant-fold
+                                       taint done; NOT done: gleam/dart/cocoapods
+                                       grammars, full taint (symtab + tainted-
+                                       sinks), aegis-reach depusage reimpl (HIGH RISK)
+  P6  image (OCI) .................... NOT STARTED  (long pole — thin Rust OCI eco)
+  P7  sbom (CycloneDX/SPDX/SARIF) .... NOT STARTED
+  P8  usecase ....................... PARTIAL  logic lives in CLI cmds; the
+                                       snapshot.Enrich concurrency model not ported
+  P9  presenter ..................... PARTIAL  text/json inline in CLI; no SARIF,
+                                       no live-region enrich view
+  P10 cli ........................... PARTIAL  4 cmds run; missing snapshot / fix /
+                                       sbom / actions / allowlist / hook / explain
+  P11 parity gate + cutover ......... NOT STARTED  (blocked on --json schema match)
+
+  Rough count: 3 done, 5 partial, 3 not-started + parity harness.
+  Done half = foundational bulk. Remaining time mostly in the long poles.
 
 -------------------------------------------------------------------------------
  DESIGN DECISIONS
@@ -92,7 +121,7 @@ blocking ureq in rayon threads handles concurrent HTTP. Smaller binary, no async
 coloring. AST scan verified multi-core (253% CPU on a big tree, 16 cores avail).
 
 -------------------------------------------------------------------------------
- COMMITS (branch port/domain-lockfile)
+ COMMITS (branch port/domain-lockfile) — first batch; run `git log` for all 26
 -------------------------------------------------------------------------------
   domain core + lockfile parsers (npm/cargo/go/python)
   composer/nuget/cran/swift/gemfile/yarn parsers
@@ -109,30 +138,55 @@ coloring. AST scan verified multi-core (253% CPU on a big tree, 16 cores avail).
   ci command: lockfile → osv cve lookup → severity gate + exit code
 
 -------------------------------------------------------------------------------
- REMAINING WORK
+ RESUME TOMORROW  —  pick one; each is self-contained & committable
 -------------------------------------------------------------------------------
-Phase 4 (heuristics) — manifest/tarball-metadata detectors not yet ported:
-  install-hook manifest parsing, binary-dropper, tarball-drift, unlisted-payload,
-  optional-git-dep, vcs-dep, maintainer-hijack, go-retract. R/Perl obfuscation regex.
+RULE: every feature ships WITH its test in the same commit (CLI too — network-
+free integration tests in crates/aegis-cli/tests/cli.rs). Not manual-verify-only.
 
-Phase 5 (AST):
-  Other grammars (python/ruby/rust/go/java/php/csharp/… — each = copy .scm + add
-  grammar crate + feature, mechanical). The taint/constant-fold SECOND PASS
-  (js/taint.go — obfuscation across variable assignments) is a real algorithm port.
+MECHANICAL (fast, low-risk, good warm-up):
+  [P4] more heuristics detectors — each ~1 file + tests, port from
+       internal/infra/scan/heuristics/:
+         binary_dropper.go, tarball_drift.go, check_unlisted_payload.go,
+         check_optional_git_dep.go, check_vcs_dep.go, maintainer.go,
+         check_go_retract.go, check_install_hooks.go
+       All string/regex/metadata — offline-testable.
+  [P5] last grammars — gleam, dart (cocoapods = ruby grammar + podspec query).
+       Recipe: copy .scm to queries/, add grammar crate + feature, ~15-line module.
+       Watch ABI: runtime is tree-sitter 0.25 (supports ABI 13-15).
+  [P10] more CLI commands with tests: `sbom` (needs P7), `fix` (domain.BuildFixPlan
+       already portable), `deprecated`/`license` checks in the config runner
+       (aegis-registry already built + mock-tested — wire DepsDevClient/LicenseFetcher).
 
-Network wiring:
-  EPSS/KEV/deps.dev enrichment + DiskCache not yet wired into `ci`.
+HARD / LONG POLES (real design work):
+  [P5] aegis-reach — reimplement qwexvf/depusage (Go-only). Gates reachability
+       suppression. HIGHEST RISK. Scope it as its own crate + sub-plan.
+  [P5] full JS taint — symbol table (const x = "..." / char-code arrays) + tainted-
+       sink tracking (base64 → eval). Port rest of ast/js/taint.go (~400 lines).
+  [P6] aegis-image — OCI image scan. go-containerregistry has no mature Rust peer;
+       build on oci-client/oci-spec + tar + sha2. Feature-gate; ship after parity.
+  [P7] aegis-sbom — CycloneDX (cyclonedx-bom crate) + SPDX + SARIF. `sbom` command.
+
+GATING (do once --json output stabilizes):
+  [P0/P11] xtask PARITY HARNESS — diff Rust vs Go `--json` over
+       ../aegis-cli/examples/incidents*/, examples/ci/, examples/reachability/.
+       BLOCKED until analyze/ci --json schemas match the Go shapes. This is the
+       real correctness backstop; prioritize once a couple commands are "parity-ready".
+
+CUTOVER (P11): 100% corpus parity, reproduce cosign + SLSA release pipeline, flip default.
+
+-------------------------------------------------------------------------------
+ NETWORK TAIL (Phase 3 leftovers, not blocking)
+-------------------------------------------------------------------------------
   GHSA lookup (GitHub GraphQL + token), npm SLSA provenance/attestations,
-  per-ecosystem version resolvers (npm needs node-semver ranges, not Cargo semver).
+  per-ecosystem version resolvers (npm needs a node-semver crate, NOT Cargo semver
+  — different range syntax), wire DiskCache into OSV/KEV clients (usecase layer).
 
-Highest-risk deferred item:
-  aegis-reach — reimplement qwexvf/depusage (Go-only, no Rust equivalent); gates
-  the symbol-level reachability suppression feature.
-
-Later commands / layers:
-  snapshot save/enrich, fix, sbom (CycloneDX/SPDX), actions scan, allowlist.
-  Then the xtask PARITY HARNESS: diff Rust vs Go `--json` over examples/incidents*/
-  — needs `--json` schemas aligned with Go first.
-
-Cutover: 100% corpus parity, reproduce cosign + SLSA release pipeline, flip default.
+-------------------------------------------------------------------------------
+ QUICK START TOMORROW
+-------------------------------------------------------------------------------
+  cd /home/qwexvf/projects/aegis/aegis-rs
+  git log --oneline | head          # 26 commits on branch port/domain-lockfile
+  cargo test --workspace            # 113 tests, all green
+  ./target/debug/aegis --help       # parse / analyze / ci / run
+  # Go source to port from: /home/qwexvf/projects/aegis/aegis-cli/internal/...
 ===============================================================================
