@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     "crates/aegis-domain",
     "crates/aegis-lockfile",
+    "crates/aegis-net",
+    "crates/aegis-vuln",
 ]
 
 [workspace.package]
