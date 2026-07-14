@@ -2,10 +2,12 @@
 //! through `aegis-lockfile` and report its dependencies. More commands
 //! (enrich, ci, analyze) land as the usecase layer is ported.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 
-use aegis_ast::{scanner_for, Findings};
+use aegis_ast::{scanner_for, Findings, LanguageScanner};
 use aegis_domain::{
     risk_score, verdict, AdvisoryQuery, CapabilitySet, Dependency, Ecosystem, Fingerprint,
     RiskAssessment, Severity,
@@ -15,6 +17,7 @@ use aegis_lockfile::{parse_file, DirectMap};
 use aegis_net::UreqClient;
 use aegis_vuln::{EpssClient, KevCatalog, OsvClient};
 use clap::{Parser, Subcommand};
+use rayon::prelude::*;
 use serde::Serialize;
 
 #[derive(Parser)]
@@ -362,6 +365,18 @@ fn collect_files(root: &Path) -> Vec<(String, Vec<u8>)> {
     out
 }
 
+/// True when `rel`'s extension has a compiled-in AST scanner.
+fn ext_has_scanner(
+    rel: &str,
+    scanners: &HashMap<String, Option<Arc<dyn LanguageScanner>>>,
+) -> bool {
+    rel.rsplit_once('.')
+        .map(|(_, e)| e.to_ascii_lowercase())
+        .and_then(|ext| scanners.get(&ext))
+        .map(|s| s.is_some())
+        .unwrap_or(false)
+}
+
 fn run_analyze(dir: &str, name: Option<&str>, ecosystem: &str, json: bool) -> ExitCode {
     let root = Path::new(dir);
     if !root.is_dir() {
@@ -379,15 +394,40 @@ fn run_analyze(dir: &str, name: Option<&str>, ecosystem: &str, json: bool) -> Ex
 
     let files = collect_files(root);
 
-    // AST pass over source files.
-    let mut findings = Findings::new(false);
-    let mut source_bytes: i64 = 0;
-    for (rel, bytes) in &files {
-        if let Some(scanner) = scanner_for(rel) {
-            source_bytes += bytes.len() as i64;
-            scanner.analyze_file(rel, bytes, &mut findings);
+    // AST pass over source files — PARALLEL across all cores (rayon).
+    // Compile one scanner per distinct extension present, share it read-only
+    // across threads, scan every file concurrently, then merge results.
+    let mut scanners: HashMap<String, Option<Arc<dyn LanguageScanner>>> = HashMap::new();
+    for (rel, _) in &files {
+        if let Some(ext) = rel.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()) {
+            scanners
+                .entry(ext)
+                .or_insert_with(|| scanner_for(rel).map(Arc::from));
         }
     }
+    let source_bytes: i64 = files
+        .par_iter()
+        .filter(|(rel, _)| ext_has_scanner(rel, &scanners))
+        .map(|(_, bytes)| bytes.len() as i64)
+        .sum();
+    let findings = files
+        .par_iter()
+        .map(|(rel, bytes)| {
+            let mut f = Findings::new(false);
+            if let Some(ext) = rel.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()) {
+                if let Some(Some(scanner)) = scanners.get(&ext) {
+                    scanner.analyze_file(rel, bytes, &mut f);
+                }
+            }
+            f
+        })
+        .reduce(
+            || Findings::new(false),
+            |mut a, b| {
+                a.merge(b);
+                a
+            },
+        );
 
     // Heuristics pass over the whole file set.
     let mut normalized = NormalizedPackage::new(&pkg_name, eco);

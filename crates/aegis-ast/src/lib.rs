@@ -98,10 +98,26 @@ impl Findings {
     pub fn evidence(&self) -> &[Evidence] {
         &self.evidence
     }
+
+    /// Fold another `Findings` into this one (deduping). Used to combine
+    /// per-file results from a parallel scan.
+    pub fn merge(&mut self, other: Findings) {
+        for c in other.capabilities {
+            self.add_capability(c);
+        }
+        for e in other.env_reads {
+            self.add_env_read(e);
+        }
+        self.evidence.extend(other.evidence);
+    }
 }
 
 /// A per-language AST analyzer. Mirrors `ast.LanguageScanner`.
-pub trait LanguageScanner {
+///
+/// `Send + Sync` so a compiled scanner can be shared read-only across a
+/// rayon thread pool (the query is immutable; parser/cursor are created
+/// per call inside `analyze_file`).
+pub trait LanguageScanner: Send + Sync {
     /// Parse `body` and record capabilities/env-reads into `findings`.
     fn analyze_file(&self, path: &str, body: &[u8], findings: &mut Findings);
 }
