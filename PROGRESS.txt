@@ -72,10 +72,24 @@ aegis analyze <dir> [--name --ecosystem --json]
     obfuscated-payload + suspicious-url). Synthetic evil npm pkg → BLOCK, 7 signals.
 
 aegis ci <lockfile> [--fail-on --offline --json]
-    Lockfile → OSV CVE lookup (LIVE network) → severity gate → exit code
-    (0 clean / 1 findings≥threshold / 2 error).
+    Lockfile → OSV CVE lookup (LIVE network) + EPSS + KEV enrichment → severity
+    gate → exit code (0 clean / 1 findings≥threshold / 2 error).
     Verified LIVE vs api.osv.dev: lodash 4.17.4 → 10 real GHSA advisories with
-    correct severities + fix versions; --fail-on high/critical exit 1; offline exit 0.
+    correct severities + fix versions + EPSS scores (e.g. 22%); --fail-on
+    high/critical exit 1; offline exit 0.
+
+aegis run <aegis.toml> [--json]
+    CONFIG-DRIVEN PARALLEL runner. Declares [[task]] entries; the cfg drives
+    which checks run per task (ast/heuristics = source scan; cve = OSV lookup).
+    Two-level parallelism: independent tasks run in parallel (rayon), and each
+    task's source scan also fans out across cores. `parallelism = N` sets threads.
+    Verified: 3-task config → 2 source-scan BLOCKs + 1 cve task (10 live findings),
+    overall FAIL, exit 1.
+
+CONCURRENCY: rayon (all cores), NOT tokio. Async ≠ fast for a CLI; the work is
+CPU-bound (tree-sitter parsing) + batch network. rayon parallelizes the scan;
+blocking ureq in rayon threads handles concurrent HTTP. Smaller binary, no async
+coloring. AST scan verified multi-core (253% CPU on a big tree, 16 cores avail).
 
 -------------------------------------------------------------------------------
  COMMITS (branch port/domain-lockfile)
