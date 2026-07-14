@@ -8,10 +8,10 @@ use crate::scanner::GrammarScanner;
 
 const QUERY_SRC: &str = include_str!("../queries/js.scm");
 
-/// Build the JS/TS scanner.
+/// Build the JS/TS scanner, including the constant-fold/taint second pass.
 pub fn scanner() -> Result<GrammarScanner, String> {
     let language = tree_sitter_javascript::LANGUAGE.into();
-    GrammarScanner::new(language, QUERY_SRC)
+    GrammarScanner::with_post_pass(language, QUERY_SRC, Some(crate::js_taint::taint_pass))
 }
 
 #[cfg(test)]
@@ -71,5 +71,31 @@ mod tests {
         assert!(!ev.is_empty());
         assert_eq!(ev[0].capability, Capability::DynamicEval);
         assert_eq!(ev[0].line, 3);
+    }
+
+    #[test]
+    fn taint_folds_fromcharcode_to_suspicious_url() {
+        // String.fromCharCode codes spelling a pastebin.com URL — the query
+        // pass can't see the host, the constant-fold pass can.
+        // "https://pastebin.com" as char codes:
+        let codes = "https://pastebin.com"
+            .chars()
+            .map(|c| (c as u32).to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let src = format!("const u = String.fromCharCode({codes});");
+        assert!(scan(&src).contains(&Capability::SuspiciousUrl));
+    }
+
+    #[test]
+    fn taint_ignores_benign_fromcharcode() {
+        // "hello" — not suspicious.
+        let codes = "hello"
+            .chars()
+            .map(|c| (c as u32).to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let src = format!("const s = String.fromCharCode({codes});");
+        assert!(scan(&src).is_empty());
     }
 }
