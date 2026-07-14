@@ -11,9 +11,12 @@ use aegis_domain::{Capability, Ecosystem};
 
 #[cfg(feature = "secrets")]
 pub mod secrets;
+#[cfg(feature = "source-patterns")]
+pub mod source_patterns;
 #[cfg(feature = "typosquat")]
 pub mod typosquat;
 
+#[cfg(any(feature = "secrets", feature = "source-patterns"))]
 mod source;
 
 /// The scanner's normalized view of one package: identity plus its
@@ -48,6 +51,8 @@ pub fn run_heuristics(pkg: &NormalizedPackage) -> Vec<Capability> {
     let mut caps: Vec<Capability> = Vec::new();
     #[cfg(feature = "secrets")]
     caps.extend(secrets::check_secrets(pkg));
+    #[cfg(feature = "source-patterns")]
+    caps.extend(source_patterns::check_source_patterns(pkg));
     #[cfg(feature = "typosquat")]
     caps.extend(typosquat::check_typosquat(pkg));
     caps.sort();

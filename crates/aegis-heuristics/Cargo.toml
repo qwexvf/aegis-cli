@@ -14,6 +14,7 @@ aegis-domain = { path = "../aegis-domain" }
 regex = { version = "1", optional = true }
 
 [features]
-default = ["secrets", "typosquat"]
+default = ["secrets", "typosquat", "source-patterns"]
 secrets = ["dep:regex"]
 typosquat = []
+source-patterns = ["dep:regex"]
