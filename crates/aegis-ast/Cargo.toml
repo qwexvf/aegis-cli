@@ -9,7 +9,7 @@ description = "AST capability scanner (tree-sitter, native — no CGO) for the a
 
 [dependencies]
 aegis-domain = { path = "../aegis-domain" }
-tree-sitter = "0.24"
+tree-sitter = "0.25"
 streaming-iterator = "0.1"
 # Each grammar is an optional dependency behind a per-language feature —
 # grammars are large, so this is the biggest binary-size lever. Native
@@ -20,12 +20,18 @@ tree-sitter-ruby = { version = "0.23", optional = true }
 tree-sitter-rust = { version = "0.23", optional = true }
 tree-sitter-go = { version = "0.23", optional = true }
 tree-sitter-php = { version = "0.23", optional = true }
+tree-sitter-c-sharp = { version = "0.23", optional = true }
+tree-sitter-haskell = { version = "0.23", optional = true }
+tree-sitter-lua = { version = "0.2", optional = true }
 
 [features]
-default = ["js", "py", "ruby", "rust", "go", "php"]
+default = ["js", "py", "ruby", "rust", "go", "php", "csharp", "haskell", "lua"]
 js = ["dep:tree-sitter-javascript"]
 py = ["dep:tree-sitter-python"]
 ruby = ["dep:tree-sitter-ruby"]
 rust = ["dep:tree-sitter-rust"]
 go = ["dep:tree-sitter-go"]
 php = ["dep:tree-sitter-php"]
+csharp = ["dep:tree-sitter-c-sharp"]
+haskell = ["dep:tree-sitter-haskell"]
+lua = ["dep:tree-sitter-lua"]
