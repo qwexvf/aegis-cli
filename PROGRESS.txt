@@ -1,0 +1,124 @@
+===============================================================================
+ aegis-rs — Go → Rust migration progress
+===============================================================================
+
+Goal: clean-room rewrite of aegis-cli (Go, ~59k LOC, v0.29) into Rust, to full
+feature parity, then flip the default. Go stays frozen at v0.29 until parity.
+
+Location : /home/qwexvf/projects/aegis/aegis-rs  (own standalone git repo)
+Branch   : port/domain-lockfile
+Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
+
+Status @ this snapshot:
+  8 crates · 92 lib tests (all green) · clippy + rustfmt clean · 13 commits
+  Runnable `aegis` binary with 3 working commands (one hits live OSV).
+
+-------------------------------------------------------------------------------
+ DESIGN DECISIONS
+-------------------------------------------------------------------------------
+- Compile-time feature flags everywhere (user request): each lockfile ecosystem,
+  each tree-sitter grammar, each heavy subsystem behind a Cargo feature, all on
+  by default. Lean builds strip what they don't need, e.g.:
+      cargo build --no-default-features --features npm,pypi,rust
+  Heavy deps (regex, quick-xml, tree-sitter grammars) are optional, pulled in
+  only by the features that need them. Verified: npm-only builds exclude them.
+
+- Transport = ureq (blocking, pure-Rust, NO tokio) instead of the plan's reqwest.
+  Reason: CLI is blocking + thread-pool concurrent; dropping tokio keeps the
+  binary small (serves the lean-build goal). Behind an HttpClient trait, swappable.
+
+- Native tree-sitter grammar crates → NO CGO / no C toolchain (the headline win).
+  .scm queries port verbatim from the Go tree.
+
+- domain crate stays dependency-free (mirrors Go's stdlib-free internal/domain);
+  the CLI owns its serde wire DTOs.
+
+-------------------------------------------------------------------------------
+ CRATES  (✅ done · 🟡 partial)
+-------------------------------------------------------------------------------
+✅ aegis-domain     risk scoring, capabilities (23), verdict thresholds,
+                    advisory/severity types. Zero deps. 14 tests.
+✅ aegis-lockfile   all 24 lockfile parsers, every ecosystem:
+                    npm(package-lock/yarn/pnpm/bun), pypi(poetry/uv/pipfile/req),
+                    cargo, go, composer, nuget, cran, swift, gemfile,
+                    maven(pom+gradle), hex(gleam+mix), pubspec, cocoapods,
+                    cpan, hackage(cabal+stack). 29 tests.
+✅ aegis-net        HttpClient trait + MockHttpClient + UreqClient backend +
+                    crash-safe DiskCache (atomic write + TTL). 4 tests.
+✅ aegis-vuln       OSV.dev (full CVSS v3 base-score formula → verified 9.8),
+                    EPSS (FIRST.org), KEV (CISA). 12 tests.
+✅ aegis-registry   license fetchers (npm/pypi/crates/rubygems/nuget) + deps.dev
+                    package-health (deprecation) + advisory lookup. 7 tests.
+🟡 aegis-heuristics secrets, typosquat (Levenshtein + embedded top-lists),
+                    source-patterns (obfuscated-payload / suspicious-url / IDN /
+                    known-malware-ioc / curl|sh shell-fetcher, with concat-collapse
+                    de-obfuscation). 18 tests.
+🟡 aegis-ast        tree-sitter AST scanner — JavaScript grammar (native, no CGO),
+                    queries/js.scm verbatim, capability + env-read + evidence.
+                    8 tests incl. the bare-regex-.exec exclusion.
+✅ aegis-cli (bin)  clap CLI, 3 commands (below).
+
+-------------------------------------------------------------------------------
+ WORKING COMMANDS  (all verified end-to-end)
+-------------------------------------------------------------------------------
+aegis parse <lockfile> [--json]
+    Parse one lockfile → dependencies.
+    Verified: real go.sum (62 deps), package-lock.json.
+
+aegis analyze <dir> [--name --ecosystem --json]
+    Walk source tree → AST (tree-sitter) + heuristics → Fingerprint →
+    risk_score → verdict.
+    Verified: real rest-client 1.6.13 rubygems compromise → BLOCK (score 110,
+    obfuscated-payload + suspicious-url). Synthetic evil npm pkg → BLOCK, 7 signals.
+
+aegis ci <lockfile> [--fail-on --offline --json]
+    Lockfile → OSV CVE lookup (LIVE network) → severity gate → exit code
+    (0 clean / 1 findings≥threshold / 2 error).
+    Verified LIVE vs api.osv.dev: lodash 4.17.4 → 10 real GHSA advisories with
+    correct severities + fix versions; --fail-on high/critical exit 1; offline exit 0.
+
+-------------------------------------------------------------------------------
+ COMMITS (branch port/domain-lockfile)
+-------------------------------------------------------------------------------
+  domain core + lockfile parsers (npm/cargo/go/python)
+  composer/nuget/cran/swift/gemfile/yarn parsers
+  maven/hex/pnpm/pubspec/cocoapods/cpan/hackage/bun parsers; optional regex+xml
+  http transport seam (aegis-net) + osv vuln client (aegis-vuln)
+  epss (first.org) + kev (cisa) advisory enrichment
+  registry adapters: license fetchers + deps.dev health
+  crash-safe on-disk cache (atomic write + ttl)
+  heuristics crate: hardcoded-secret + typosquat
+  source-pattern detector: obfuscated/suspicious-url/malware-ioc/shell-fetcher
+  tree-sitter AST scanner (js) — native grammar, no CGO
+  runnable aegis cli: parse command
+  analyze command: ast + heuristics + risk verdict end-to-end
+  ci command: lockfile → osv cve lookup → severity gate + exit code
+
+-------------------------------------------------------------------------------
+ REMAINING WORK
+-------------------------------------------------------------------------------
+Phase 4 (heuristics) — manifest/tarball-metadata detectors not yet ported:
+  install-hook manifest parsing, binary-dropper, tarball-drift, unlisted-payload,
+  optional-git-dep, vcs-dep, maintainer-hijack, go-retract. R/Perl obfuscation regex.
+
+Phase 5 (AST):
+  Other grammars (python/ruby/rust/go/java/php/csharp/… — each = copy .scm + add
+  grammar crate + feature, mechanical). The taint/constant-fold SECOND PASS
+  (js/taint.go — obfuscation across variable assignments) is a real algorithm port.
+
+Network wiring:
+  EPSS/KEV/deps.dev enrichment + DiskCache not yet wired into `ci`.
+  GHSA lookup (GitHub GraphQL + token), npm SLSA provenance/attestations,
+  per-ecosystem version resolvers (npm needs node-semver ranges, not Cargo semver).
+
+Highest-risk deferred item:
+  aegis-reach — reimplement qwexvf/depusage (Go-only, no Rust equivalent); gates
+  the symbol-level reachability suppression feature.
+
+Later commands / layers:
+  snapshot save/enrich, fix, sbom (CycloneDX/SPDX), actions scan, allowlist.
+  Then the xtask PARITY HARNESS: diff Rust vs Go `--json` over examples/incidents*/
+  — needs `--json` schemas aligned with Go first.
+
+Cutover: 100% corpus parity, reproduce cosign + SLSA release pipeline, flip default.
+===============================================================================
