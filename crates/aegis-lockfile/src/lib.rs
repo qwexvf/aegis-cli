@@ -17,12 +17,24 @@ mod common;
 
 #[cfg(feature = "cargo")]
 pub mod cargo;
+#[cfg(feature = "packagist")]
+pub mod composer;
+#[cfg(feature = "cran")]
+pub mod cran;
+#[cfg(feature = "rubygems")]
+pub mod gemfile;
 #[cfg(feature = "go")]
 pub mod go;
 #[cfg(feature = "npm")]
 pub mod npm;
+#[cfg(feature = "nuget")]
+pub mod nuget;
 #[cfg(feature = "pypi")]
 pub mod python;
+#[cfg(feature = "swift")]
+pub mod swift;
+#[cfg(feature = "npm")]
+pub mod yarn;
 
 /// A lockfile parse failure. Corrupt/unsupported input errors; an empty
 /// lockfile (zero deps) is a successful parse with an empty vec.
@@ -65,7 +77,10 @@ pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
     #[allow(unused_mut)]
     let mut v: Vec<Box<dyn LockfileParser>> = Vec::new();
     #[cfg(feature = "npm")]
-    v.push(Box::new(npm::PackageLockJson));
+    {
+        v.push(Box::new(npm::PackageLockJson));
+        v.push(Box::new(yarn::YarnLock));
+    }
     #[cfg(feature = "pypi")]
     {
         v.push(Box::new(python::PoetryLock));
@@ -77,6 +92,16 @@ pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
     v.push(Box::new(cargo::CargoLock));
     #[cfg(feature = "go")]
     v.push(Box::new(go::GoSum));
+    #[cfg(feature = "packagist")]
+    v.push(Box::new(composer::ComposerLock));
+    #[cfg(feature = "nuget")]
+    v.push(Box::new(nuget::PackagesLockJson));
+    #[cfg(feature = "cran")]
+    v.push(Box::new(cran::RenvLock));
+    #[cfg(feature = "swift")]
+    v.push(Box::new(swift::PackageResolved));
+    #[cfg(feature = "rubygems")]
+    v.push(Box::new(gemfile::GemfileLock));
     v
 }
 
