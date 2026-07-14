@@ -58,6 +58,12 @@ pub struct Advisory {
     pub fixed_in: String,
     /// specific vulnerable function names, when the feed reports them.
     pub affected_functions: Vec<String>,
+    /// EPSS exploit-probability (0–1); 0 = not scored. From FIRST.org.
+    pub epss: f64,
+    /// EPSS percentile rank among all CVEs (0–1); 0 when unscored.
+    pub epss_percentile: f64,
+    /// true when the CVE is in CISA's Known Exploited Vulnerabilities catalog.
+    pub in_kev: bool,
 }
 
 /// Typed (ecosystem, name, version) for batch vuln lookups. Mirrors

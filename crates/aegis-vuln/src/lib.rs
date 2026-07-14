@@ -4,6 +4,10 @@
 //! the CVSS scoring can be unit-tested without a network round-trip; the
 //! transport goes through the [`aegis_net::HttpClient`] seam.
 
+pub mod epss;
+pub mod kev;
 pub mod osv;
 
+pub use epss::EpssClient;
+pub use kev::KevCatalog;
 pub use osv::OsvClient;
