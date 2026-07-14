@@ -1,0 +1,26 @@
+[package]
+name = "aegis-registry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Package-registry adapters (license + deprecation health) for the aegis supply-chain scanner."
+
+[dependencies]
+aegis-domain = { path = "../aegis-domain" }
+aegis-net = { path = "../aegis-net", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Per-ecosystem license fetchers behind features, matching the lean-build
+# philosophy. `depsdev` (package-health / deprecation) is separate since it
+# covers several ecosystems through one API.
+[features]
+default = ["npm", "pypi", "crates", "rubygems", "nuget", "depsdev"]
+npm = []
+pypi = []
+crates = []
+rubygems = []
+nuget = []
+depsdev = []
