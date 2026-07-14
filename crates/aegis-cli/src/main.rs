@@ -18,7 +18,7 @@ use aegis_net::UreqClient;
 use aegis_vuln::{EpssClient, KevCatalog, OsvClient};
 use clap::{Parser, Subcommand};
 use rayon::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
 #[command(name = "aegis", version, about = "Supply-chain security scanner")]
@@ -47,6 +47,16 @@ enum Command {
         /// Skip the network CVE lookup (offline / air-gapped).
         #[arg(long)]
         offline: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run a config (aegis.toml) of scan tasks — independent tasks run
+    /// in parallel; each task's source scan also fans out across cores.
+    Run {
+        /// Path to the config file.
+        #[arg(default_value = "aegis.toml")]
+        config: String,
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -98,6 +108,7 @@ fn main() -> ExitCode {
             offline,
             json,
         } => run_ci(&file, &fail_on, offline, json),
+        Command::Run { config, json } => run_config(&config, json),
         Command::Analyze {
             dir,
             name,
@@ -152,6 +163,44 @@ struct CiView {
     findings: Vec<FindingView>,
 }
 
+/// OSV CVE lookup + EPSS/KEV enrichment for a set of queries. Shared by
+/// `ci` and the config runner. Uses the real network.
+fn cve_findings(queries: &[AdvisoryQuery]) -> Result<Vec<FindingView>, String> {
+    let client = UreqClient::new();
+    let results = OsvClient::default().lookup(&client, queries)?;
+
+    let mut advisories = Vec::new();
+    let mut context: Vec<(String, String, String)> = Vec::new();
+    for q in queries {
+        for adv in results.get(&q.key()).map(|v| v.as_slice()).unwrap_or(&[]) {
+            advisories.push(adv.clone());
+            context.push((
+                q.ecosystem.as_str().to_string(),
+                q.name.clone(),
+                q.version.clone(),
+            ));
+        }
+    }
+    advisories = EpssClient::default().enrich_advisories(&client, advisories);
+    advisories = KevCatalog::default().enrich_advisories(&client, advisories);
+
+    Ok(advisories
+        .into_iter()
+        .zip(context)
+        .map(|(adv, (eco, name, version))| FindingView {
+            ecosystem: eco,
+            name,
+            version,
+            advisory: adv.id,
+            severity: adv.severity.as_str().to_string(),
+            summary: adv.summary,
+            fixed_in: adv.fixed_in,
+            epss: adv.epss,
+            in_kev: adv.in_kev,
+        })
+        .collect())
+}
+
 fn run_ci(file: &str, fail_on: &str, offline: bool, json: bool) -> ExitCode {
     let Some(threshold) = parse_severity(fail_on) else {
         eprintln!("aegis: unknown --fail-on severity: {fail_on}");
@@ -193,45 +242,12 @@ fn run_ci(file: &str, fail_on: &str, offline: bool, json: bool) -> ExitCode {
 
     let mut findings: Vec<FindingView> = Vec::new();
     if !offline {
-        let client = UreqClient::new();
-        let results = match OsvClient::default().lookup(&client, &queries) {
-            Ok(r) => r,
+        match cve_findings(&queries) {
+            Ok(f) => findings = f,
             Err(e) => {
                 eprintln!("aegis: CVE lookup failed: {e}");
                 return ExitCode::from(2);
             }
-        };
-
-        // Flatten advisories, keeping each one's (eco, name, version) context.
-        let mut advisories = Vec::new();
-        let mut context: Vec<(String, String, String)> = Vec::new();
-        for q in &queries {
-            for adv in results.get(&q.key()).map(|v| v.as_slice()).unwrap_or(&[]) {
-                advisories.push(adv.clone());
-                context.push((
-                    q.ecosystem.as_str().to_string(),
-                    q.name.clone(),
-                    q.version.clone(),
-                ));
-            }
-        }
-
-        // Enrich: EPSS probability + CISA KEV flag (best-effort, order-preserving).
-        advisories = EpssClient::default().enrich_advisories(&client, advisories);
-        advisories = KevCatalog::default().enrich_advisories(&client, advisories);
-
-        for (adv, (eco, name, version)) in advisories.into_iter().zip(context) {
-            findings.push(FindingView {
-                ecosystem: eco,
-                name,
-                version,
-                advisory: adv.id,
-                severity: adv.severity.as_str().to_string(),
-                summary: adv.summary,
-                fixed_in: adv.fixed_in,
-                epss: adv.epss,
-                in_kev: adv.in_kev,
-            });
         }
     }
 
@@ -377,28 +393,207 @@ fn ext_has_scanner(
         .unwrap_or(false)
 }
 
-fn run_analyze(dir: &str, name: Option<&str>, ecosystem: &str, json: bool) -> ExitCode {
-    let root = Path::new(dir);
+// --- config-driven task runner -------------------------------------
+
+/// Parsed `aegis.toml`. Declares scan tasks; independent tasks fan out.
+#[derive(Deserialize)]
+struct AegisConfig {
+    /// "auto" (all cores, default) or a thread count.
+    #[serde(default)]
+    parallelism: Option<toml::Value>,
+    #[serde(default, rename = "task")]
+    tasks: Vec<TaskConfig>,
+}
+
+#[derive(Deserialize)]
+struct TaskConfig {
+    name: String,
+    path: String,
+    #[serde(default = "default_ecosystem")]
+    ecosystem: String,
+    /// which checks to run: "ast"/"heuristics" (source scan) and/or "cve".
+    #[serde(default)]
+    checks: Vec<String>,
+}
+
+fn default_ecosystem() -> String {
+    "npm".to_string()
+}
+
+#[derive(Serialize)]
+struct TaskResult {
+    name: String,
+    path: String,
+    /// source-scan verdict, when ast/heuristics ran.
+    verdict: Option<String>,
+    score: i32,
+    /// CVE findings count, when the cve check ran.
+    cve_findings: usize,
+    failed: bool,
+    error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct RunView {
+    failed: bool,
+    tasks: Vec<TaskResult>,
+}
+
+/// Run one task: collect its files once, then run the checks it declares.
+fn run_task(t: &TaskConfig) -> TaskResult {
+    let mut res = TaskResult {
+        name: t.name.clone(),
+        path: t.path.clone(),
+        verdict: None,
+        score: 0,
+        cve_findings: 0,
+        failed: false,
+        error: None,
+    };
+    let root = Path::new(&t.path);
     if !root.is_dir() {
-        eprintln!("aegis: not a directory: {dir}");
+        res.error = Some(format!("not a directory: {}", t.path));
+        res.failed = true;
+        return res;
+    }
+    let Some(eco) = parse_ecosystem(&t.ecosystem) else {
+        res.error = Some(format!("unknown ecosystem: {}", t.ecosystem));
+        res.failed = true;
+        return res;
+    };
+    let files = collect_files(root);
+    let want = |c: &str| t.checks.iter().any(|x| x == c);
+
+    // Source scan (ast + heuristics).
+    if want("ast") || want("heuristics") {
+        let (_caps, assessment) = scan_source(&files, &t.name, eco);
+        let v = verdict(&assessment, &RiskAssessment::default());
+        res.verdict = Some(v.name().to_string());
+        res.score = assessment.score;
+        if matches!(v, aegis_domain::VerdictKind::Block) {
+            res.failed = true;
+        }
+    }
+
+    // CVE lookup over any lockfiles found in the task path.
+    if want("cve") {
+        let mut queries: Vec<AdvisoryQuery> = Vec::new();
+        for (rel, bytes) in &files {
+            let base = rel.rsplit(['/', '\\']).next().unwrap_or(rel);
+            if let Ok(Some(deps)) = parse_file(base, bytes, &DirectMap::new()) {
+                for d in deps {
+                    if !d.version.is_empty() {
+                        queries.push(AdvisoryQuery {
+                            ecosystem: d.ecosystem,
+                            name: d.name,
+                            version: d.version,
+                        });
+                    }
+                }
+            }
+        }
+        if !queries.is_empty() {
+            match cve_findings(&queries) {
+                Ok(findings) => {
+                    res.cve_findings = findings.len();
+                    // Fail the task on any high/critical CVE.
+                    if findings.iter().any(|f| {
+                        parse_severity(&f.severity)
+                            .map(|s| severity_rank(s) >= severity_rank(Severity::High))
+                            .unwrap_or(false)
+                    }) {
+                        res.failed = true;
+                    }
+                }
+                Err(e) => {
+                    res.error = Some(format!("cve lookup: {e}"));
+                }
+            }
+        }
+    }
+
+    res
+}
+
+fn run_config(config_path: &str, json: bool) -> ExitCode {
+    let text = match std::fs::read_to_string(config_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("aegis: cannot read {config_path}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let config: AegisConfig = match toml::from_str(&text) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("aegis: invalid config {config_path}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    if config.tasks.is_empty() {
+        eprintln!("aegis: no [[task]] entries in {config_path}");
         return ExitCode::from(2);
     }
-    let Some(eco) = parse_ecosystem(ecosystem) else {
-        eprintln!("aegis: unknown ecosystem: {ecosystem}");
-        return ExitCode::from(2);
-    };
-    let pkg_name = name
-        .map(String::from)
-        .or_else(|| root.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .unwrap_or_default();
 
-    let files = collect_files(root);
+    // Optional explicit thread count; default = rayon's all-cores pool.
+    if let Some(toml::Value::Integer(n)) = config.parallelism {
+        if n > 0 {
+            let _ = rayon::ThreadPoolBuilder::new()
+                .num_threads(n as usize)
+                .build_global();
+        }
+    }
 
-    // AST pass over source files — PARALLEL across all cores (rayon).
-    // Compile one scanner per distinct extension present, share it read-only
-    // across threads, scan every file concurrently, then merge results.
+    // Independent tasks run in PARALLEL (each task's source scan also fans out).
+    let results: Vec<TaskResult> = config.tasks.par_iter().map(run_task).collect();
+    let failed = results.iter().any(|r| r.failed);
+
+    if json {
+        let view = RunView {
+            failed,
+            tasks: results,
+        };
+        match serde_json::to_string_pretty(&view) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("aegis: json encode failed: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        for r in &results {
+            let status = if r.failed { "FAIL" } else { "ok" };
+            let verdict = r.verdict.as_deref().unwrap_or("-");
+            print!(
+                "[{status}] {} ({}) — verdict={verdict} score={} cve={}",
+                r.name, r.path, r.score, r.cve_findings
+            );
+            match &r.error {
+                Some(e) => println!("  error: {e}"),
+                None => println!(),
+            }
+        }
+        println!("overall: {}", if failed { "FAIL" } else { "pass" });
+    }
+
+    if failed {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// Scan a package's source files (AST — PARALLEL across cores — + heuristics)
+/// and return the risk assessment. Shared by `analyze` and the config runner.
+fn scan_source(
+    files: &[(String, Vec<u8>)],
+    pkg_name: &str,
+    eco: Ecosystem,
+) -> (CapabilitySet, RiskAssessment) {
+    // Compile one scanner per distinct extension once; share it read-only
+    // across the rayon pool; scan every file concurrently; merge.
     let mut scanners: HashMap<String, Option<Arc<dyn LanguageScanner>>> = HashMap::new();
-    for (rel, _) in &files {
+    for (rel, _) in files {
         if let Some(ext) = rel.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()) {
             scanners
                 .entry(ext)
@@ -421,24 +616,19 @@ fn run_analyze(dir: &str, name: Option<&str>, ecosystem: &str, json: bool) -> Ex
             }
             f
         })
-        .reduce(
-            || Findings::new(false),
-            |mut a, b| {
-                a.merge(b);
-                a
-            },
-        );
+        .reduce(Findings::default, |mut a, b| {
+            a.merge(b);
+            a
+        });
 
-    // Heuristics pass over the whole file set.
-    let mut normalized = NormalizedPackage::new(&pkg_name, eco);
-    for (rel, bytes) in &files {
+    // Heuristics over the whole file set.
+    let mut normalized = NormalizedPackage::new(pkg_name, eco);
+    for (rel, bytes) in files {
         normalized = normalized.with_file(rel.clone(), bytes.clone());
     }
-    let heuristic_caps = run_heuristics(&normalized);
-
-    // Combine capabilities → fingerprint → risk verdict.
     let mut caps = findings.capabilities();
-    caps.extend(heuristic_caps);
+    caps.extend(run_heuristics(&normalized));
+
     let fp = Fingerprint {
         analyzed: true,
         capabilities: CapabilitySet::new(caps),
@@ -447,17 +637,33 @@ fn run_analyze(dir: &str, name: Option<&str>, ecosystem: &str, json: bool) -> Ex
         ..Default::default()
     };
     let assessment = risk_score(Some(&fp));
+    (fp.capabilities, assessment)
+}
+
+fn run_analyze(dir: &str, name: Option<&str>, ecosystem: &str, json: bool) -> ExitCode {
+    let root = Path::new(dir);
+    if !root.is_dir() {
+        eprintln!("aegis: not a directory: {dir}");
+        return ExitCode::from(2);
+    }
+    let Some(eco) = parse_ecosystem(ecosystem) else {
+        eprintln!("aegis: unknown ecosystem: {ecosystem}");
+        return ExitCode::from(2);
+    };
+    let pkg_name = name
+        .map(String::from)
+        .or_else(|| root.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_default();
+
+    let files = collect_files(root);
+    let (caps, assessment) = scan_source(&files, &pkg_name, eco);
     let v = verdict(&assessment, &RiskAssessment::default());
 
     if json {
         let view = AnalysisView {
             verdict: v.name().to_string(),
             score: assessment.score,
-            capabilities: fp
-                .capabilities
-                .iter()
-                .map(|c| c.name().to_string())
-                .collect(),
+            capabilities: caps.iter().map(|c| c.name().to_string()).collect(),
             flags: assessment
                 .flags
                 .iter()
