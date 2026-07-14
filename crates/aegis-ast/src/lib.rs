@@ -21,6 +21,8 @@ pub mod go;
 pub mod haskell;
 #[cfg(feature = "js")]
 pub mod js;
+#[cfg(feature = "js")]
+mod js_taint;
 #[cfg(feature = "lua")]
 pub mod lua;
 #[cfg(feature = "php")]

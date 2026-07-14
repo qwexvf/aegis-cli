@@ -10,6 +10,11 @@ use tree_sitter::{Language, Parser, Query, QueryCursor};
 
 use crate::{Findings, LanguageScanner};
 
+/// An optional second pass run on the same parse tree after the query
+/// pass (e.g. the JS constant-fold/taint analysis, which tree-sitter
+/// queries alone can't express).
+pub type PostPass = for<'a> fn(tree_sitter::Node<'a>, &[u8], &str, &mut Findings);
+
 /// A compiled grammar + query. Cheap to share; the heavy compile is
 /// one-time. Mirrors the common `Scanner` shape.
 pub struct GrammarScanner {
@@ -19,12 +24,23 @@ pub struct GrammarScanner {
     capture_to_cap: Vec<Option<Capability>>,
     /// capture index of `@env_var`, if present.
     env_read_idx: Option<u32>,
+    /// optional language-specific second pass over the same tree.
+    post_pass: Option<PostPass>,
 }
 
 impl GrammarScanner {
     /// Compile `query_src` against `language`. Errors on a malformed
     /// query (a developer bug — the query is embedded at build time).
     pub fn new(language: Language, query_src: &str) -> Result<Self, String> {
+        Self::with_post_pass(language, query_src, None)
+    }
+
+    /// Like [`new`](Self::new) but attaches a second pass over the tree.
+    pub fn with_post_pass(
+        language: Language,
+        query_src: &str,
+        post_pass: Option<PostPass>,
+    ) -> Result<Self, String> {
         let query = Query::new(&language, query_src).map_err(|e| format!("query: {e}"))?;
         let names = query.capture_names();
         let mut capture_to_cap = vec![None; names.len()];
@@ -41,6 +57,7 @@ impl GrammarScanner {
             query,
             capture_to_cap,
             env_read_idx,
+            post_pass,
         })
     }
 }
@@ -73,6 +90,11 @@ impl LanguageScanner for GrammarScanner {
                     }
                 }
             }
+        }
+
+        // Optional language-specific second pass over the same tree.
+        if let Some(pp) = self.post_pass {
+            pp(tree.root_node(), body, path, findings);
         }
     }
 }
