@@ -19,10 +19,15 @@ serde_json = "1"
 # registry framework + JSON-shaped parsers), so it's a hard dependency
 # rather than a per-feature optional one.
 [features]
-default = ["npm", "pypi", "cargo", "go"]
+default = ["npm", "pypi", "cargo", "go", "packagist", "nuget", "cran", "swift", "rubygems"]
 npm = []
 pypi = []
 cargo = []
 go = []
+packagist = []
+nuget = []
+cran = []
+swift = []
+rubygems = []
 
 [dev-dependencies]
