@@ -11,6 +11,10 @@ description = "Lockfile parsers for the aegis supply-chain scanner — one per e
 aegis-domain = { path = "../aegis-domain" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Optional — pulled in only when an ecosystem that needs it is enabled,
+# so a lean build (e.g. npm-only) never compiles regex or an XML parser.
+regex = { version = "1", optional = true }
+quick-xml = { version = "0.36", features = ["serialize"], optional = true }
 
 # Each ecosystem parser is behind its own feature so downstream builds
 # can compile a lean binary with only the languages they use, e.g.
@@ -19,7 +23,10 @@ serde_json = "1"
 # registry framework + JSON-shaped parsers), so it's a hard dependency
 # rather than a per-feature optional one.
 [features]
-default = ["npm", "pypi", "cargo", "go", "packagist", "nuget", "cran", "swift", "rubygems"]
+default = [
+    "npm", "pypi", "cargo", "go", "packagist", "nuget", "cran", "swift",
+    "rubygems", "maven", "hex", "pub", "cocoapods", "cpan", "hackage",
+]
 npm = []
 pypi = []
 cargo = []
@@ -29,5 +36,11 @@ nuget = []
 cran = []
 swift = []
 rubygems = []
+maven = ["dep:quick-xml"]
+hex = ["dep:regex"]
+pub = []
+cocoapods = ["dep:regex"]
+cpan = ["dep:regex"]
+hackage = ["dep:regex"]
 
 [dev-dependencies]
