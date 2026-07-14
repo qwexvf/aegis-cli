@@ -9,15 +9,37 @@
 
 use aegis_domain::Capability;
 
-#[cfg(any(feature = "js", feature = "py"))]
+#[cfg(any(
+    feature = "js",
+    feature = "py",
+    feature = "ruby",
+    feature = "rust",
+    feature = "go",
+    feature = "php"
+))]
 mod scanner;
-#[cfg(any(feature = "js", feature = "py"))]
+#[cfg(any(
+    feature = "js",
+    feature = "py",
+    feature = "ruby",
+    feature = "rust",
+    feature = "go",
+    feature = "php"
+))]
 pub use scanner::GrammarScanner;
 
+#[cfg(feature = "go")]
+pub mod go;
 #[cfg(feature = "js")]
 pub mod js;
+#[cfg(feature = "php")]
+pub mod php;
 #[cfg(feature = "py")]
 pub mod py;
+#[cfg(feature = "ruby")]
+pub mod ruby;
+#[cfg(feature = "rust")]
+pub mod rust;
 
 /// One evidence record: where a capability was observed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,6 +129,22 @@ pub fn scanner_for(filename: &str) -> Option<Box<dyn LanguageScanner>> {
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         #[cfg(feature = "py")]
         "py" | "pyi" | "pyx" => py::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "ruby")]
+        "rb" | "gemspec" => ruby::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "rust")]
+        "rs" => rust::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "go")]
+        "go" => go::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "php")]
+        "php" | "phtml" => php::scanner()
             .ok()
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         _ => None,
