@@ -13,7 +13,7 @@ use aegis_domain::{
 use aegis_heuristics::{run_heuristics, NormalizedPackage};
 use aegis_lockfile::{parse_file, DirectMap};
 use aegis_net::UreqClient;
-use aegis_vuln::OsvClient;
+use aegis_vuln::{EpssClient, KevCatalog, OsvClient};
 use clap::{Parser, Subcommand};
 use serde::Serialize;
 
@@ -136,6 +136,10 @@ struct FindingView {
     severity: String,
     summary: String,
     fixed_in: String,
+    /// EPSS exploit probability (0–1); 0 = unscored.
+    epss: f64,
+    /// true when the CVE is in CISA's Known Exploited Vulnerabilities catalog.
+    in_kev: bool,
 }
 
 #[derive(Serialize)]
@@ -187,26 +191,44 @@ fn run_ci(file: &str, fail_on: &str, offline: bool, json: bool) -> ExitCode {
     let mut findings: Vec<FindingView> = Vec::new();
     if !offline {
         let client = UreqClient::new();
-        match OsvClient::default().lookup(&client, &queries) {
-            Ok(results) => {
-                for q in &queries {
-                    for adv in results.get(&q.key()).map(|v| v.as_slice()).unwrap_or(&[]) {
-                        findings.push(FindingView {
-                            ecosystem: q.ecosystem.as_str().to_string(),
-                            name: q.name.clone(),
-                            version: q.version.clone(),
-                            advisory: adv.id.clone(),
-                            severity: adv.severity.as_str().to_string(),
-                            summary: adv.summary.clone(),
-                            fixed_in: adv.fixed_in.clone(),
-                        });
-                    }
-                }
-            }
+        let results = match OsvClient::default().lookup(&client, &queries) {
+            Ok(r) => r,
             Err(e) => {
                 eprintln!("aegis: CVE lookup failed: {e}");
                 return ExitCode::from(2);
             }
+        };
+
+        // Flatten advisories, keeping each one's (eco, name, version) context.
+        let mut advisories = Vec::new();
+        let mut context: Vec<(String, String, String)> = Vec::new();
+        for q in &queries {
+            for adv in results.get(&q.key()).map(|v| v.as_slice()).unwrap_or(&[]) {
+                advisories.push(adv.clone());
+                context.push((
+                    q.ecosystem.as_str().to_string(),
+                    q.name.clone(),
+                    q.version.clone(),
+                ));
+            }
+        }
+
+        // Enrich: EPSS probability + CISA KEV flag (best-effort, order-preserving).
+        advisories = EpssClient::default().enrich_advisories(&client, advisories);
+        advisories = KevCatalog::default().enrich_advisories(&client, advisories);
+
+        for (adv, (eco, name, version)) in advisories.into_iter().zip(context) {
+            findings.push(FindingView {
+                ecosystem: eco,
+                name,
+                version,
+                advisory: adv.id,
+                severity: adv.severity.as_str().to_string(),
+                summary: adv.summary,
+                fixed_in: adv.fixed_in,
+                epss: adv.epss,
+                in_kev: adv.in_kev,
+            });
         }
     }
 
@@ -241,19 +263,20 @@ fn run_ci(file: &str, fail_on: &str, offline: bool, json: bool) -> ExitCode {
             );
         }
         for f in &findings {
+            let kev = if f.in_kev { " [KEV]" } else { "" };
+            let epss = if f.epss > 0.0 {
+                format!(" epss={:.0}%", f.epss * 100.0)
+            } else {
+                String::new()
+            };
+            let fixed = if f.fixed_in.is_empty() {
+                String::new()
+            } else {
+                format!(" → fixed in {}", f.fixed_in)
+            };
             println!(
-                "  [{}] {}/{}@{} — {} ({}){}",
-                f.severity,
-                f.ecosystem,
-                f.name,
-                f.version,
-                f.advisory,
-                f.summary,
-                if f.fixed_in.is_empty() {
-                    String::new()
-                } else {
-                    format!(" → fixed in {}", f.fixed_in)
-                }
+                "  [{}]{kev}{epss} {}/{}@{} — {} ({}){fixed}",
+                f.severity, f.ecosystem, f.name, f.version, f.advisory, f.summary
             );
         }
         println!("verdict: {}", if failed { "FAIL" } else { "pass" });
