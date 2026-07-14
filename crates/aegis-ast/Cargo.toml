@@ -15,7 +15,9 @@ streaming-iterator = "0.1"
 # grammars are large, so this is the biggest binary-size lever. Native
 # Rust crates: no C toolchain / CGO required (the whole point of Phase 5).
 tree-sitter-javascript = { version = "0.23", optional = true }
+tree-sitter-python = { version = "0.23", optional = true }
 
 [features]
-default = ["js"]
+default = ["js", "py"]
 js = ["dep:tree-sitter-javascript"]
+py = ["dep:tree-sitter-python"]
