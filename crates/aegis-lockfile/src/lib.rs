@@ -15,20 +15,36 @@ use aegis_domain::{Dependency, Ecosystem};
 
 mod common;
 
+#[cfg(feature = "npm")]
+pub mod bun;
 #[cfg(feature = "cargo")]
 pub mod cargo;
+#[cfg(feature = "cocoapods")]
+pub mod cocoapods;
 #[cfg(feature = "packagist")]
 pub mod composer;
+#[cfg(feature = "cpan")]
+pub mod cpan;
 #[cfg(feature = "cran")]
 pub mod cran;
 #[cfg(feature = "rubygems")]
 pub mod gemfile;
 #[cfg(feature = "go")]
 pub mod go;
+#[cfg(feature = "hackage")]
+pub mod hackage;
+#[cfg(feature = "hex")]
+pub mod hex;
+#[cfg(feature = "maven")]
+pub mod maven;
 #[cfg(feature = "npm")]
 pub mod npm;
 #[cfg(feature = "nuget")]
 pub mod nuget;
+#[cfg(feature = "npm")]
+pub mod pnpm;
+#[cfg(feature = "pub")]
+pub mod pubspec;
 #[cfg(feature = "pypi")]
 pub mod python;
 #[cfg(feature = "swift")]
@@ -80,6 +96,8 @@ pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
     {
         v.push(Box::new(npm::PackageLockJson));
         v.push(Box::new(yarn::YarnLock));
+        v.push(Box::new(pnpm::PnpmLock));
+        v.push(Box::new(bun::BunLock));
     }
     #[cfg(feature = "pypi")]
     {
@@ -102,6 +120,27 @@ pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
     v.push(Box::new(swift::PackageResolved));
     #[cfg(feature = "rubygems")]
     v.push(Box::new(gemfile::GemfileLock));
+    #[cfg(feature = "maven")]
+    {
+        v.push(Box::new(maven::PomXml));
+        v.push(Box::new(maven::GradleLockfile));
+    }
+    #[cfg(feature = "hex")]
+    {
+        v.push(Box::new(hex::GleamManifest));
+        v.push(Box::new(hex::MixLock));
+    }
+    #[cfg(feature = "pub")]
+    v.push(Box::new(pubspec::PubspecLock));
+    #[cfg(feature = "cocoapods")]
+    v.push(Box::new(cocoapods::PodfileLock));
+    #[cfg(feature = "cpan")]
+    v.push(Box::new(cpan::CpanfileSnapshot));
+    #[cfg(feature = "hackage")]
+    {
+        v.push(Box::new(hackage::CabalFreeze));
+        v.push(Box::new(hackage::StackYamlLock));
+    }
     v
 }
 
