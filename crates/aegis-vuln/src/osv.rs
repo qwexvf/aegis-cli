@@ -271,6 +271,7 @@ pub fn parse_osv_vuln(raw: &[u8]) -> Result<Advisory, String> {
         aliases: doc.aliases,
         summary,
         id: doc.id,
+        ..Default::default()
     })
 }
 
