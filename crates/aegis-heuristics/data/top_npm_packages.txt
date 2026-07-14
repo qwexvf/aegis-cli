@@ -1,0 +1,367 @@
+# Top npm packages by weekly downloads. Curated, not exhaustive —
+# the goal is "names attackers typosquat", not "every popular
+# package". Comments and blank lines are ignored.
+#
+# Format: one bare package name per line (no scope prefix). Scoped
+# packages aren't typosquat targets at the registry level (the
+# attacker would need control of the @scope).
+
+# Build / bundling
+webpack
+rollup
+vite
+esbuild
+parcel
+gulp
+grunt
+turbopack
+swc
+tsup
+rspack
+
+# Transpilers / type systems
+typescript
+babel
+eslint
+prettier
+biome
+postcss
+autoprefixer
+
+# React ecosystem
+react
+react-dom
+react-router
+react-router-dom
+react-redux
+redux
+recoil
+zustand
+formik
+react-hook-form
+react-query
+swr
+tanstack
+
+# Vue / Angular / Svelte
+vue
+vuex
+pinia
+nuxt
+angular
+svelte
+sveltekit
+solid-js
+
+# Server / framework
+express
+koa
+fastify
+hapi
+nestjs
+next
+remix
+astro
+gatsby
+
+# HTTP / networking
+axios
+node-fetch
+got
+superagent
+ws
+socket.io
+graphql
+apollo
+urql
+ky
+
+# Database / ORM
+mongoose
+sequelize
+typeorm
+prisma
+knex
+mysql
+mysql2
+pg
+redis
+ioredis
+mongodb
+
+# Testing
+jest
+mocha
+chai
+sinon
+vitest
+cypress
+playwright
+puppeteer
+testcafe
+karma
+jasmine
+ava
+
+# CLI / process
+commander
+yargs
+inquirer
+chalk
+colors
+kleur
+ora
+boxen
+listr
+nanoid
+uuid
+ms
+
+# Date / utility
+moment
+dayjs
+date-fns
+luxon
+lodash
+underscore
+ramda
+immer
+immutable
+classnames
+clsx
+
+# Crypto / auth
+jsonwebtoken
+bcrypt
+bcryptjs
+crypto-js
+argon2
+passport
+
+# Stream / file
+fs-extra
+glob
+chokidar
+rimraf
+mkdirp
+tar
+unzipper
+adm-zip
+multer
+
+# Validation
+joi
+zod
+yup
+ajv
+class-validator
+
+# Markdown / templating
+ejs
+pug
+handlebars
+mustache
+marked
+remark
+showdown
+
+# Lint / dev
+husky
+lint-staged
+nodemon
+ts-node
+tsx
+concurrently
+cross-env
+dotenv
+debug
+winston
+pino
+bunyan
+
+# AWS / cloud SDKs (most-typoed of the SDKs)
+aws-sdk
+azure
+firebase
+stripe
+twilio
+
+# Linting plugins (frequently squatted)
+eslint-config-airbnb
+eslint-plugin-react
+eslint-plugin-import
+
+# Test fixtures / mocks
+faker
+nock
+msw
+
+# Image / pdf
+sharp
+jimp
+pdfkit
+canvas
+
+# --- v0.5 expansion: more typosquat targets ---
+# Frequently-typoed names from observed npm squat campaigns
+# (cross / cross-spawn / cross-fetch all popular squat bases)
+
+# Cross-platform helpers (high squat volume)
+cross-spawn
+cross-fetch
+cross-env-shell
+isexe
+which
+shebang-command
+shebang-regex
+escape-string-regexp
+
+# Node built-in shims / polyfills (heavy squat targets)
+util
+events
+buffer
+stream
+path-browserify
+crypto-browserify
+url
+querystring
+http-browserify
+https-browserify
+process
+
+# Date/time
+chrono-node
+date-formatter
+timezone-js
+
+# Network / HTTP wrappers
+request
+request-promise
+needle
+phin
+follow-redirects
+form-data
+multer-s3
+http-proxy
+http-proxy-agent
+https-proxy-agent
+socks-proxy-agent
+proxy-agent
+agent-base
+tunnel
+tunnel-agent
+
+# Image / file processing
+image-size
+file-type
+mime
+mime-types
+mime-db
+mkdirp-promise
+graceful-fs
+write-file-atomic
+proper-lockfile
+
+# Async / promise utilities
+async
+asyncro
+p-limit
+p-queue
+p-map
+p-throttle
+p-retry
+p-timeout
+p-all
+p-event
+delay
+sleep-promise
+
+# String / object utilities
+deepmerge
+merge-deep
+clone-deep
+deep-equal
+fast-deep-equal
+fast-equals
+object-assign
+object-keys
+extend
+assign-deep
+defaults
+defaults-deep
+
+# Text manipulation
+strip-ansi
+ansi-styles
+ansi-regex
+ansi-escapes
+strip-bom
+strip-eof
+strip-final-newline
+camelcase
+decamelize
+kebab-case
+snake-case
+pascalcase
+title-case
+sentence-case
+
+# Numeric / math
+big.js
+big-integer
+bignumber.js
+decimal.js
+lodash.set
+lodash.get
+lodash.merge
+lodash.isequal
+lodash.clonedeep
+
+# Misc super-popular
+yallist
+inherits
+util-deprecate
+once
+wrappy
+end-of-stream
+pump
+pumpify
+duplexify
+through
+through2
+readable-stream
+isarray
+inflight
+ms
+mute-stream
+string-width
+strip-bom-buf
+binary-extensions
+is-binary-path
+is-glob
+is-extglob
+micromatch
+minimatch
+braces
+fill-range
+to-regex-range
+picomatch
+anymatch
+
+# Color / TTY
+color
+color-name
+color-string
+color-convert
+supports-color
+has-flag
+ansicolors
+
+# CLI argument
+minimist
+mri
+arg
+optimist
+nopt
+cliui
+wrap-ansi

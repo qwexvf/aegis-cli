@@ -1,0 +1,128 @@
+# Top crates.io packages — curated for typosquat detection.
+#
+# Names are the canonical crate name as it appears in Cargo.toml
+# `[dependencies]` (with underscores, where applicable — Cargo
+# treats `rust_decimal` and `rust-decimal` differently, only the
+# former is the canonical name on the registry).
+#
+# Source: top crates.io download stats at compile time, with
+# cherry-picks for known typosquat targets (rust_decimal,
+# bigdecimal — the 2022 rustdecimal incident squatted the
+# underscored form).
+
+# Serialization
+serde
+serde_json
+serde_derive
+serde_yaml
+serde_with
+bincode
+toml
+
+# Async runtimes / executors
+tokio
+async-std
+futures
+async-trait
+smol
+mio
+
+# Error handling
+anyhow
+thiserror
+eyre
+color-eyre
+
+# CLI
+clap
+structopt
+indicatif
+dialoguer
+console
+termcolor
+
+# Logging / tracing
+log
+env_logger
+tracing
+tracing-subscriber
+slog
+fern
+
+# HTTP client
+reqwest
+hyper
+http
+url
+ureq
+
+# HTTP server / web
+actix-web
+axum
+warp
+rocket
+tower
+tower-http
+
+# Database
+sqlx
+diesel
+rusqlite
+mongodb
+redis
+
+# Numbers
+rust_decimal
+bigdecimal
+num
+num-bigint
+num-traits
+rand
+
+# Strings / parsing
+regex
+nom
+pest
+lalrpop
+unicode-segmentation
+unicode-normalization
+
+# Data structures / utils
+itertools
+once_cell
+lazy_static
+parking_lot
+crossbeam
+dashmap
+indexmap
+smallvec
+bytes
+
+# Filesystem / time
+chrono
+time
+walkdir
+tempfile
+glob
+fs_extra
+
+# Crypto
+ring
+sha2
+md-5
+hmac
+ed25519-dalek
+rsa
+
+# Compression
+flate2
+zstd
+brotli
+
+# Misc
+uuid
+base64
+hex
+syn
+quote
+proc-macro2

@@ -13,6 +13,14 @@ name = "aegis-domain"
 version = "0.1.0"
 
 [[package]]
+name = "aegis-heuristics"
+version = "0.1.0"
+dependencies = [
+ "aegis-domain",
+ "regex",
+]
+
+[[package]]
 name = "aegis-lockfile"
 version = "0.1.0"
 dependencies = [

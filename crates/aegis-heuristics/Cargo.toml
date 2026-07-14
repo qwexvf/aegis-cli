@@ -1,0 +1,19 @@
+[package]
+name = "aegis-heuristics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Behavioral supply-chain heuristics (hardcoded secrets, typosquats, …) for the aegis scanner."
+
+[dependencies]
+aegis-domain = { path = "../aegis-domain" }
+# regex is needed by the secret-pattern detector; optional so a
+# typosquat-only build stays lean.
+regex = { version = "1", optional = true }
+
+[features]
+default = ["secrets", "typosquat"]
+secrets = ["dep:regex"]
+typosquat = []

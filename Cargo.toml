@@ -6,6 +6,7 @@ members = [
     "crates/aegis-net",
     "crates/aegis-vuln",
     "crates/aegis-registry",
+    "crates/aegis-heuristics",
 ]
 
 [workspace.package]
