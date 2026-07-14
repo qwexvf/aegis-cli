@@ -9,8 +9,15 @@
 
 use aegis_domain::Capability;
 
+#[cfg(any(feature = "js", feature = "py"))]
+mod scanner;
+#[cfg(any(feature = "js", feature = "py"))]
+pub use scanner::GrammarScanner;
+
 #[cfg(feature = "js")]
 pub mod js;
+#[cfg(feature = "py")]
+pub mod py;
 
 /// One evidence record: where a capability was observed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,7 +102,11 @@ pub fn scanner_for(filename: &str) -> Option<Box<dyn LanguageScanner>> {
         .map(|(_, e)| e.to_ascii_lowercase())?;
     match ext.as_str() {
         #[cfg(feature = "js")]
-        "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "cts" | "mts" => js::JsScanner::new()
+        "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "cts" | "mts" => js::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "py")]
+        "py" | "pyi" | "pyx" => py::scanner()
             .ok()
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         _ => None,
