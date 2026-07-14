@@ -10,6 +10,9 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+pub mod cache;
+pub use cache::{atomic_write, DiskCache};
+
 /// A completed HTTP response: status code + raw body bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpResponse {
