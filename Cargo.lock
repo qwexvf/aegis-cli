@@ -22,7 +22,9 @@ dependencies = [
 name = "aegis-cli"
 version = "0.1.0"
 dependencies = [
+ "aegis-ast",
  "aegis-domain",
+ "aegis-heuristics",
  "aegis-lockfile",
  "clap",
  "serde",
