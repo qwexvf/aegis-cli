@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/aegis-domain",
+    "crates/aegis-lockfile",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "Apache-2.0"
+repository = "https://github.com/qwexvf/aegis-cli"
+
+# Clean-room Rust port of aegis-cli (Go). Crates are added to `members`
+# as each hexagonal layer lands — see the migration plan. Only the
+# dependency-free `aegis-domain` core is wired up first (Phase 1).

@@ -1,0 +1,13 @@
+[package]
+name = "aegis-domain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure domain core (risk scoring, capabilities, verdicts) for the aegis supply-chain scanner."
+
+# Deliberately dependency-free, mirroring the Go internal/domain package
+# which reimplements stdlib helpers to stay decoupled. No serde/semver
+# here yet — those arrive with the layers that need them.
+[dependencies]
