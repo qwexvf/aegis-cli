@@ -3,7 +3,7 @@
 //! checks (ast/heuristics) — no OSV lookup — so they're deterministic
 //! and run offline in CI.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -21,7 +21,7 @@ fn tmp(tag: &str) -> PathBuf {
     d
 }
 
-fn write(dir: &PathBuf, name: &str, body: &str) {
+fn write(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
 }
 
