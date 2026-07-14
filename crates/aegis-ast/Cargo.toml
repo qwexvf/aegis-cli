@@ -1,0 +1,21 @@
+[package]
+name = "aegis-ast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "AST capability scanner (tree-sitter, native — no CGO) for the aegis supply-chain scanner."
+
+[dependencies]
+aegis-domain = { path = "../aegis-domain" }
+tree-sitter = "0.24"
+streaming-iterator = "0.1"
+# Each grammar is an optional dependency behind a per-language feature —
+# grammars are large, so this is the biggest binary-size lever. Native
+# Rust crates: no C toolchain / CGO required (the whole point of Phase 5).
+tree-sitter-javascript = { version = "0.23", optional = true }
+
+[features]
+default = ["js"]
+js = ["dep:tree-sitter-javascript"]
