@@ -9,29 +9,20 @@
 
 use aegis_domain::Capability;
 
-#[cfg(any(
-    feature = "js",
-    feature = "py",
-    feature = "ruby",
-    feature = "rust",
-    feature = "go",
-    feature = "php"
-))]
+// tree-sitter is a hard dependency, so the generic scanner always compiles.
 mod scanner;
-#[cfg(any(
-    feature = "js",
-    feature = "py",
-    feature = "ruby",
-    feature = "rust",
-    feature = "go",
-    feature = "php"
-))]
 pub use scanner::GrammarScanner;
 
+#[cfg(feature = "csharp")]
+pub mod csharp;
 #[cfg(feature = "go")]
 pub mod go;
+#[cfg(feature = "haskell")]
+pub mod haskell;
 #[cfg(feature = "js")]
 pub mod js;
+#[cfg(feature = "lua")]
+pub mod lua;
 #[cfg(feature = "php")]
 pub mod php;
 #[cfg(feature = "py")]
@@ -145,6 +136,18 @@ pub fn scanner_for(filename: &str) -> Option<Box<dyn LanguageScanner>> {
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         #[cfg(feature = "php")]
         "php" | "phtml" => php::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "csharp")]
+        "cs" | "csx" => csharp::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "haskell")]
+        "hs" | "lhs" => haskell::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "lua")]
+        "lua" => lua::scanner()
             .ok()
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         _ => None,
