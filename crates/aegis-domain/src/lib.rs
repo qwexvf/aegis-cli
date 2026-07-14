@@ -5,10 +5,12 @@
 //! No I/O, no external crates: the scoring is a pure function of its
 //! inputs, exactly like the Go original.
 
+pub mod advisory;
 pub mod capability;
 pub mod risk;
 pub mod types;
 
+pub use advisory::{max_severity, Advisory, AdvisoryQuery, Severity};
 pub use capability::{Capability, CapabilitySet, ALL_CAPABILITIES};
 pub use risk::{
     drift_score, patch_version_drift_flag, provenance_risk_flag, risk_score, verdict,

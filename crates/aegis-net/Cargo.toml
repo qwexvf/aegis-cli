@@ -1,0 +1,17 @@
+[package]
+name = "aegis-net"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HTTP transport abstraction for aegis — a blocking HttpClient trait with a ureq backend and an in-memory mock."
+
+[dependencies]
+# Blocking, pure-Rust HTTP — fits a CLI (no async runtime, small binary).
+# Optional so a build can swap the transport or drop it entirely.
+ureq = { version = "2", optional = true }
+
+[features]
+default = ["ureq-backend"]
+ureq-backend = ["dep:ureq"]
