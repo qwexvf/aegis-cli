@@ -15,9 +15,11 @@ regex = { version = "1", optional = true }
 # serde_json parses package manifests for the metadata detectors (vcs-dep);
 # optional so a source-scan-only build stays lean.
 serde_json = { version = "1", optional = true }
+# semver compares go.mod retract ranges against the installed version.
+semver = { version = "1", optional = true }
 
 [features]
-default = ["secrets", "typosquat", "source-patterns", "binary-dropper", "vcs-dep", "install-hook", "unlisted-payload"]
+default = ["secrets", "typosquat", "source-patterns", "binary-dropper", "vcs-dep", "install-hook", "unlisted-payload", "go-retract"]
 binary-dropper = []
 secrets = ["dep:regex"]
 typosquat = []
@@ -25,3 +27,4 @@ source-patterns = ["dep:regex"]
 vcs-dep = ["dep:serde_json"]
 install-hook = ["dep:regex", "dep:serde_json"]
 unlisted-payload = ["dep:serde_json"]
+go-retract = ["dep:regex", "dep:semver"]

@@ -13,6 +13,8 @@ use aegis_domain::{Capability, Ecosystem};
 pub mod binary_dropper;
 #[cfg(feature = "vcs-dep")]
 pub mod deps;
+#[cfg(feature = "go-retract")]
+pub mod go_retract;
 #[cfg(feature = "install-hook")]
 pub mod install_hook;
 #[cfg(any(
@@ -58,6 +60,15 @@ pub struct Dep {
     pub groups: Vec<String>,
 }
 
+/// An inclusive `[low, high]` version range from a go.mod `retract` directive.
+#[derive(Debug, Clone, Default)]
+pub struct RetractRange {
+    /// inclusive lower bound, e.g. "v1.0.0"
+    pub low: String,
+    /// inclusive upper bound, e.g. "v1.1.0"
+    pub high: String,
+}
+
 /// One install-time or build-time lifecycle script.
 #[derive(Debug, Clone, Default)]
 pub struct Hook {
@@ -73,6 +84,8 @@ pub struct Hook {
 #[derive(Debug, Clone, Default)]
 pub struct NormalizedPackage {
     pub name: String,
+    /// Installed version, e.g. "v1.2.3" (go). Populated by the pipeline.
+    pub version: String,
     pub ecosystem_name: Option<Ecosystem>,
     /// filename → file body. Used by content-scanning detectors.
     pub files: HashMap<String, Vec<u8>>,
@@ -83,6 +96,10 @@ pub struct NormalizedPackage {
     /// Unparsed manifest bytes (package.json, …) for detectors that need
     /// ecosystem-specific raw parsing (e.g. the `files` allowlist field).
     pub manifest_raw: Vec<u8>,
+    /// Exact versions this module retracted in its go.mod.
+    pub retracted_versions: Vec<String>,
+    /// Inclusive version ranges this module retracted in its go.mod.
+    pub retracted_ranges: Vec<RetractRange>,
 }
 
 impl NormalizedPackage {
@@ -115,6 +132,8 @@ pub fn run_heuristics(pkg: &NormalizedPackage) -> Vec<Capability> {
     caps.extend(install_hook::check_install_hooks(pkg));
     #[cfg(feature = "unlisted-payload")]
     caps.extend(unlisted_payload::check_unlisted_payload(pkg));
+    #[cfg(feature = "go-retract")]
+    caps.extend(go_retract::check_go_retract(pkg));
     #[cfg(feature = "secrets")]
     caps.extend(secrets::check_secrets(pkg));
     #[cfg(feature = "source-patterns")]
