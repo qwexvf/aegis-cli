@@ -29,9 +29,8 @@ pub fn parse_npm_manifest(
         name: name.to_string(),
         ecosystem_name: Some(Ecosystem::Npm),
         files,
-        deps: Vec::new(),
-        hooks: Vec::new(),
         manifest_raw: manifest_raw.to_vec(),
+        ..Default::default()
     };
     if manifest_raw.is_empty() {
         return pkg;
