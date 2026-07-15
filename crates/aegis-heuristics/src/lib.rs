@@ -9,6 +9,8 @@ use std::collections::HashMap;
 
 use aegis_domain::{Capability, Ecosystem};
 
+#[cfg(feature = "binary-dropper")]
+pub mod binary_dropper;
 #[cfg(feature = "secrets")]
 pub mod secrets;
 #[cfg(feature = "source-patterns")]
@@ -49,6 +51,8 @@ impl NormalizedPackage {
 /// capabilities they emit. Mirrors the heuristics pipeline's fan-out.
 pub fn run_heuristics(pkg: &NormalizedPackage) -> Vec<Capability> {
     let mut caps: Vec<Capability> = Vec::new();
+    #[cfg(feature = "binary-dropper")]
+    caps.extend(binary_dropper::check_binary_dropper(pkg));
     #[cfg(feature = "secrets")]
     caps.extend(secrets::check_secrets(pkg));
     #[cfg(feature = "source-patterns")]
