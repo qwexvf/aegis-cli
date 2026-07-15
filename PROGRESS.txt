@@ -10,7 +10,7 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  8 crates · 178 tests (all green) · clippy + rustfmt clean · 39 commits
+  8 crates · 190 tests (all green) · clippy + rustfmt clean · 40 commits
   Runnable `aegis` binary with 4 commands: parse / analyze / ci / run.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
   analyze enriches the package from its manifest (npm package.json →
@@ -26,15 +26,17 @@ Status @ this snapshot:
   P2  lockfile (24 parsers) .......... DONE
   P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,
                                        per-ecosystem version resolvers
-  P4  heuristics ..................... DONE (offline)  12 detector fns: secrets,
+  P4  heuristics ..................... DONE  all detector fns ported: secrets,
                                        typosquat, source-patterns, binary-dropper,
                                        vcs-dep, optional-git-dep, install-hook,
-                                       unlisted-payload, go-retract, maintainer x3
-                                       (hijack-risk/version-unpublished/changed) +
-                                       npm manifest parser + go.mod retract parser.
-                                       ONLY tarball_drift left — needs the drift.Diff
-                                       engine + network repo-file fetch (a subsystem,
-                                       not a mechanical detector). Deferred to P5/P8.
+                                       unlisted-payload, go-retract, maintainer x3,
+                                       tarball-drift (pure drift.Diff engine +
+                                       monorepo-mismatch confidence cutoff) + npm
+                                       manifest parser + go.mod retract parser.
+                                       tarball-drift is DORMANT until the GitHub
+                                       git-tree fetch (repo_files) is wired — that's
+                                       a P3 network item (drift/client.go), not a
+                                       detector. Everything else fires.
   P5  AST + reach .................... PARTIAL  9 grammars + JS constant-fold
                                        taint done; NOT done: gleam/dart/cocoapods
                                        grammars, full taint (symtab + tainted-
@@ -107,10 +109,12 @@ Status @ this snapshot:
                     C2-host, silent-exit, non-standard-runtime). npm manifest
                     parser populates Deps + Hooks. Feature-gated (binary-dropper /
                     vcs-dep / install-hook / unlisted-payload / go-retract /
-                    maintainer); lean builds exclude regex+serde_json+semver+time.
-                    Also: unlisted-large-file, go.mod retract (version+range,
-                    semver-compared), maintainer hijack/yank/handover (registry
-                    signal, injected clock). 74 tests.
+                    maintainer / tarball-drift); lean builds exclude
+                    regex+serde_json+semver+time. Also: unlisted-large-file, go.mod
+                    retract (version+range, semver-compared), maintainer
+                    hijack/yank/handover (registry signal, injected clock),
+                    tarball-drift (pure diff engine: whitelist + minimal glob +
+                    hook-path extraction + monorepo-subdir cutoff). 86 tests.
 🟡 aegis-ast        tree-sitter AST scanner — JavaScript grammar (native, no CGO),
                     queries/js.scm verbatim, capability + env-read + evidence.
                     8 tests incl. the bare-regex-.exec exclusion.
@@ -172,25 +176,17 @@ coloring. AST scan verified multi-core (253% CPU on a big tree, 16 cores avail).
 RULE: every feature ships WITH its test in the same commit (CLI too — network-
 free integration tests in crates/aegis-cli/tests/cli.rs). Not manual-verify-only.
 
-MECHANICAL (fast, low-risk, good warm-up):
-  [P4] heuristics — DONE except tarball_drift. This session added:
-         binary_dropper, vcs_dep, optional_git_dep, install_hook,
-         unlisted_payload, go_retract, maintainer (x3) + npm manifest parser
-         + go.mod retract parser. All feature-gated; lean builds exclude
-         regex/serde_json/semver/time.
-       tarball_drift REMAINS but is NOT mechanical: needs the drift.Diff
-         engine (internal/infra/scan/drift/) + network repo-file fetch via
-         snapshot.Enrich. Port drift.Diff as its own unit first.
-       WIRING DONE: analyze now calls parse_npm_manifest / parse_go_retract via
-         build_normalized() — deps/install-hook/unlisted-payload fire from
-         package.json end-to-end (integration-tested: block/unlisted/clean).
-         go-retract parser wired but stays dormant in analyze (no pinned
-         version in a source tree — it's a lockfile/ci-time signal).
-       WIRING DONE (maintainer): aegis-registry::npm::fetch_maintainer_signal
-         ports npm packument time/_npmUser + weekly downloads (6 mock tests);
-         `analyze --online` runs the 3 maintainer detectors. STILL TODO: ci/run
-         don't populate manifest metadata yet — only analyze does. That's the
-         rest of P8 (snapshot.Enrich per-dep fan-out).
+P4 HEURISTICS — COMPLETE. All detectors ported + feature-gated (lean builds
+  exclude regex/serde_json/semver/time). tarball-drift's pure diff engine is
+  done; it stays dormant until repo_files is supplied (see NETWORK TAIL).
+  WIRING DONE: analyze calls parse_npm_manifest / parse_go_retract via
+    build_normalized() — deps/install-hook/unlisted-payload fire from
+    package.json end-to-end (integration-tested). go-retract wired but dormant
+    in analyze (no pinned version in a source tree). `analyze --online` runs the
+    3 maintainer detectors off the npm packument (LIVE-verified).
+  WIRING STILL TODO (rest of P8): ci/run don't populate manifest metadata —
+    only analyze does. snapshot.Enrich per-dep fan-out not ported. tarball-drift
+    needs the GitHub git-tree fetch wired to fire.
   [P5] last grammars — gleam, dart (cocoapods = ruby grammar + podspec query).
        Recipe: copy .scm to queries/, add grammar crate + feature, ~15-line module.
        Watch ABI: runtime is tree-sitter 0.25 (supports ABI 13-15).
@@ -221,6 +217,9 @@ CUTOVER (P11): 100% corpus parity, reproduce cosign + SLSA release pipeline, fli
   GHSA lookup (GitHub GraphQL + token), npm SLSA provenance/attestations,
   per-ecosystem version resolvers (npm needs a node-semver crate, NOT Cargo semver
   — different range syntax), wire DiskCache into OSV/KEV clients (usecase layer).
+  GitHub git-tree fetch (drift/client.go: Tree + resolveCommitSHA + tags.go
+  repo-field parse + tag candidates) → produces repo_files for the already-ported
+  tarball-drift engine. Once wired, tarball-drift fires.
 
 -------------------------------------------------------------------------------
  QUICK START TOMORROW
