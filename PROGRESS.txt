@@ -10,7 +10,7 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  8 crates · 145 tests (all green) · clippy + rustfmt clean · 29 commits
+  8 crates · 169 tests (all green) · clippy + rustfmt clean · 35 commits
   Runnable `aegis` binary with 4 commands: parse / analyze / ci / run.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
 
@@ -22,11 +22,15 @@ Status @ this snapshot:
   P2  lockfile (24 parsers) .......... DONE
   P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,
                                        per-ecosystem version resolvers
-  P4  heuristics ..................... PARTIAL  7 detectors done (secrets,
+  P4  heuristics ..................... DONE (offline)  12 detector fns: secrets,
                                        typosquat, source-patterns, binary-dropper,
-                                       vcs-dep, optional-git-dep, install-hook) +
-                                       npm manifest parser; left: tarball_drift,
-                                       unlisted_payload, maintainer, go-retract
+                                       vcs-dep, optional-git-dep, install-hook,
+                                       unlisted-payload, go-retract, maintainer x3
+                                       (hijack-risk/version-unpublished/changed) +
+                                       npm manifest parser + go.mod retract parser.
+                                       ONLY tarball_drift left — needs the drift.Diff
+                                       engine + network repo-file fetch (a subsystem,
+                                       not a mechanical detector). Deferred to P5/P8.
   P5  AST + reach .................... PARTIAL  9 grammars + JS constant-fold
                                        taint done; NOT done: gleam/dart/cocoapods
                                        grammars, full taint (symtab + tainted-
@@ -89,8 +93,11 @@ Status @ this snapshot:
                     curl|sh, inline-eval w/ benign carve-out, base64-piped,
                     C2-host, silent-exit, non-standard-runtime). npm manifest
                     parser populates Deps + Hooks. Feature-gated (binary-dropper /
-                    vcs-dep / install-hook); lean builds exclude regex+serde_json.
-                    50 tests.
+                    vcs-dep / install-hook / unlisted-payload / go-retract /
+                    maintainer); lean builds exclude regex+serde_json+semver+time.
+                    Also: unlisted-large-file, go.mod retract (version+range,
+                    semver-compared), maintainer hijack/yank/handover (registry
+                    signal, injected clock). 74 tests.
 🟡 aegis-ast        tree-sitter AST scanner — JavaScript grammar (native, no CGO),
                     queries/js.scm verbatim, capability + env-read + evidence.
                     8 tests incl. the bare-regex-.exec exclusion.
@@ -153,14 +160,20 @@ RULE: every feature ships WITH its test in the same commit (CLI too — network-
 free integration tests in crates/aegis-cli/tests/cli.rs). Not manual-verify-only.
 
 MECHANICAL (fast, low-risk, good warm-up):
-  [P4] remaining heuristics detectors — each ~1 file + tests, port from
-       internal/infra/scan/heuristics/:
-         tarball_drift.go, check_unlisted_payload.go (needs ManifestRaw +
-         files), maintainer.go (needs registry data), check_go_retract.go
-         (needs go.mod retract parse → RetractedVersions field).
-       DONE this session: binary_dropper, check_vcs_dep, check_optional_git_dep,
-         check_install_hooks (+ npm manifest parser populating Deps/Hooks).
-       All string/regex/metadata — offline-testable.
+  [P4] heuristics — DONE except tarball_drift. This session added:
+         binary_dropper, vcs_dep, optional_git_dep, install_hook,
+         unlisted_payload, go_retract, maintainer (x3) + npm manifest parser
+         + go.mod retract parser. All feature-gated; lean builds exclude
+         regex/serde_json/semver/time.
+       tarball_drift REMAINS but is NOT mechanical: needs the drift.Diff
+         engine (internal/infra/scan/drift/) + network repo-file fetch via
+         snapshot.Enrich. Port drift.Diff as its own unit first.
+       WIRING TODO: the npm manifest parser + go.mod retract parser are
+         unit-tested but NOT yet called by the CLI analyze pipeline — the
+         metadata detectors (deps/install-hook/unlisted/go-retract) only fire
+         once the pipeline populates NormalizedPackage.{deps,hooks,manifest_raw,
+         version,retracted_*}. The maintainer detectors need a registry-signal
+         fetch wired in too. That wiring is P8 (usecase/pipeline).
   [P5] last grammars — gleam, dart (cocoapods = ruby grammar + podspec query).
        Recipe: copy .scm to queries/, add grammar crate + feature, ~15-line module.
        Watch ABI: runtime is tree-sitter 0.25 (supports ABI 13-15).
