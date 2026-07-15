@@ -21,7 +21,7 @@ semver = { version = "1", optional = true }
 time = { version = "0.3", features = ["parsing", "formatting"], optional = true }
 
 [features]
-default = ["secrets", "typosquat", "source-patterns", "binary-dropper", "vcs-dep", "install-hook", "unlisted-payload", "go-retract", "maintainer"]
+default = ["secrets", "typosquat", "source-patterns", "binary-dropper", "vcs-dep", "install-hook", "unlisted-payload", "go-retract", "maintainer", "tarball-drift"]
 binary-dropper = []
 secrets = ["dep:regex"]
 typosquat = []
@@ -31,3 +31,4 @@ install-hook = ["dep:regex", "dep:serde_json"]
 unlisted-payload = ["dep:serde_json"]
 go-retract = ["dep:regex", "dep:semver"]
 maintainer = ["dep:time"]
+tarball-drift = ["dep:serde_json"]

@@ -22,13 +22,16 @@ pub mod maintainer;
 #[cfg(any(
     feature = "vcs-dep",
     feature = "install-hook",
-    feature = "unlisted-payload"
+    feature = "unlisted-payload",
+    feature = "tarball-drift"
 ))]
 pub mod manifest;
 #[cfg(feature = "secrets")]
 pub mod secrets;
 #[cfg(feature = "source-patterns")]
 pub mod source_patterns;
+#[cfg(feature = "tarball-drift")]
+pub mod tarball_drift;
 #[cfg(feature = "typosquat")]
 pub mod typosquat;
 #[cfg(feature = "unlisted-payload")]
