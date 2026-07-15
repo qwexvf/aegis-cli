@@ -10,7 +10,7 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  8 crates · 113 tests (all green) · clippy + rustfmt clean · 26 commits
+  8 crates · 145 tests (all green) · clippy + rustfmt clean · 29 commits
   Runnable `aegis` binary with 4 commands: parse / analyze / ci / run.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
 
@@ -22,9 +22,11 @@ Status @ this snapshot:
   P2  lockfile (24 parsers) .......... DONE
   P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,
                                        per-ecosystem version resolvers
-  P4  heuristics ..................... PARTIAL  3 detectors done (secrets,
-                                       typosquat, source-patterns); ~8 manifest/
-                                       tarball detectors left
+  P4  heuristics ..................... PARTIAL  7 detectors done (secrets,
+                                       typosquat, source-patterns, binary-dropper,
+                                       vcs-dep, optional-git-dep, install-hook) +
+                                       npm manifest parser; left: tarball_drift,
+                                       unlisted_payload, maintainer, go-retract
   P5  AST + reach .................... PARTIAL  9 grammars + JS constant-fold
                                        taint done; NOT done: gleam/dart/cocoapods
                                        grammars, full taint (symtab + tainted-
@@ -81,7 +83,14 @@ Status @ this snapshot:
 🟡 aegis-heuristics secrets, typosquat (Levenshtein + embedded top-lists),
                     source-patterns (obfuscated-payload / suspicious-url / IDN /
                     known-malware-ioc / curl|sh shell-fetcher, with concat-collapse
-                    de-obfuscation). 18 tests.
+                    de-obfuscation), binary-dropper (native exe/script outside
+                    ecosystem convention), vcs-dep + optional-git-dep (Mini
+                    Shai-Hulud vector), install-hook (full malware-pattern matcher:
+                    curl|sh, inline-eval w/ benign carve-out, base64-piped,
+                    C2-host, silent-exit, non-standard-runtime). npm manifest
+                    parser populates Deps + Hooks. Feature-gated (binary-dropper /
+                    vcs-dep / install-hook); lean builds exclude regex+serde_json.
+                    50 tests.
 🟡 aegis-ast        tree-sitter AST scanner — JavaScript grammar (native, no CGO),
                     queries/js.scm verbatim, capability + env-read + evidence.
                     8 tests incl. the bare-regex-.exec exclusion.
@@ -144,11 +153,13 @@ RULE: every feature ships WITH its test in the same commit (CLI too — network-
 free integration tests in crates/aegis-cli/tests/cli.rs). Not manual-verify-only.
 
 MECHANICAL (fast, low-risk, good warm-up):
-  [P4] more heuristics detectors — each ~1 file + tests, port from
+  [P4] remaining heuristics detectors — each ~1 file + tests, port from
        internal/infra/scan/heuristics/:
-         binary_dropper.go, tarball_drift.go, check_unlisted_payload.go,
-         check_optional_git_dep.go, check_vcs_dep.go, maintainer.go,
-         check_go_retract.go, check_install_hooks.go
+         tarball_drift.go, check_unlisted_payload.go (needs ManifestRaw +
+         files), maintainer.go (needs registry data), check_go_retract.go
+         (needs go.mod retract parse → RetractedVersions field).
+       DONE this session: binary_dropper, check_vcs_dep, check_optional_git_dep,
+         check_install_hooks (+ npm manifest parser populating Deps/Hooks).
        All string/regex/metadata — offline-testable.
   [P5] last grammars — gleam, dart (cocoapods = ruby grammar + podspec query).
        Recipe: copy .scm to queries/, add grammar crate + feature, ~15-line module.
