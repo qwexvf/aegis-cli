@@ -31,6 +31,7 @@ pub fn parse_npm_manifest(
         files,
         deps: Vec::new(),
         hooks: Vec::new(),
+        manifest_raw: manifest_raw.to_vec(),
     };
     if manifest_raw.is_empty() {
         return pkg;
@@ -79,6 +80,26 @@ pub fn parse_npm_manifest(
     }
 
     pkg
+}
+
+/// Pull the npm `files` allowlist field out of a raw package.json. Empty
+/// on unparseable input or a missing field.
+pub fn extract_package_files_field(manifest_raw: &[u8]) -> Vec<String> {
+    if manifest_raw.is_empty() {
+        return Vec::new();
+    }
+    let root: Value = match serde_json::from_slice(manifest_raw) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    root.get("files")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Classify an npm version spec into a [`DepSource`].
