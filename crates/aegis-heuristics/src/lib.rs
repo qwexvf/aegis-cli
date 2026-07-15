@@ -15,7 +15,11 @@ pub mod binary_dropper;
 pub mod deps;
 #[cfg(feature = "install-hook")]
 pub mod install_hook;
-#[cfg(any(feature = "vcs-dep", feature = "install-hook"))]
+#[cfg(any(
+    feature = "vcs-dep",
+    feature = "install-hook",
+    feature = "unlisted-payload"
+))]
 pub mod manifest;
 #[cfg(feature = "secrets")]
 pub mod secrets;
@@ -23,6 +27,8 @@ pub mod secrets;
 pub mod source_patterns;
 #[cfg(feature = "typosquat")]
 pub mod typosquat;
+#[cfg(feature = "unlisted-payload")]
+pub mod unlisted_payload;
 
 #[cfg(any(feature = "secrets", feature = "source-patterns"))]
 mod source;
@@ -74,6 +80,9 @@ pub struct NormalizedPackage {
     pub deps: Vec<Dep>,
     /// Install/build lifecycle hooks. Populated by the manifest parser.
     pub hooks: Vec<Hook>,
+    /// Unparsed manifest bytes (package.json, …) for detectors that need
+    /// ecosystem-specific raw parsing (e.g. the `files` allowlist field).
+    pub manifest_raw: Vec<u8>,
 }
 
 impl NormalizedPackage {
@@ -104,6 +113,8 @@ pub fn run_heuristics(pkg: &NormalizedPackage) -> Vec<Capability> {
     }
     #[cfg(feature = "install-hook")]
     caps.extend(install_hook::check_install_hooks(pkg));
+    #[cfg(feature = "unlisted-payload")]
+    caps.extend(unlisted_payload::check_unlisted_payload(pkg));
     #[cfg(feature = "secrets")]
     caps.extend(secrets::check_secrets(pkg));
     #[cfg(feature = "source-patterns")]
