@@ -17,6 +17,8 @@ pub mod deps;
 pub mod go_retract;
 #[cfg(feature = "install-hook")]
 pub mod install_hook;
+#[cfg(feature = "maintainer")]
+pub mod maintainer;
 #[cfg(any(
     feature = "vcs-dep",
     feature = "install-hook",
