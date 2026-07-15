@@ -11,6 +11,10 @@ use aegis_domain::{Capability, Ecosystem};
 
 #[cfg(feature = "binary-dropper")]
 pub mod binary_dropper;
+#[cfg(feature = "vcs-dep")]
+pub mod deps;
+#[cfg(feature = "vcs-dep")]
+pub mod manifest;
 #[cfg(feature = "secrets")]
 pub mod secrets;
 #[cfg(feature = "source-patterns")]
@@ -21,6 +25,40 @@ pub mod typosquat;
 #[cfg(any(feature = "secrets", feature = "source-patterns"))]
 mod source;
 
+/// How a dependency is resolved. Mirrors Go's `DepSource`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DepSource {
+    /// Resolved from the ecosystem registry by version.
+    #[default]
+    Registry,
+    /// Resolved from a VCS URL (git+https://, github:, git = "..."). Bypasses
+    /// registry immutability; the exact code is unpredictable across installs.
+    Vcs,
+    /// Resolved from a local file path (file:, ./path, ../path).
+    Local,
+}
+
+/// One entry from a package manifest's dependency list.
+#[derive(Debug, Clone, Default)]
+pub struct Dep {
+    /// Package name (best-effort; may be empty for some ecosystems).
+    pub name: String,
+    /// Raw version spec or VCS URL.
+    pub spec: String,
+    pub source: DepSource,
+    /// e.g. "direct", "dev", "peer", "optional".
+    pub groups: Vec<String>,
+}
+
+/// One install-time or build-time lifecycle script.
+#[derive(Debug, Clone, Default)]
+pub struct Hook {
+    /// "preinstall", "install", "postinstall", "prepare", "build".
+    pub phase: String,
+    /// Full script or file content.
+    pub body: String,
+}
+
 /// The scanner's normalized view of one package: identity plus its
 /// source files. Faithful subset of `heuristics.NormalizedPackage` —
 /// the fields the ported detectors read.
@@ -30,6 +68,10 @@ pub struct NormalizedPackage {
     pub ecosystem_name: Option<Ecosystem>,
     /// filename → file body. Used by content-scanning detectors.
     pub files: HashMap<String, Vec<u8>>,
+    /// Full dependency list across all groups. Populated by the manifest parser.
+    pub deps: Vec<Dep>,
+    /// Install/build lifecycle hooks. Populated by the manifest parser.
+    pub hooks: Vec<Hook>,
 }
 
 impl NormalizedPackage {
@@ -37,7 +79,7 @@ impl NormalizedPackage {
         NormalizedPackage {
             name: name.into(),
             ecosystem_name: Some(ecosystem),
-            files: HashMap::new(),
+            ..Default::default()
         }
     }
 
@@ -53,6 +95,11 @@ pub fn run_heuristics(pkg: &NormalizedPackage) -> Vec<Capability> {
     let mut caps: Vec<Capability> = Vec::new();
     #[cfg(feature = "binary-dropper")]
     caps.extend(binary_dropper::check_binary_dropper(pkg));
+    #[cfg(feature = "vcs-dep")]
+    {
+        caps.extend(deps::check_vcs_deps(pkg));
+        caps.extend(deps::check_optional_git_dep(pkg));
+    }
     #[cfg(feature = "secrets")]
     caps.extend(secrets::check_secrets(pkg));
     #[cfg(feature = "source-patterns")]
