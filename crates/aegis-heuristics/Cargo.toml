@@ -17,9 +17,11 @@ regex = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
 # semver compares go.mod retract ranges against the installed version.
 semver = { version = "1", optional = true }
+# time parses registry RFC3339 publish timestamps for the maintainer detector.
+time = { version = "0.3", features = ["parsing", "formatting"], optional = true }
 
 [features]
-default = ["secrets", "typosquat", "source-patterns", "binary-dropper", "vcs-dep", "install-hook", "unlisted-payload", "go-retract"]
+default = ["secrets", "typosquat", "source-patterns", "binary-dropper", "vcs-dep", "install-hook", "unlisted-payload", "go-retract", "maintainer"]
 binary-dropper = []
 secrets = ["dep:regex"]
 typosquat = []
@@ -28,3 +30,4 @@ vcs-dep = ["dep:serde_json"]
 install-hook = ["dep:regex", "dep:serde_json"]
 unlisted-payload = ["dep:serde_json"]
 go-retract = ["dep:regex", "dep:semver"]
+maintainer = ["dep:time"]
