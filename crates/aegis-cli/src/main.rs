@@ -73,6 +73,11 @@ enum Command {
         /// Ecosystem for heuristics: npm, pypi, crates, go, …
         #[arg(long, default_value = "npm")]
         ecosystem: String,
+        /// Also run network maintainer-metadata checks (npm packument:
+        /// hijack-risk / yanked-version / maintainer-handover). Off by default
+        /// so `analyze` stays offline unless asked.
+        #[arg(long)]
+        online: bool,
         /// Emit machine-readable JSON instead of a text summary.
         #[arg(long)]
         json: bool,
@@ -115,8 +120,9 @@ fn main() -> ExitCode {
             dir,
             name,
             ecosystem,
+            online,
             json,
-        } => run_analyze(&dir, name.as_deref(), &ecosystem, json),
+        } => run_analyze(&dir, name.as_deref(), &ecosystem, online, json),
     }
 }
 
@@ -468,7 +474,7 @@ fn run_task(t: &TaskConfig) -> TaskResult {
 
     // Source scan (ast + heuristics).
     if want("ast") || want("heuristics") {
-        let (_caps, assessment) = scan_source(&files, &t.name, eco);
+        let (_caps, assessment) = scan_source(&files, &t.name, eco, Vec::new());
         let v = verdict(&assessment, &RiskAssessment::default());
         res.verdict = Some(v.name().to_string());
         res.score = assessment.score;
@@ -591,6 +597,7 @@ fn scan_source(
     files: &[(String, Vec<u8>)],
     pkg_name: &str,
     eco: Ecosystem,
+    extra_caps: Vec<aegis_domain::Capability>,
 ) -> (CapabilitySet, RiskAssessment) {
     // Compile one scanner per distinct extension once; share it read-only
     // across the rayon pool; scan every file concurrently; merge.
@@ -629,6 +636,7 @@ fn scan_source(
     let normalized = build_normalized(files, pkg_name, eco);
     let mut caps = findings.capabilities();
     caps.extend(run_heuristics(&normalized));
+    caps.extend(extra_caps);
 
     let fp = Fingerprint {
         analyzed: true,
@@ -689,7 +697,64 @@ fn find_manifest<'a>(files: &'a [(String, Vec<u8>)], name: &str) -> Option<(&'a 
         .map(|(rel, bytes)| (rel.as_str(), bytes.as_slice()))
 }
 
-fn run_analyze(dir: &str, name: Option<&str>, ecosystem: &str, json: bool) -> ExitCode {
+/// Fetch the npm maintainer-hijack signal for this package and run the three
+/// maintainer detectors. npm-only and best-effort: an empty signal (offline,
+/// 404, non-npm) yields no capabilities. Reads name+version from package.json.
+fn fetch_maintainer_caps(
+    files: &[(String, Vec<u8>)],
+    pkg_name: &str,
+    eco: Ecosystem,
+) -> Vec<aegis_domain::Capability> {
+    if eco != Ecosystem::Npm {
+        return Vec::new();
+    }
+    let Some((_, raw)) = find_manifest(files, "package.json") else {
+        return Vec::new();
+    };
+    let manifest: serde_json::Value = match serde_json::from_slice(raw) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let name = manifest
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(pkg_name);
+    let Some(version) = manifest.get("version").and_then(|v| v.as_str()) else {
+        return Vec::new();
+    };
+    if name.is_empty() || version.is_empty() {
+        return Vec::new();
+    }
+
+    let client = UreqClient::new();
+    let sig = aegis_registry::fetch_maintainer_signal(
+        &client,
+        aegis_registry::npm::DEFAULT_REGISTRY_URL,
+        aegis_registry::npm::DEFAULT_DOWNLOADS_URL,
+        name,
+        version,
+    );
+    // Copy the registry signal into the heuristics signal (decoupled crates).
+    let hsig = aegis_heuristics::maintainer::MaintainerSignal {
+        published_at: sig.published_at,
+        weekly_downloads: sig.weekly_downloads,
+        previous_version: sig.previous_version,
+        previous_published_at: sig.previous_published_at,
+        publisher: sig.publisher,
+        previous_publisher: sig.previous_publisher,
+        version_unpublished: sig.version_unpublished,
+    };
+    aegis_heuristics::maintainer::check_maintainer_now(&hsig)
+}
+
+fn run_analyze(
+    dir: &str,
+    name: Option<&str>,
+    ecosystem: &str,
+    online: bool,
+    json: bool,
+) -> ExitCode {
     let root = Path::new(dir);
     if !root.is_dir() {
         eprintln!("aegis: not a directory: {dir}");
@@ -705,7 +770,12 @@ fn run_analyze(dir: &str, name: Option<&str>, ecosystem: &str, json: bool) -> Ex
         .unwrap_or_default();
 
     let files = collect_files(root);
-    let (caps, assessment) = scan_source(&files, &pkg_name, eco);
+    let extra_caps = if online {
+        fetch_maintainer_caps(&files, &pkg_name, eco)
+    } else {
+        Vec::new()
+    };
+    let (caps, assessment) = scan_source(&files, &pkg_name, eco, extra_caps);
     let v = verdict(&assessment, &RiskAssessment::default());
 
     if json {
