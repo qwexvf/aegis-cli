@@ -12,6 +12,8 @@ use aegis_domain::{
     risk_score, verdict, AdvisoryQuery, CapabilitySet, Dependency, Ecosystem, Fingerprint,
     RiskAssessment, Severity,
 };
+use aegis_heuristics::go_retract::parse_go_retract;
+use aegis_heuristics::manifest::parse_npm_manifest;
 use aegis_heuristics::{run_heuristics, NormalizedPackage};
 use aegis_lockfile::{parse_file, DirectMap};
 use aegis_net::UreqClient;
@@ -621,11 +623,10 @@ fn scan_source(
             a
         });
 
-    // Heuristics over the whole file set.
-    let mut normalized = NormalizedPackage::new(pkg_name, eco);
-    for (rel, bytes) in files {
-        normalized = normalized.with_file(rel.clone(), bytes.clone());
-    }
+    // Heuristics over the whole file set. Enrich the package from its manifest
+    // so the metadata detectors (vcs-dep, install-hook, unlisted-payload,
+    // go-retract) have Deps / Hooks / retract data, not just raw files.
+    let normalized = build_normalized(files, pkg_name, eco);
     let mut caps = findings.capabilities();
     caps.extend(run_heuristics(&normalized));
 
@@ -638,6 +639,54 @@ fn scan_source(
     };
     let assessment = risk_score(Some(&fp));
     (fp.capabilities, assessment)
+}
+
+/// Build the heuristics view of a package: always the raw file set, plus
+/// ecosystem-specific manifest enrichment (npm package.json → deps + hooks;
+/// go.mod → retract list) so the metadata detectors get structured input, not
+/// just files. `analyze` runs on a source tree with no pinned version, so the
+/// go-retract check stays dormant (needs `version`) — the parser still runs.
+fn build_normalized(
+    files: &[(String, Vec<u8>)],
+    pkg_name: &str,
+    eco: Ecosystem,
+) -> NormalizedPackage {
+    let file_map: HashMap<String, Vec<u8>> =
+        files.iter().map(|(r, b)| (r.clone(), b.clone())).collect();
+
+    match eco {
+        Ecosystem::Npm => {
+            if let Some((_, raw)) = find_manifest(files, "package.json") {
+                return parse_npm_manifest(pkg_name, raw, file_map);
+            }
+        }
+        Ecosystem::Go => {
+            let mut pkg = NormalizedPackage::new(pkg_name, eco);
+            pkg.files = file_map;
+            if let Some((_, raw)) = find_manifest(files, "go.mod") {
+                let (versions, ranges) = parse_go_retract(&String::from_utf8_lossy(raw));
+                pkg.retracted_versions = versions;
+                pkg.retracted_ranges = ranges;
+                pkg.manifest_raw = raw.to_vec();
+            }
+            return pkg;
+        }
+        _ => {}
+    }
+
+    let mut pkg = NormalizedPackage::new(pkg_name, eco);
+    pkg.files = file_map;
+    pkg
+}
+
+/// Find the manifest whose basename is `name`, preferring the shallowest path
+/// (the package root) so a nested fixture doesn't shadow the top-level one.
+fn find_manifest<'a>(files: &'a [(String, Vec<u8>)], name: &str) -> Option<(&'a str, &'a [u8])> {
+    files
+        .iter()
+        .filter(|(rel, _)| rel.rsplit('/').next() == Some(name))
+        .min_by_key(|(rel, _)| rel.matches('/').count())
+        .map(|(rel, bytes)| (rel.as_str(), bytes.as_slice()))
 }
 
 fn run_analyze(dir: &str, name: Option<&str>, ecosystem: &str, json: bool) -> ExitCode {
