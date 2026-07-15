@@ -12,7 +12,11 @@
 #[cfg(feature = "depsdev")]
 pub mod depsdotdev;
 pub mod license;
+#[cfg(feature = "npm")]
+pub mod npm;
 
 #[cfg(feature = "depsdev")]
 pub use depsdotdev::{DepsDevClient, PackageHealth};
 pub use license::LicenseFetcher;
+#[cfg(feature = "npm")]
+pub use npm::{fetch_maintainer_signal, MaintainerSignal};

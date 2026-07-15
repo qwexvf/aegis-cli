@@ -97,6 +97,12 @@ pub fn detect_maintainer_changed(sig: &MaintainerSignal) -> Option<Capability> {
     (sig.publisher != sig.previous_publisher).then_some(Capability::MaintainerChanged)
 }
 
+/// Like [`check_maintainer`] but reads the wall clock, so callers that aren't
+/// testing time don't have to depend on `time` themselves.
+pub fn check_maintainer_now(sig: &MaintainerSignal) -> Vec<Capability> {
+    check_maintainer(sig, OffsetDateTime::now_utc())
+}
+
 /// Run every maintainer detector and return the union of fired capabilities.
 pub fn check_maintainer(sig: &MaintainerSignal, now: OffsetDateTime) -> Vec<Capability> {
     [
