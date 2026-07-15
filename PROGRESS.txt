@@ -10,11 +10,13 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  8 crates · 172 tests (all green) · clippy + rustfmt clean · 37 commits
+  8 crates · 178 tests (all green) · clippy + rustfmt clean · 39 commits
   Runnable `aegis` binary with 4 commands: parse / analyze / ci / run.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
-  analyze now enriches the package from its manifest (npm package.json →
-  deps+hooks; go.mod → retract) so the metadata heuristics actually fire.
+  analyze enriches the package from its manifest (npm package.json →
+  deps+hooks; go.mod → retract) so metadata heuristics fire. `analyze
+  --online` adds the npm packument maintainer checks (verified LIVE:
+  event-stream@3.3.6 → version-unpublished; lodash → safe).
 
 -------------------------------------------------------------------------------
  PHASE STATUS  (plan has 12 phases, 0-11)
@@ -39,13 +41,15 @@ Status @ this snapshot:
                                        sinks), aegis-reach depusage reimpl (HIGH RISK)
   P6  image (OCI) .................... NOT STARTED  (long pole — thin Rust OCI eco)
   P7  sbom (CycloneDX/SPDX/SARIF) .... NOT STARTED
-  P8  usecase ....................... PARTIAL  logic lives in CLI cmds; analyze
-                                       now wires npm/go manifest parsers →
-                                       NormalizedPackage (metadata heuristics fire
-                                       end-to-end, integration-tested). STILL not
-                                       ported: snapshot.Enrich concurrency model +
-                                       registry MaintainerSignal fetch (maintainer
-                                       detectors built but no data source wired)
+  P8  usecase ....................... PARTIAL  analyze wires npm/go manifest
+                                       parsers → NormalizedPackage (metadata
+                                       heuristics fire, integration-tested), and
+                                       `--online` wires the npm packument
+                                       MaintainerSignal fetch → maintainer x3
+                                       detectors (LIVE-verified). STILL not ported:
+                                       snapshot.Enrich concurrency model; ci/run
+                                       don't populate manifest metadata (analyze
+                                       only); per-dep enrich fan-out.
   P9  presenter ..................... PARTIAL  text/json inline in CLI; no SARIF,
                                        no live-region enrich view
   P10 cli ........................... PARTIAL  4 cmds run; missing snapshot / fix /
@@ -90,7 +94,9 @@ Status @ this snapshot:
 ✅ aegis-vuln       OSV.dev (full CVSS v3 base-score formula → verified 9.8),
                     EPSS (FIRST.org), KEV (CISA). 12 tests.
 ✅ aegis-registry   license fetchers (npm/pypi/crates/rubygems/nuget) + deps.dev
-                    package-health (deprecation) + advisory lookup. 7 tests.
+                    package-health (deprecation) + advisory lookup + npm
+                    packument maintainer-signal fetch (publish times, _npmUser,
+                    weekly downloads, yank detection). 13 tests.
 🟡 aegis-heuristics secrets, typosquat (Levenshtein + embedded top-lists),
                     source-patterns (obfuscated-payload / suspicious-url / IDN /
                     known-malware-ioc / curl|sh shell-fetcher, with concat-collapse
@@ -180,9 +186,11 @@ MECHANICAL (fast, low-risk, good warm-up):
          package.json end-to-end (integration-tested: block/unlisted/clean).
          go-retract parser wired but stays dormant in analyze (no pinned
          version in a source tree — it's a lockfile/ci-time signal).
-       WIRING STILL TODO: maintainer detectors need a registry MaintainerSignal
-         fetch (npm packument time/_npmUser). And ci/run don't populate manifest
-         metadata yet — only analyze does. That's the rest of P8.
+       WIRING DONE (maintainer): aegis-registry::npm::fetch_maintainer_signal
+         ports npm packument time/_npmUser + weekly downloads (6 mock tests);
+         `analyze --online` runs the 3 maintainer detectors. STILL TODO: ci/run
+         don't populate manifest metadata yet — only analyze does. That's the
+         rest of P8 (snapshot.Enrich per-dep fan-out).
   [P5] last grammars — gleam, dart (cocoapods = ruby grammar + podspec query).
        Recipe: copy .scm to queries/, add grammar crate + feature, ~15-line module.
        Watch ABI: runtime is tree-sitter 0.25 (supports ABI 13-15).
