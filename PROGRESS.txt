@@ -10,9 +10,11 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  8 crates · 169 tests (all green) · clippy + rustfmt clean · 35 commits
+  8 crates · 172 tests (all green) · clippy + rustfmt clean · 37 commits
   Runnable `aegis` binary with 4 commands: parse / analyze / ci / run.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
+  analyze now enriches the package from its manifest (npm package.json →
+  deps+hooks; go.mod → retract) so the metadata heuristics actually fire.
 
 -------------------------------------------------------------------------------
  PHASE STATUS  (plan has 12 phases, 0-11)
@@ -37,8 +39,13 @@ Status @ this snapshot:
                                        sinks), aegis-reach depusage reimpl (HIGH RISK)
   P6  image (OCI) .................... NOT STARTED  (long pole — thin Rust OCI eco)
   P7  sbom (CycloneDX/SPDX/SARIF) .... NOT STARTED
-  P8  usecase ....................... PARTIAL  logic lives in CLI cmds; the
-                                       snapshot.Enrich concurrency model not ported
+  P8  usecase ....................... PARTIAL  logic lives in CLI cmds; analyze
+                                       now wires npm/go manifest parsers →
+                                       NormalizedPackage (metadata heuristics fire
+                                       end-to-end, integration-tested). STILL not
+                                       ported: snapshot.Enrich concurrency model +
+                                       registry MaintainerSignal fetch (maintainer
+                                       detectors built but no data source wired)
   P9  presenter ..................... PARTIAL  text/json inline in CLI; no SARIF,
                                        no live-region enrich view
   P10 cli ........................... PARTIAL  4 cmds run; missing snapshot / fix /
@@ -168,12 +175,14 @@ MECHANICAL (fast, low-risk, good warm-up):
        tarball_drift REMAINS but is NOT mechanical: needs the drift.Diff
          engine (internal/infra/scan/drift/) + network repo-file fetch via
          snapshot.Enrich. Port drift.Diff as its own unit first.
-       WIRING TODO: the npm manifest parser + go.mod retract parser are
-         unit-tested but NOT yet called by the CLI analyze pipeline — the
-         metadata detectors (deps/install-hook/unlisted/go-retract) only fire
-         once the pipeline populates NormalizedPackage.{deps,hooks,manifest_raw,
-         version,retracted_*}. The maintainer detectors need a registry-signal
-         fetch wired in too. That wiring is P8 (usecase/pipeline).
+       WIRING DONE: analyze now calls parse_npm_manifest / parse_go_retract via
+         build_normalized() — deps/install-hook/unlisted-payload fire from
+         package.json end-to-end (integration-tested: block/unlisted/clean).
+         go-retract parser wired but stays dormant in analyze (no pinned
+         version in a source tree — it's a lockfile/ci-time signal).
+       WIRING STILL TODO: maintainer detectors need a registry MaintainerSignal
+         fetch (npm packument time/_npmUser). And ci/run don't populate manifest
+         metadata yet — only analyze does. That's the rest of P8.
   [P5] last grammars — gleam, dart (cocoapods = ruby grammar + podspec query).
        Recipe: copy .scm to queries/, add grammar crate + feature, ~15-line module.
        Watch ABI: runtime is tree-sitter 0.25 (supports ABI 13-15).
