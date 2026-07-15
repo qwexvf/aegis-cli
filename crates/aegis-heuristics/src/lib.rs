@@ -13,7 +13,9 @@ use aegis_domain::{Capability, Ecosystem};
 pub mod binary_dropper;
 #[cfg(feature = "vcs-dep")]
 pub mod deps;
-#[cfg(feature = "vcs-dep")]
+#[cfg(feature = "install-hook")]
+pub mod install_hook;
+#[cfg(any(feature = "vcs-dep", feature = "install-hook"))]
 pub mod manifest;
 #[cfg(feature = "secrets")]
 pub mod secrets;
@@ -100,6 +102,8 @@ pub fn run_heuristics(pkg: &NormalizedPackage) -> Vec<Capability> {
         caps.extend(deps::check_vcs_deps(pkg));
         caps.extend(deps::check_optional_git_dep(pkg));
     }
+    #[cfg(feature = "install-hook")]
+    caps.extend(install_hook::check_install_hooks(pkg));
     #[cfg(feature = "secrets")]
     caps.extend(secrets::check_secrets(pkg));
     #[cfg(feature = "source-patterns")]
