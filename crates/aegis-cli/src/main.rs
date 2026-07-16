@@ -489,9 +489,13 @@ struct TaskConfig {
     path: String,
     #[serde(default = "default_ecosystem")]
     ecosystem: String,
-    /// which checks to run: "ast"/"heuristics" (source scan) and/or "cve".
+    /// which checks to run: "ast"/"heuristics" (source scan), "cve",
+    /// "deprecated", and/or "license".
     #[serde(default)]
     checks: Vec<String>,
+    /// SPDX license IDs that fail the "license" check (case-insensitive).
+    #[serde(default)]
+    deny_licenses: Vec<String>,
 }
 
 fn default_ecosystem() -> String {
@@ -510,6 +514,9 @@ struct TaskResult {
     /// Deprecated-dependency count, when the deprecated check ran.
     #[serde(default)]
     deprecated_findings: usize,
+    /// Denied-license count, when the license check ran.
+    #[serde(default)]
+    license_findings: usize,
     failed: bool,
     error: Option<String>,
 }
@@ -529,6 +536,7 @@ fn run_task(t: &TaskConfig) -> TaskResult {
         score: 0,
         cve_findings: 0,
         deprecated_findings: 0,
+        license_findings: 0,
         failed: false,
         error: None,
     };
@@ -611,6 +619,30 @@ fn run_task(t: &TaskConfig) -> TaskResult {
         }
     }
 
+    // License-policy check: fail on any dep whose SPDX license is denied.
+    if want("license") && !t.deny_licenses.is_empty() {
+        let deny: Vec<String> = t.deny_licenses.iter().map(|s| s.to_lowercase()).collect();
+        let deps = lockfile_deps(&files);
+        if !deps.is_empty() {
+            let http = UreqClient::new();
+            let fetcher = aegis_registry::LicenseFetcher::default();
+            let violations = deps
+                .iter()
+                .filter(|d| !d.version.is_empty())
+                .filter(|d| {
+                    fetcher
+                        .fetch_license(&http, d.ecosystem, &d.name, &d.version)
+                        .map(|lic| deny.contains(&lic.to_lowercase()))
+                        .unwrap_or(false)
+                })
+                .count();
+            res.license_findings = violations;
+            if violations > 0 {
+                res.failed = true;
+            }
+        }
+    }
+
     res
 }
 
@@ -677,8 +709,8 @@ fn run_config(config_path: &str, json: bool) -> ExitCode {
             let status = if r.failed { "FAIL" } else { "ok" };
             let verdict = r.verdict.as_deref().unwrap_or("-");
             print!(
-                "[{status}] {} ({}) — verdict={verdict} score={} cve={} deprecated={}",
-                r.name, r.path, r.score, r.cve_findings, r.deprecated_findings
+                "[{status}] {} ({}) — verdict={verdict} score={} cve={} deprecated={} license={}",
+                r.name, r.path, r.score, r.cve_findings, r.deprecated_findings, r.license_findings
             );
             match &r.error {
                 Some(e) => println!("  error: {e}"),

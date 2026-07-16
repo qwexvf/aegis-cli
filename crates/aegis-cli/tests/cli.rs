@@ -394,6 +394,35 @@ checks = ["deprecated"]
 }
 
 #[test]
+fn run_license_check_no_lockfile_is_noop() {
+    // The `license` check fetches SPDX licenses then matches against deny_licenses.
+    // No lockfile → nothing to fetch → network-free no-op: license=0, task passes.
+    let d = tmp("license");
+    std::fs::create_dir_all(d.join("pkg")).unwrap();
+    write(&d.join("pkg"), "index.js", "export const x = 1;");
+    let cfg = format!(
+        r#"
+[[task]]
+name = "lic"
+path = "{p}/pkg"
+ecosystem = "npm"
+checks = ["license"]
+deny_licenses = ["GPL-3.0"]
+"#,
+        p = d.to_str().unwrap()
+    );
+    write(&d, "aegis.toml", &cfg);
+    let out = run(&["run", d.join("aegis.toml").to_str().unwrap(), "--json"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\"license_findings\": 0"),
+        "{}",
+        out.stdout
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);
