@@ -275,6 +275,54 @@ fn sbom_emits_cyclonedx_from_lockfile() {
 }
 
 #[test]
+fn sbom_spdx_format() {
+    let d = tmp("spdx");
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21"}}}"#,
+    );
+    let out = run(&[
+        "sbom",
+        d.join("package-lock.json").to_str().unwrap(),
+        "--format",
+        "spdx",
+        "--project",
+        "myapp",
+    ]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("\"spdxVersion\": \"SPDX-2.3\""),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("pkg:npm/lodash@4.17.21"),
+        "{}",
+        out.stdout
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn sbom_unknown_format_exits_2() {
+    let d = tmp("badfmt");
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{}}"#,
+    );
+    let out = run(&[
+        "sbom",
+        d.join("package-lock.json").to_str().unwrap(),
+        "--format",
+        "bogus",
+    ]);
+    assert_eq!(out.code, 2);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn sbom_unknown_lockfile_exits_2() {
     let out = run(&["sbom", "/nonexistent/nope.lock"]);
     assert_eq!(out.code, 2);
