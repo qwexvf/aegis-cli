@@ -15,6 +15,10 @@ pub use scanner::GrammarScanner;
 
 #[cfg(feature = "csharp")]
 pub mod csharp;
+#[cfg(feature = "dart")]
+pub mod dart;
+#[cfg(feature = "gleam")]
+pub mod gleam;
 #[cfg(feature = "go")]
 pub mod go;
 #[cfg(feature = "haskell")]
@@ -166,6 +170,14 @@ pub fn scanner_for(filename: &str) -> Option<Box<dyn LanguageScanner>> {
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         #[cfg(feature = "lua")]
         "lua" => lua::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "gleam")]
+        "gleam" => gleam::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "dart")]
+        "dart" => dart::scanner()
             .ok()
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         _ => None,
