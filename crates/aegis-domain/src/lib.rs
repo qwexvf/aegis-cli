@@ -7,10 +7,12 @@
 
 pub mod advisory;
 pub mod capability;
+pub mod fix;
 pub mod risk;
 pub mod types;
 
 pub use advisory::{max_severity, Advisory, AdvisoryQuery, Severity};
+pub use fix::{build_fix_plan, compare_fix_version, upgrade_command, FixItem};
 pub use capability::{Capability, CapabilitySet, ALL_CAPABILITIES};
 pub use risk::{
     drift_score, patch_version_drift_flag, provenance_risk_flag, risk_score, verdict,
