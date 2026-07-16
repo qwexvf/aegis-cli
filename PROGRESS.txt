@@ -10,7 +10,7 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  8 crates · 190 tests (all green) · clippy + rustfmt clean · 40 commits
+  8 crates · 199 tests (all green) · clippy + rustfmt clean · 45 commits
   Runnable `aegis` binary with 4 commands: parse / analyze / ci / run.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
   analyze enriches the package from its manifest (npm package.json →
@@ -37,10 +37,12 @@ Status @ this snapshot:
                                        git-tree fetch (repo_files) is wired — that's
                                        a P3 network item (drift/client.go), not a
                                        detector. Everything else fires.
-  P5  AST + reach .................... PARTIAL  9 grammars + JS constant-fold
-                                       taint done; NOT done: gleam/dart/cocoapods
-                                       grammars, full taint (symtab + tainted-
-                                       sinks), aegis-reach depusage reimpl (HIGH RISK)
+  P5  AST + reach .................... PARTIAL  ALL 12 grammars done (js/py/ruby/
+                                       rust/go/php/csharp/haskell/lua/gleam/dart/
+                                       cocoapods, native — no CGO) + JS constant-
+                                       fold taint. NOT done: full JS taint (symtab
+                                       + tainted-sinks, ~400 LOC), aegis-reach
+                                       depusage reimpl (HIGH RISK). Both long poles.
   P6  image (OCI) .................... NOT STARTED  (long pole — thin Rust OCI eco)
   P7  sbom (CycloneDX/SPDX/SARIF) .... NOT STARTED
   P8  usecase ....................... PARTIAL  analyze wires npm/go manifest
@@ -115,9 +117,12 @@ Status @ this snapshot:
                     hijack/yank/handover (registry signal, injected clock),
                     tarball-drift (pure diff engine: whitelist + minimal glob +
                     hook-path extraction + monorepo-subdir cutoff). 86 tests.
-🟡 aegis-ast        tree-sitter AST scanner — JavaScript grammar (native, no CGO),
-                    queries/js.scm verbatim, capability + env-read + evidence.
-                    8 tests incl. the bare-regex-.exec exclusion.
+🟡 aegis-ast        tree-sitter AST scanner — 12 grammars (js/py/ruby/rust/go/
+                    php/csharp/haskell/lua/gleam/dart + cocoapods=.podspec via
+                    ruby grammar), all native (no CGO), .scm queries verbatim
+                    from the Go tree. capability + env-read + evidence + JS
+                    constant-fold taint. 32 tests (each grammar: query-compiles +
+                    detects). Feature-gated per grammar.
 ✅ aegis-cli (bin)  clap CLI, 3 commands (below).
 
 -------------------------------------------------------------------------------
@@ -187,9 +192,9 @@ P4 HEURISTICS — COMPLETE. All detectors ported + feature-gated (lean builds
   WIRING STILL TODO (rest of P8): ci/run don't populate manifest metadata —
     only analyze does. snapshot.Enrich per-dep fan-out not ported. tarball-drift
     needs the GitHub git-tree fetch wired to fire.
-  [P5] last grammars — gleam, dart (cocoapods = ruby grammar + podspec query).
-       Recipe: copy .scm to queries/, add grammar crate + feature, ~15-line module.
-       Watch ABI: runtime is tree-sitter 0.25 (supports ABI 13-15).
+  [P5] grammars — DONE. gleam (tree-sitter-gleam 1.0), dart (tree-sitter-dart
+       0.2), cocoapods (ruby grammar + podspec query) all added + detect-tested.
+       ABI compatible with tree-sitter 0.25.
   [P10] more CLI commands with tests: `sbom` (needs P7), `fix` (domain.BuildFixPlan
        already portable), `deprecated`/`license` checks in the config runner
        (aegis-registry already built + mock-tested — wire DepsDevClient/LicenseFetcher).
