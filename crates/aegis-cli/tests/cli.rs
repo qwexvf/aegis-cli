@@ -364,6 +364,36 @@ fn sbom_unknown_lockfile_exits_2() {
 }
 
 #[test]
+fn run_deprecated_check_no_lockfile_is_noop() {
+    // The `deprecated` check parses lockfiles then queries deps.dev. With no
+    // lockfile in the task path there's nothing to query — the check is a
+    // network-free no-op: deprecated=0, task passes. Exercises the plumbing.
+    let d = tmp("deprecated");
+    std::fs::create_dir_all(d.join("pkg")).unwrap();
+    write(&d.join("pkg"), "index.js", "export const x = 1;");
+    let cfg = format!(
+        r#"
+[[task]]
+name = "dep"
+path = "{p}/pkg"
+ecosystem = "npm"
+checks = ["deprecated"]
+"#,
+        p = d.to_str().unwrap()
+    );
+    write(&d, "aegis.toml", &cfg);
+    let out = run(&["run", d.join("aegis.toml").to_str().unwrap(), "--json"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("\"failed\": false"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\"deprecated_findings\": 0"),
+        "{}",
+        out.stdout
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);
