@@ -63,6 +63,17 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Generate a CycloneDX SBOM (JSON) from a lockfile.
+    Sbom {
+        /// Path to the lockfile (e.g. package-lock.json, Cargo.lock).
+        file: String,
+        /// Root component / project name for the BOM.
+        #[arg(long)]
+        project: Option<String>,
+        /// urn:uuid serial number for the BOM (omitted when absent).
+        #[arg(long)]
+        serial: Option<String>,
+    },
     /// Scan a package source directory (AST + heuristics) and score it.
     Analyze {
         /// Directory containing the package's source tree.
@@ -116,6 +127,11 @@ fn main() -> ExitCode {
             json,
         } => run_ci(&file, &fail_on, offline, json),
         Command::Run { config, json } => run_config(&config, json),
+        Command::Sbom {
+            file,
+            project,
+            serial,
+        } => run_sbom(&file, project.as_deref(), serial.as_deref()),
         Command::Analyze {
             dir,
             name,
@@ -857,6 +873,44 @@ fn run_analyze(
             }
         }
     }
+    ExitCode::SUCCESS
+}
+
+/// Emit a CycloneDX 1.5 SBOM (JSON) for a lockfile's dependency graph.
+fn run_sbom(file: &str, project: Option<&str>, serial: Option<&str>) -> ExitCode {
+    let bytes = match std::fs::read(file) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("aegis: cannot read {file}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let basename = Path::new(file)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(file);
+    let deps = match parse_file(basename, &bytes, &DirectMap::new()) {
+        Ok(Some(d)) => d,
+        Ok(None) => {
+            eprintln!("aegis: no parser for lockfile '{basename}'");
+            return ExitCode::from(2);
+        }
+        Err(e) => {
+            eprintln!("aegis: failed to parse {basename}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
+    let timestamp = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default();
+    let opts = aegis_sbom::cyclonedx::Options {
+        aegis_version: env!("CARGO_PKG_VERSION").to_string(),
+        project: project.unwrap_or_default().to_string(),
+        timestamp,
+        serial_number: serial.unwrap_or_default().to_string(),
+    };
+    println!("{}", aegis_sbom::cyclonedx::build_json(&deps, &opts));
     ExitCode::SUCCESS
 }
 
