@@ -343,7 +343,15 @@ fn parse_ecosystem(s: &str) -> Option<Ecosystem> {
         "maven" => Ecosystem::Maven,
         "packagist" | "composer" => Ecosystem::Packagist,
         "nuget" => Ecosystem::NuGet,
-        "hex" => Ecosystem::Hex,
+        "hex" | "gleam" | "mix" => Ecosystem::Hex,
+        "pub" | "dart" | "pubspec" => Ecosystem::Pub,
+        "swift" | "swiftpm" => Ecosystem::SwiftPM,
+        "cran" => Ecosystem::Cran,
+        "hackage" | "haskell" => Ecosystem::Hackage,
+        "cpan" | "perl" => Ecosystem::Cpan,
+        "cocoapods" | "pods" => Ecosystem::CocoaPods,
+        "neovim" => Ecosystem::Neovim,
+        "aur" => Ecosystem::Aur,
         _ => return None,
     })
 }
