@@ -16,7 +16,7 @@ use aegis_heuristics::go_retract::parse_go_retract;
 use aegis_heuristics::manifest::parse_npm_manifest;
 use aegis_heuristics::{run_heuristics, NormalizedPackage};
 use aegis_lockfile::{parse_file, DirectMap};
-use aegis_net::UreqClient;
+use aegis_net::{DiskCache, UreqClient};
 use aegis_vuln::{EpssClient, KevCatalog, OsvClient};
 use clap::{Parser, Subcommand};
 use rayon::prelude::*;
@@ -215,6 +215,20 @@ struct CiView {
     findings: Vec<FindingView>,
 }
 
+/// On-disk cache for the CISA KEV feed (24h TTL). Rooted at
+/// `$XDG_CACHE_HOME/aegis` (or `$HOME/.cache/aegis`), falling back to the OS
+/// temp dir. The ~1 MB feed is fetched at most once per day across runs.
+fn kev_disk_cache() -> DiskCache {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))
+        .unwrap_or_else(std::env::temp_dir);
+    DiskCache::new(
+        base.join("aegis").join("kev"),
+        Some(std::time::Duration::from_secs(24 * 60 * 60)),
+    )
+}
+
 /// OSV CVE lookup + EPSS/KEV enrichment for a set of queries. Shared by
 /// `ci` and the config runner. Uses the real network.
 fn cve_findings(queries: &[AdvisoryQuery]) -> Result<Vec<FindingView>, String> {
@@ -234,7 +248,9 @@ fn cve_findings(queries: &[AdvisoryQuery]) -> Result<Vec<FindingView>, String> {
         }
     }
     advisories = EpssClient::default().enrich_advisories(&client, advisories);
-    advisories = KevCatalog::default().enrich_advisories(&client, advisories);
+    advisories = KevCatalog::default()
+        .with_cache(kev_disk_cache())
+        .enrich_advisories(&client, advisories);
 
     Ok(advisories
         .into_iter()
