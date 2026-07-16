@@ -792,13 +792,20 @@ struct ImageFindingView {
 /// filesystem (layer overlay + whiteouts) and report risky files. Exit 1 when
 /// any finding is present, 0 when clean, 2 on a read/parse error.
 pub(crate) fn run_image(file: &str, json: bool) -> ExitCode {
-    let findings = match aegis_image::scan_image_path(Path::new(file)) {
-        Ok(f) => f,
+    let img = match aegis_image::extract_image_from_path(Path::new(file)) {
+        Ok(i) => i,
         Err(e) => {
             eprintln!("aegis: cannot scan image {file}: {e}");
             return ExitCode::from(2);
         }
     };
+    // All three tiers: shallow file-shape checks, source-pattern heuristics,
+    // and tree-sitter AST capabilities. Deduped by (path, reason).
+    let mut findings = aegis_image::scan_image_files(&img);
+    findings.extend(aegis_image::deep_scan_image_files(&img));
+    findings.extend(aegis_image::ast_scan_image_files(&img));
+    findings.sort_by(|a, b| a.path.cmp(&b.path).then(a.reason.cmp(&b.reason)));
+    findings.dedup_by(|a, b| a.path == b.path && a.reason == b.reason);
 
     if json {
         let view: Vec<ImageFindingView> = findings
