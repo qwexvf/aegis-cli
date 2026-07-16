@@ -8,6 +8,8 @@ pub mod purl;
 
 #[cfg(feature = "cyclonedx")]
 pub mod cyclonedx;
+#[cfg(feature = "sarif")]
+pub mod sarif;
 #[cfg(feature = "spdx")]
 pub mod spdx;
 
