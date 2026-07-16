@@ -18,7 +18,9 @@ aegis-ast = { path = "../aegis-ast" }
 aegis-heuristics = { path = "../aegis-heuristics" }
 aegis-vuln = { path = "../aegis-vuln" }
 aegis-registry = { path = "../aegis-registry" }
+aegis-sbom = { path = "../aegis-sbom" }
 aegis-net = { path = "../aegis-net" }
+time = { version = "0.3", features = ["formatting"] }
 clap = { version = "4", features = ["derive"] }
 rayon = "1"
 toml = "0.8"

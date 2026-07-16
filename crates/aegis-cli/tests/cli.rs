@@ -241,6 +241,46 @@ checks = ["ast", "heuristics"]
 }
 
 #[test]
+fn sbom_emits_cyclonedx_from_lockfile() {
+    let d = tmp("sbom");
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21"}}}"#,
+    );
+    let out = run(&[
+        "sbom",
+        d.join("package-lock.json").to_str().unwrap(),
+        "--project",
+        "myapp",
+    ]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("\"bomFormat\": \"CycloneDX\""),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("\"specVersion\": \"1.5\""),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("pkg:npm/lodash@4.17.21"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("aegis:root:myapp"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn sbom_unknown_lockfile_exits_2() {
+    let out = run(&["sbom", "/nonexistent/nope.lock"]);
+    assert_eq!(out.code, 2);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);
