@@ -95,6 +95,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aegis-reach"
+version = "0.1.0"
+dependencies = [
+ "aegis-domain",
+ "tree-sitter",
+ "tree-sitter-javascript",
+]
+
+[[package]]
 name = "aegis-registry"
 version = "0.1.0"
 dependencies = [
