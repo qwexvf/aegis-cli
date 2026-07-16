@@ -489,6 +489,27 @@ fn image_missing_file_exits_2() {
 }
 
 #[test]
+fn explain_lists_capabilities_and_weights() {
+    // Network-free: reads the compiled-in capability set + risk weights.
+    let out = run(&["explain"]);
+    assert_eq!(out.code, 0);
+    assert!(out.stdout.contains("shell-spawn"), "{}", out.stdout);
+    assert!(out.stdout.contains("known-malware-ioc"), "{}", out.stdout);
+    // single capability
+    let out = run(&["explain", "shell-spawn", "--json"]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("\"capability\": \"shell-spawn\""),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("\"weight\":"), "{}", out.stdout);
+    // unknown slug → exit 2
+    let out = run(&["explain", "not-a-capability"]);
+    assert_eq!(out.code, 2);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);

@@ -5,8 +5,8 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use aegis_domain::{
-    build_fix_plan, builtin_allow_rules, upgrade_command, verdict, AdvisoryQuery, Dependency,
-    RiskAssessment, Severity,
+    build_fix_plan, builtin_allow_rules, risk_score, upgrade_command, verdict, AdvisoryQuery,
+    Capability, CapabilitySet, Dependency, Fingerprint, RiskAssessment, Severity, ALL_CAPABILITIES,
 };
 use aegis_lockfile::{parse_file, DirectMap};
 use aegis_net::UreqClient;
@@ -829,6 +829,72 @@ pub(crate) fn run_image(file: &str, json: bool) -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+#[derive(Serialize)]
+struct CapabilityDoc {
+    capability: String,
+    description: String,
+    /// score contribution when this capability is present on an analyzed package.
+    weight: i32,
+}
+
+/// A capability's score weight, derived from the real scorer: a fingerprint
+/// carrying only that capability scores exactly its contribution.
+fn capability_weight(cap: Capability) -> i32 {
+    let fp = Fingerprint {
+        analyzed: true,
+        capabilities: CapabilitySet::new([cap]),
+        ..Default::default()
+    };
+    risk_score(Some(&fp)).score
+}
+
+fn capability_doc(cap: Capability) -> CapabilityDoc {
+    CapabilityDoc {
+        capability: cap.name().to_string(),
+        description: cap.description().to_string(),
+        weight: capability_weight(cap),
+    }
+}
+
+/// Explain the risk model: list every capability (or one named slug) with its
+/// meaning and score weight, ordered by weight descending.
+pub(crate) fn run_explain(capability: Option<&str>, json: bool) -> ExitCode {
+    let mut docs: Vec<CapabilityDoc> = match capability {
+        Some(slug) => {
+            let Some(cap) = ALL_CAPABILITIES.iter().copied().find(|c| c.name() == slug) else {
+                eprintln!("aegis: unknown capability: {slug}");
+                return ExitCode::from(2);
+            };
+            vec![capability_doc(cap)]
+        }
+        None => ALL_CAPABILITIES
+            .iter()
+            .copied()
+            .map(capability_doc)
+            .collect(),
+    };
+    docs.sort_by(|a, b| {
+        b.weight
+            .cmp(&a.weight)
+            .then(a.capability.cmp(&b.capability))
+    });
+
+    if json {
+        match serde_json::to_string_pretty(&docs) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("aegis: json encode failed: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        for d in &docs {
+            println!("[{:>3}] {} — {}", d.weight, d.capability, d.description);
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 pub(crate) fn run_parse(file: &str, json: bool) -> ExitCode {
