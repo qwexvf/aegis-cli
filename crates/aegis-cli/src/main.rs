@@ -251,11 +251,40 @@ fn cve_findings(queries: &[AdvisoryQuery]) -> Result<Vec<FindingView>, String> {
         .with_cache(osv_disk_cache())
         .lookup(&client, queries)?;
 
+    // GHSA runs alongside OSV when a token is present — GitHub publishes
+    // advisories before OSV's sync picks them up. Empty/absent token → no-op.
+    let ghsa_results = match std::env::var("GITHUB_TOKEN") {
+        Ok(tok) if !tok.is_empty() => aegis_vuln::GhsaClient::default()
+            .with_token(&tok)
+            .lookup(&client, queries),
+        _ => std::collections::HashMap::new(),
+    };
+
     let mut advisories = Vec::new();
     let mut context: Vec<(String, String, String)> = Vec::new();
     for q in queries {
-        for adv in results.get(&q.key()).map(|v| v.as_slice()).unwrap_or(&[]) {
-            advisories.push(adv.clone());
+        let key = q.key();
+        // OSV first, then any GHSA advisory not already seen (dedup by id/alias).
+        let osv = results.get(&key).map(|v| v.as_slice()).unwrap_or(&[]);
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let merged = osv.iter().cloned().chain(
+            ghsa_results
+                .get(&key)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[])
+                .iter()
+                .cloned(),
+        );
+        for adv in merged {
+            // Skip if this advisory's id or any alias was already recorded.
+            if seen.contains(&adv.id) || adv.aliases.iter().any(|a| seen.contains(a)) {
+                continue;
+            }
+            seen.insert(adv.id.clone());
+            for a in &adv.aliases {
+                seen.insert(a.clone());
+            }
+            advisories.push(adv);
             context.push((
                 q.ecosystem.as_str().to_string(),
                 q.name.clone(),
