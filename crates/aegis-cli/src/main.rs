@@ -52,6 +52,9 @@ enum Command {
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
+        /// Emit SARIF 2.1.0 (for GitHub Code Scanning). Overrides --json.
+        #[arg(long)]
+        sarif: bool,
     },
     /// Run a config (aegis.toml) of scan tasks — independent tasks run
     /// in parallel; each task's source scan also fans out across cores.
@@ -128,7 +131,8 @@ fn main() -> ExitCode {
             fail_on,
             offline,
             json,
-        } => run_ci(&file, &fail_on, offline, json),
+            sarif,
+        } => run_ci(&file, &fail_on, offline, json, sarif),
         Command::Run { config, json } => run_config(&config, json),
         Command::Sbom {
             file,
@@ -229,7 +233,37 @@ fn cve_findings(queries: &[AdvisoryQuery]) -> Result<Vec<FindingView>, String> {
         .collect())
 }
 
-fn run_ci(file: &str, fail_on: &str, offline: bool, json: bool) -> ExitCode {
+/// Map a domain severity string to a SARIF result level.
+fn sarif_level(severity: &str) -> &'static str {
+    match parse_severity(severity) {
+        Some(Severity::Critical | Severity::High) => "error",
+        Some(Severity::Medium) => "warning",
+        _ => "note",
+    }
+}
+
+/// Convert CI CVE findings to a SARIF 2.1.0 log. Every advisory becomes one
+/// result under the `vulnerable-dependency` rule, located at its package.
+fn ci_findings_to_sarif(findings: &[FindingView]) -> String {
+    let rules = vec![aegis_sbom::sarif::RuleDef {
+        id: "vulnerable-dependency".into(),
+        description: "dependency has a known security advisory (CVE/GHSA)".into(),
+        level: "error".into(),
+    }];
+    let results: Vec<aegis_sbom::sarif::FindingRef> = findings
+        .iter()
+        .map(|f| aegis_sbom::sarif::FindingRef {
+            rule_id: "vulnerable-dependency".into(),
+            level: sarif_level(&f.severity).into(),
+            message: format!("{}: {} ({})", f.advisory, f.summary, f.severity),
+            location: Some(format!("{}/{}@{}", f.ecosystem, f.name, f.version)),
+            suppressed: false,
+        })
+        .collect();
+    aegis_sbom::sarif::build_json(env!("CARGO_PKG_VERSION"), &rules, &results)
+}
+
+fn run_ci(file: &str, fail_on: &str, offline: bool, json: bool, sarif: bool) -> ExitCode {
     let Some(threshold) = parse_severity(fail_on) else {
         eprintln!("aegis: unknown --fail-on severity: {fail_on}");
         return ExitCode::from(2);
@@ -286,6 +320,14 @@ fn run_ci(file: &str, fail_on: &str, offline: bool, json: bool) -> ExitCode {
             .unwrap_or(false)
     });
 
+    if sarif {
+        println!("{}", ci_findings_to_sarif(&findings));
+        return if failed {
+            ExitCode::from(1)
+        } else {
+            ExitCode::SUCCESS
+        };
+    }
     if json {
         let view = CiView {
             fail_on: threshold.as_str().to_string(),

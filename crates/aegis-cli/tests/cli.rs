@@ -241,6 +241,41 @@ checks = ["ast", "heuristics"]
 }
 
 #[test]
+fn ci_offline_sarif_emits_valid_log() {
+    // --offline skips the OSV lookup → no findings, but --sarif must still emit
+    // a well-formed SARIF 2.1.0 log (exit 0). Network-free.
+    let d = tmp("cisarif");
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21"}}}"#,
+    );
+    let out = run(&[
+        "ci",
+        d.join("package-lock.json").to_str().unwrap(),
+        "--offline",
+        "--sarif",
+    ]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("\"version\": \"2.1.0\""),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("\"name\": \"aegis-cli\""),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("vulnerable-dependency"),
+        "{}",
+        out.stdout
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn sbom_emits_cyclonedx_from_lockfile() {
     let d = tmp("sbom");
     write(
