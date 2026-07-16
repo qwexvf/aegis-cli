@@ -13,7 +13,7 @@ use clap::{Parser, Subcommand};
 
 use commands::{
     run_allowlist, run_analyze, run_ci, run_config, run_explain, run_fix, run_image, run_parse,
-    run_sbom,
+    run_reach, run_sbom,
 };
 
 #[derive(Parser)]
@@ -76,6 +76,17 @@ enum Command {
     },
     /// Show the built-in capability-suppression allowlist rules.
     Allowlist {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Check whether a dependency is imported (reachable) in a project's JS/TS
+    /// source — the signal that downgrades risk for unused dependencies.
+    Reach {
+        /// Project source directory.
+        dir: String,
+        /// Dependency key to look up (e.g. "lodash", "@scope/pkg").
+        package: String,
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -145,6 +156,7 @@ fn main() -> ExitCode {
         Command::Run { config, json } => run_config(&config, json),
         Command::Allowlist { json } => run_allowlist(json),
         Command::Explain { capability, json } => run_explain(capability.as_deref(), json),
+        Command::Reach { dir, package, json } => run_reach(&dir, &package, json),
         Command::Image { file, json } => run_image(&file, json),
         Command::Fix {
             file,

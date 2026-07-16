@@ -38,6 +38,7 @@ dependencies = [
  "aegis-image",
  "aegis-lockfile",
  "aegis-net",
+ "aegis-reach",
  "aegis-registry",
  "aegis-sbom",
  "aegis-vuln",
