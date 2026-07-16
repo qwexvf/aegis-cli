@@ -23,9 +23,11 @@ tree-sitter-php = { version = "0.23", optional = true }
 tree-sitter-c-sharp = { version = "0.23", optional = true }
 tree-sitter-haskell = { version = "0.23", optional = true }
 tree-sitter-lua = { version = "0.2", optional = true }
+tree-sitter-gleam = { version = "1", optional = true }
+tree-sitter-dart = { version = "0.2", optional = true }
 
 [features]
-default = ["js", "py", "ruby", "rust", "go", "php", "csharp", "haskell", "lua"]
+default = ["js", "py", "ruby", "rust", "go", "php", "csharp", "haskell", "lua", "gleam", "dart"]
 js = ["dep:tree-sitter-javascript"]
 py = ["dep:tree-sitter-python"]
 ruby = ["dep:tree-sitter-ruby"]
@@ -35,3 +37,5 @@ php = ["dep:tree-sitter-php"]
 csharp = ["dep:tree-sitter-c-sharp"]
 haskell = ["dep:tree-sitter-haskell"]
 lua = ["dep:tree-sitter-lua"]
+gleam = ["dep:tree-sitter-gleam"]
+dart = ["dep:tree-sitter-dart"]
