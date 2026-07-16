@@ -38,11 +38,13 @@ dependencies = [
  "aegis-lockfile",
  "aegis-net",
  "aegis-registry",
+ "aegis-sbom",
  "aegis-vuln",
  "clap",
  "rayon",
  "serde",
  "serde_json",
+ "time",
  "toml",
 ]
 
@@ -85,6 +87,15 @@ version = "0.1.0"
 dependencies = [
  "aegis-domain",
  "aegis-net",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "aegis-sbom"
+version = "0.1.0"
+dependencies = [
+ "aegis-domain",
  "serde",
  "serde_json",
 ]

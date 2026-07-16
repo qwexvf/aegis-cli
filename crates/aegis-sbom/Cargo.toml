@@ -1,0 +1,19 @@
+[package]
+name = "aegis-sbom"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SBOM generation (CycloneDX / SPDX / PURL) for the aegis supply-chain scanner."
+
+[dependencies]
+aegis-domain = { path = "../aegis-domain" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = ["cyclonedx"]
+# PURL builder is always compiled (tiny, dependency-free); CycloneDX is the
+# JSON BOM emitter. SPDX / SARIF land behind their own features.
+cyclonedx = []
