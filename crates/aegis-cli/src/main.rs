@@ -215,17 +215,31 @@ struct CiView {
     findings: Vec<FindingView>,
 }
 
-/// On-disk cache for the CISA KEV feed (24h TTL). Rooted at
-/// `$XDG_CACHE_HOME/aegis` (or `$HOME/.cache/aegis`), falling back to the OS
-/// temp dir. The ~1 MB feed is fetched at most once per day across runs.
-fn kev_disk_cache() -> DiskCache {
-    let base = std::env::var_os("XDG_CACHE_HOME")
+/// Base cache directory: `$XDG_CACHE_HOME/aegis` (or `$HOME/.cache/aegis`),
+/// falling back to the OS temp dir.
+fn cache_base() -> std::path::PathBuf {
+    std::env::var_os("XDG_CACHE_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))
-        .unwrap_or_else(std::env::temp_dir);
+        .unwrap_or_else(std::env::temp_dir)
+        .join("aegis")
+}
+
+/// On-disk cache for the CISA KEV feed (24h TTL). The ~1 MB feed is fetched at
+/// most once per day across runs.
+fn kev_disk_cache() -> DiskCache {
     DiskCache::new(
-        base.join("aegis").join("kev"),
+        cache_base().join("kev"),
         Some(std::time::Duration::from_secs(24 * 60 * 60)),
+    )
+}
+
+/// On-disk cache for OSV advisory documents (7d TTL). Advisory docs are
+/// effectively immutable, so the same GHSA/CVE isn't re-fetched across runs.
+fn osv_disk_cache() -> DiskCache {
+    DiskCache::new(
+        cache_base().join("osv"),
+        Some(std::time::Duration::from_secs(7 * 24 * 60 * 60)),
     )
 }
 
@@ -233,7 +247,9 @@ fn kev_disk_cache() -> DiskCache {
 /// `ci` and the config runner. Uses the real network.
 fn cve_findings(queries: &[AdvisoryQuery]) -> Result<Vec<FindingView>, String> {
     let client = UreqClient::new();
-    let results = OsvClient::default().lookup(&client, queries)?;
+    let results = OsvClient::default()
+        .with_cache(osv_disk_cache())
+        .lookup(&client, queries)?;
 
     let mut advisories = Vec::new();
     let mut context: Vec<(String, String, String)> = Vec::new();
@@ -1077,7 +1093,10 @@ fn run_fix(file: &str, offline: bool, script: bool, json: bool) -> ExitCode {
             .collect();
         if !queries.is_empty() {
             let client = UreqClient::new();
-            match OsvClient::default().lookup(&client, &queries) {
+            match OsvClient::default()
+                .with_cache(osv_disk_cache())
+                .lookup(&client, &queries)
+            {
                 Ok(results) => {
                     for d in &deps {
                         if d.version.is_empty() {

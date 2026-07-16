@@ -4,13 +4,15 @@
 //! then GET `/v1/vulns/{id}` for each unique ID. Ecosystems OSV can't
 //! cover are dropped from the batch (one bad entry 400s the whole call).
 //!
-//! Disk caching of advisory documents (Go's `WithCacheDir`) is deferred
-//! to the cache layer; this port always fetches on miss.
+//! An optional [`DiskCache`] (Go's `WithCacheDir`) backs the per-advisory GET
+//! `/v1/vulns/{id}`. Advisory documents are effectively immutable, so caching
+//! them by id avoids re-fetching the same GHSA/CVE across deps and runs. The
+//! version-specific batch query is never cached (new advisories land daily).
 
 use std::collections::HashMap;
 
 use aegis_domain::{Advisory, AdvisoryQuery, Ecosystem, Severity};
-use aegis_net::HttpClient;
+use aegis_net::{DiskCache, HttpClient};
 use serde::Deserialize;
 
 /// Public OSV.dev API. Override for self-hosted deployments / tests.
@@ -21,6 +23,7 @@ pub const MAX_QUERIES_PER_BATCH: usize = 1000;
 
 pub struct OsvClient {
     base_url: String,
+    cache: Option<DiskCache>,
 }
 
 impl Default for OsvClient {
@@ -33,7 +36,15 @@ impl OsvClient {
     pub fn new(base_url: &str) -> Self {
         OsvClient {
             base_url: base_url.trim_end_matches('/').to_string(),
+            cache: None,
         }
+    }
+
+    /// Back the immutable per-advisory GETs with an on-disk cache (set its TTL
+    /// on the `DiskCache`). Batch queries stay uncached.
+    pub fn with_cache(mut self, cache: DiskCache) -> Self {
+        self.cache = Some(cache);
+        self
     }
 
     /// Two-phase lookup. Returns a map keyed by [`AdvisoryQuery::key`];
@@ -157,6 +168,16 @@ impl OsvClient {
         if !is_valid_osv_id(id) {
             return Err(format!("invalid id {id:?}"));
         }
+        // is_valid_osv_id already restricts id to a filesystem-safe charset,
+        // so it's safe to use directly in the cache key.
+        let cache_key = format!("osv-vuln-{id}.json");
+        if let Some(cache) = &self.cache {
+            if let Some(body) = cache.get(&cache_key) {
+                if let Ok(adv) = parse_osv_vuln(&body) {
+                    return Ok(adv);
+                }
+            }
+        }
         let resp = http
             .get(
                 &format!("{}/v1/vulns/{}", self.base_url, id),
@@ -166,7 +187,11 @@ impl OsvClient {
         if !resp.is_ok() {
             return Err(format!("HTTP {}", resp.status));
         }
-        parse_osv_vuln(&resp.body)
+        let adv = parse_osv_vuln(&resp.body)?;
+        if let Some(cache) = &self.cache {
+            let _ = cache.put(&cache_key, &resp.body);
+        }
+        Ok(adv)
     }
 }
 
@@ -553,6 +578,41 @@ mod tests {
         assert_eq!(lodash.len(), 1);
         assert_eq!(lodash[0].severity, Severity::High);
         assert!(result["npm/safe@1.0.0"].is_empty());
+    }
+
+    #[test]
+    fn cached_advisory_skips_per_vuln_fetch() {
+        // Batch returns the id, but the /v1/vulns GET is NOT mocked (404). A
+        // pre-seeded cache entry must satisfy the lookup, proving the immutable
+        // advisory doc was served from disk.
+        let base = "https://osv.test";
+        let dir = std::env::temp_dir().join(format!("aegis-osv-cache-{}", std::process::id()));
+        let cache = DiskCache::new(&dir, Some(std::time::Duration::from_secs(3600)));
+        cache
+            .put(
+                "osv-vuln-GHSA-aaaa-bbbb-cccc.json",
+                br#"{"id":"GHSA-aaaa-bbbb-cccc","summary":"cached","database_specific":{"severity":"HIGH"}}"#,
+            )
+            .unwrap();
+
+        let batch_body = r#"{"results":[{"vulns":[{"id":"GHSA-aaaa-bbbb-cccc"}]}]}"#;
+        // Only the batch endpoint is mocked; the per-vuln GET 404s.
+        let http = MockHttpClient::new().with(
+            &format!("{base}/v1/querybatch"),
+            200,
+            batch_body.as_bytes().to_vec(),
+        );
+        let queries = vec![AdvisoryQuery {
+            ecosystem: Ecosystem::Npm,
+            name: "lodash".into(),
+            version: "4.17.4".into(),
+        }];
+        let client = OsvClient::new(base).with_cache(cache);
+        let result = client.lookup(&http, &queries).unwrap();
+        let advs = &result["npm/lodash@4.17.4"];
+        assert_eq!(advs.len(), 1, "cached advisory should have been returned");
+        assert_eq!(advs[0].summary, "cached");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
