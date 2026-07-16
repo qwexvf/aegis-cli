@@ -17,8 +17,9 @@ serde_json = "1"
 # philosophy. `depsdev` (package-health / deprecation) is separate since it
 # covers several ecosystems through one API.
 [features]
-default = ["npm", "pypi", "crates", "rubygems", "nuget", "depsdev"]
+default = ["npm", "pypi", "crates", "rubygems", "nuget", "depsdev", "github"]
 npm = []
+github = []
 pypi = []
 crates = []
 rubygems = []

@@ -11,6 +11,8 @@
 
 #[cfg(feature = "depsdev")]
 pub mod depsdotdev;
+#[cfg(feature = "github")]
+pub mod github;
 pub mod license;
 #[cfg(feature = "npm")]
 pub mod npm;
