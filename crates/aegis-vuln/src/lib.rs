@@ -5,9 +5,11 @@
 //! transport goes through the [`aegis_net::HttpClient`] seam.
 
 pub mod epss;
+pub mod ghsa;
 pub mod kev;
 pub mod osv;
 
 pub use epss::EpssClient;
+pub use ghsa::GhsaClient;
 pub use kev::KevCatalog;
 pub use osv::OsvClient;
