@@ -11,7 +11,9 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-use commands::{run_allowlist, run_analyze, run_ci, run_config, run_fix, run_parse, run_sbom};
+use commands::{
+    run_allowlist, run_analyze, run_ci, run_config, run_fix, run_image, run_parse, run_sbom,
+};
 
 #[derive(Parser)]
 #[command(name = "aegis", version, about = "Supply-chain security scanner")]
@@ -77,6 +79,14 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Scan an OCI / `docker save` image tarball for risky files.
+    Image {
+        /// Path to the image tarball (docker save output or OCI layout).
+        file: String,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Generate an SBOM (JSON) from a lockfile.
     Sbom {
         /// Path to the lockfile (e.g. package-lock.json, Cargo.lock).
@@ -125,6 +135,7 @@ fn main() -> ExitCode {
         } => run_ci(&file, &fail_on, offline, json, sarif),
         Command::Run { config, json } => run_config(&config, json),
         Command::Allowlist { json } => run_allowlist(json),
+        Command::Image { file, json } => run_image(&file, json),
         Command::Fix {
             file,
             offline,

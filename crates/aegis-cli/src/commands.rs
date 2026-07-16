@@ -774,6 +774,55 @@ pub(crate) fn run_allowlist(json: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+#[derive(Serialize)]
+struct ImageFindingView {
+    path: String,
+    reason: String,
+}
+
+/// Scan an OCI / `docker save` image tarball: extract the flattened root
+/// filesystem (layer overlay + whiteouts) and report risky files. Exit 1 when
+/// any finding is present, 0 when clean, 2 on a read/parse error.
+pub(crate) fn run_image(file: &str, json: bool) -> ExitCode {
+    let findings = match aegis_image::scan_image_path(Path::new(file)) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("aegis: cannot scan image {file}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
+    if json {
+        let view: Vec<ImageFindingView> = findings
+            .iter()
+            .map(|f| ImageFindingView {
+                path: f.path.clone(),
+                reason: f.reason.clone(),
+            })
+            .collect();
+        match serde_json::to_string_pretty(&view) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("aegis: json encode failed: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else if findings.is_empty() {
+        println!("no risky files found in image");
+    } else {
+        println!("{} risky file(s) in image:", findings.len());
+        for f in &findings {
+            println!("  {} — {}", f.path, f.reason);
+        }
+    }
+
+    if findings.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
 pub(crate) fn run_parse(file: &str, json: bool) -> ExitCode {
     let bytes = match std::fs::read(file) {
         Ok(b) => b,

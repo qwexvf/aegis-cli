@@ -35,6 +35,7 @@ dependencies = [
  "aegis-ast",
  "aegis-domain",
  "aegis-heuristics",
+ "aegis-image",
  "aegis-lockfile",
  "aegis-net",
  "aegis-registry",
