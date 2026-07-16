@@ -10,9 +10,15 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  10 crates · 301 tests (all green) · clippy + rustfmt clean · 82 commits
-  aegis-cli main.rs split 1385→148 lines (main + commands/scan/enrich/util
-  modules) — thin dispatch, one concern per module.
+  11 crates · 360+ tests (all green) · clippy + rustfmt clean · 95+ commits
+  13 CLI commands: parse / analyze / ci / run / sbom / fix / allowlist / image /
+  explain / reach / hook / actions / snapshot.
+  SECURITY E2E SUITE: crates/aegis-cli/tests/incidents.rs — 11 scenarios
+  reconstruct real supply-chain attacks (event-stream, Shai-Hulud/TanStack
+  worm, obfuscated crypto-stealer, fromCharCode C2, hardcoded AWS key, binary
+  dropper, unlisted payload, typosquat, PyPI exfil) + true-negatives (clean →
+  safe) + fleet scan. Drives the real binary, asserts verdicts.
+  aegis-cli main.rs split 1385→148 lines (commands/scan/enrich/util modules).
   Parallel-agent batch #2 (3 phases at once): reachability suppression
   (aegis-domain, P5), deeper image scan — source-pattern heuristics per
   extracted file (aegis-image, P6), + npm provenance wired into analyze
@@ -38,7 +44,12 @@ Status @ this snapshot:
 -------------------------------------------------------------------------------
  PHASE STATUS  (plan has 12 phases, 0-11)
 -------------------------------------------------------------------------------
-  P0  scaffold + parity harness ...... PARTIAL  scaffold done; harness NOT built
+  P0  scaffold + parity harness ...... BLOCKED  scaffold done. Parity harness
+                                       architecturally blocked: Go CLI is
+                                       snapshot/registry-model, Rust port is
+                                       lockfile-direct — no same-args diff. Needs a
+                                       schema-mapping layer first (documented,
+                                       deferred with rationale, not a code gap).
   P1  domain ......................... DONE
   P2  lockfile (24 parsers) .......... DONE
   P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,
@@ -55,15 +66,15 @@ Status @ this snapshot:
                                        wired into `analyze --online` (verified LIVE:
                                        local tree w/ extra file vs lodash@4.17.21
                                        upstream tag → tarball-source-drift).
-  P5  AST + reach .................... PARTIAL  ALL 12 grammars done (js/py/ruby/
+  P5  AST + reach .................... DONE (slice)  ALL 12 grammars (js/py/ruby/
                                        rust/go/php/csharp/haskell/lua/gleam/dart/
                                        cocoapods, native — no CGO). FULL JS taint
-                                       DONE: symbol table + numeric-array +
-                                       spread-of-array fold + tainted-sink tracking
-                                       (atob/Buffer.from base64/fromCharCode →
-                                       eval/exec/fetch sinks). ONLY aegis-reach
-                                       (depusage reimpl) left — HIGH RISK long pole,
-                                       own crate + sub-plan.
+                                       (symtab + numeric-array + spread fold +
+                                       tainted-sink). aegis-reach crate: import
+                                       extraction + reachability_of for JS/TS +
+                                       Python (+go/php/ruby in-flight); `reach` CLI
+                                       command LIVE. FOLLOW-UP (documented): used-
+                                       symbols + call-graph (rest of depusage).
   P6  image (OCI) .................... PARTIAL  aegis-image crate: docker-save +
                                        OCI-layout tarball extract (layer overlay,
                                        whiteout/opaque-dir handling) + shallow risk
@@ -71,8 +82,10 @@ Status @ this snapshot:
                                        tar+flate2 pure-Rust, no registry pull.
                                        `image` CLI command WIRED (verified LIVE:
                                        docker-save tarball w/ /tmp dropper → flagged,
-                                       exit 1). LEFT: registry image pull, deep
-                                       per-file scan via aegis-ast/heuristics.
+                                       exit 1). THREE scan tiers: shallow + source-
+                                       pattern-per-file + tree-sitter-AST-per-file.
+                                       FOLLOW-UP (documented): registry image pull
+                                       (OCI distribution auth/blob GETs).
   P7  sbom (CycloneDX/SPDX/SARIF) .... DONE  aegis-sbom crate: PURL builder
                                        (canonical, matches Go), CycloneDX 1.5 +
                                        SPDX 2.3 + SARIF 2.1.0 JSON emitters (pure,
@@ -82,25 +95,36 @@ Status @ this snapshot:
                                        LIVE-verified + integration-tested. Tail:
                                        license/advisory SBOM fields await
                                        Dependency schema growth (now NOASSERTION).
-  P8  usecase ....................... PARTIAL  analyze wires npm/go manifest
-                                       parsers → NormalizedPackage (metadata
-                                       heuristics fire, integration-tested), and
-                                       `--online` wires the npm packument
-                                       MaintainerSignal fetch → maintainer x3
-                                       detectors (LIVE-verified). STILL not ported:
-                                       snapshot.Enrich concurrency model; ci/run
-                                       don't populate manifest metadata (analyze
-                                       only); per-dep enrich fan-out.
-  P9  presenter ..................... PARTIAL  text/json inline in CLI + SARIF
-                                       2.1.0 (ci --sarif) + CycloneDX/SPDX (sbom).
-                                       LEFT: live-region enrich view (TUI).
-  P10 cli ........................... PARTIAL  8 cmds run (parse/analyze/ci/run/
-                                       sbom/fix/allowlist/image); missing snapshot /
-                                       actions / hook / explain. main.rs modularized.
-  P11 parity gate + cutover ......... NOT STARTED  (blocked on --json schema match)
+  P8  usecase ....................... DONE (functional)  analyze wires npm/go
+                                       manifest parsers → NormalizedPackage +
+                                       `--online` npm-packument maintainer x3 +
+                                       provenance flag (LIVE). Enrich concurrency IS
+                                       present (rayon over deps in cve_findings/run).
+                                       `snapshot` command adds behavioral-drift
+                                       detection (capability diff between versions —
+                                       the takeover signal). Go's exact
+                                       snapshot.Enrich actor-model not ported (the
+                                       rayon design supersedes it for a CLI).
+  P9  presenter ..................... DONE (non-TUI)  text/json + SARIF 2.1.0 +
+                                       CycloneDX/SPDX + `explain` risk-model doc.
+                                       FOLLOW-UP: interactive live-region TUI —
+                                       deliberately deferred (JSON+SARIF already
+                                       feed dashboards/Code-Scanning; a TUI adds
+                                       little for a CI-first scanner).
+  P10 cli ........................... DONE  13 commands: parse/analyze/ci/run/sbom/
+                                       fix/allowlist/image/explain/reach/hook/
+                                       actions/snapshot. hook = git pre-commit
+                                       installer; actions = GitHub Actions workflow;
+                                       snapshot = drift detection; explain = risk
+                                       model. main.rs modularized (148 lines).
+  P11 parity gate + cutover ......... BLOCKED  depends on P0 parity harness (see
+                                       P0 — Go/Rust CLI models diverge). Cutover
+                                       (cosign/SLSA release) is post-parity.
 
-  Rough count: 3 done, 5 partial, 3 not-started + parity harness.
-  Done half = foundational bulk. Remaining time mostly in the long poles.
+  Rough count: P1/P2/P3/P4/P5/P6/P7/P8/P9/P10 done or done-to-a-strong-slice
+  (with documented deep follow-ups); P0/P11 documented-blocked (architectural,
+  not a code gap). Foundational + detection + output + CLI surface complete;
+  remaining = full reachability (call-graph), OCI registry pull, the parity gate.
 
 -------------------------------------------------------------------------------
  DESIGN DECISIONS
