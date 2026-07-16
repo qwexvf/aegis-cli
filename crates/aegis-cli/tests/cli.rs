@@ -423,6 +423,37 @@ deny_licenses = ["GPL-3.0"]
 }
 
 #[test]
+fn fix_offline_empty_plan_exits_0() {
+    // --offline skips the OSV lookup → empty fix plan, exit 0. Network-free.
+    let d = tmp("fix");
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21"}}}"#,
+    );
+    let lock = d.join("package-lock.json");
+    let lock = lock.to_str().unwrap();
+    let out = run(&["fix", lock, "--offline"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("no known-vulnerable"), "{}", out.stdout);
+    // --offline --json → empty array
+    let out = run(&["fix", lock, "--offline", "--json"]);
+    assert_eq!(out.code, 0);
+    assert!(out.stdout.trim().starts_with('['), "{}", out.stdout);
+    // --offline --script → no commands (empty output), exit 0
+    let out = run(&["fix", lock, "--offline", "--script"]);
+    assert_eq!(out.code, 0);
+    assert!(out.stdout.trim().is_empty(), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn fix_unknown_lockfile_exits_2() {
+    let out = run(&["fix", "/nonexistent/nope.lock"]);
+    assert_eq!(out.code, 2);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);

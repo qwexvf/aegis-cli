@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use aegis_ast::{scanner_for, Findings, LanguageScanner};
 use aegis_domain::{
-    risk_score, verdict, AdvisoryQuery, CapabilitySet, Dependency, Ecosystem, Fingerprint,
-    RiskAssessment, Severity,
+    build_fix_plan, risk_score, upgrade_command, verdict, AdvisoryQuery, CapabilitySet, Dependency,
+    Ecosystem, Fingerprint, RiskAssessment, Severity,
 };
 use aegis_heuristics::go_retract::parse_go_retract;
 use aegis_heuristics::manifest::parse_npm_manifest;
@@ -62,6 +62,20 @@ enum Command {
         /// Path to the config file.
         #[arg(default_value = "aegis.toml")]
         config: String,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Suggest version bumps that resolve known CVEs in a lockfile.
+    Fix {
+        /// Path to the lockfile.
+        file: String,
+        /// Skip the network CVE lookup (offline / air-gapped).
+        #[arg(long)]
+        offline: bool,
+        /// Emit only the upgrade shell commands (safe to pipe to sh).
+        #[arg(long)]
+        script: bool,
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -134,6 +148,12 @@ fn main() -> ExitCode {
             sarif,
         } => run_ci(&file, &fail_on, offline, json, sarif),
         Command::Run { config, json } => run_config(&config, json),
+        Command::Fix {
+            file,
+            offline,
+            script,
+            json,
+        } => run_fix(&file, offline, script, json),
         Command::Sbom {
             file,
             format,
@@ -982,6 +1002,153 @@ fn run_analyze(
             println!("signals:");
             for f in &assessment.flags {
                 println!("  [{:>3}] {} — {}", f.weight, f.code, f.detail);
+            }
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+#[derive(Serialize)]
+struct FixItemView {
+    ecosystem: String,
+    name: String,
+    current_version: String,
+    target_version: String,
+    resolved: usize,
+    unresolved: usize,
+    /// Ecosystem-appropriate upgrade command, when one is known + shell-safe.
+    command: Option<String>,
+}
+
+/// Suggest version bumps that resolve known CVEs. Parses the lockfile, looks up
+/// advisories (OSV), groups them per dep, and computes the minimal forward
+/// upgrade. `--script` emits just the shell commands (safe to pipe to sh).
+fn run_fix(file: &str, offline: bool, script: bool, json: bool) -> ExitCode {
+    let bytes = match std::fs::read(file) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("aegis: cannot read {file}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let basename = Path::new(file)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(file);
+    let deps = match parse_file(basename, &bytes, &DirectMap::new()) {
+        Ok(Some(d)) => d,
+        Ok(None) => {
+            eprintln!("aegis: no parser for lockfile '{basename}'");
+            return ExitCode::from(2);
+        }
+        Err(e) => {
+            eprintln!("aegis: failed to parse {basename}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
+    // Advisory lookup (skipped offline → empty plan).
+    let mut pairs: Vec<(Dependency, Vec<aegis_domain::Advisory>)> = Vec::new();
+    if !offline {
+        let queries: Vec<AdvisoryQuery> = deps
+            .iter()
+            .filter(|d| !d.version.is_empty())
+            .map(|d| AdvisoryQuery {
+                ecosystem: d.ecosystem,
+                name: d.name.clone(),
+                version: d.version.clone(),
+            })
+            .collect();
+        if !queries.is_empty() {
+            let client = UreqClient::new();
+            match OsvClient::default().lookup(&client, &queries) {
+                Ok(results) => {
+                    for d in &deps {
+                        if d.version.is_empty() {
+                            continue;
+                        }
+                        let key = AdvisoryQuery {
+                            ecosystem: d.ecosystem,
+                            name: d.name.clone(),
+                            version: d.version.clone(),
+                        }
+                        .key();
+                        if let Some(advs) = results.get(&key) {
+                            if !advs.is_empty() {
+                                pairs.push((d.clone(), advs.clone()));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("aegis: CVE lookup failed: {e}");
+                    return ExitCode::from(2);
+                }
+            }
+        }
+    }
+
+    let plan = build_fix_plan(&pairs);
+
+    if script {
+        for item in &plan {
+            if let Some(cmd) = upgrade_command(&item.dep, &item.target_version) {
+                println!("{cmd}");
+            }
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    if json {
+        let view: Vec<FixItemView> = plan
+            .iter()
+            .map(|item| FixItemView {
+                ecosystem: item.dep.ecosystem.as_str().to_string(),
+                name: item.dep.name.clone(),
+                current_version: item.dep.version.clone(),
+                target_version: item.target_version.clone(),
+                resolved: item.resolved.len(),
+                unresolved: item.unresolved.len(),
+                command: upgrade_command(&item.dep, &item.target_version),
+            })
+            .collect();
+        match serde_json::to_string_pretty(&view) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("aegis: json encode failed: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else if plan.is_empty() {
+        println!("no known-vulnerable dependencies with an upgrade path");
+    } else {
+        for item in &plan {
+            let d = &item.dep;
+            if item.target_version.is_empty() {
+                println!(
+                    "{}/{}@{} — {} advisory(ies), no forward fix (manual review)",
+                    d.ecosystem.as_str(),
+                    d.name,
+                    d.version,
+                    item.unresolved.len()
+                );
+            } else {
+                println!(
+                    "{}/{}@{} → {} (resolves {}{})",
+                    d.ecosystem.as_str(),
+                    d.name,
+                    d.version,
+                    item.target_version,
+                    item.resolved.len(),
+                    if item.unresolved.is_empty() {
+                        String::new()
+                    } else {
+                        format!(", {} still unresolved", item.unresolved.len())
+                    }
+                );
+                if let Some(cmd) = upgrade_command(d, &item.target_version) {
+                    println!("    {cmd}");
+                }
             }
         }
     }
