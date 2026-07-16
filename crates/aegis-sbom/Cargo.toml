@@ -13,7 +13,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [features]
-default = ["cyclonedx"]
-# PURL builder is always compiled (tiny, dependency-free); CycloneDX is the
-# JSON BOM emitter. SPDX / SARIF land behind their own features.
+default = ["cyclonedx", "spdx"]
+# PURL builder is always compiled (tiny, dependency-free); CycloneDX and SPDX
+# are the JSON emitters, each behind its own feature.
 cyclonedx = []
+spdx = []
