@@ -10,7 +10,7 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  9 crates · 243 tests (all green) · clippy + rustfmt clean · 63 commits
+  9 crates · 244 tests (all green) · clippy + rustfmt clean · 64 commits
   Config runner (`run`) now has 5 check types: ast / heuristics / cve /
   deprecated (deps.dev) / license (deny_licenses via LicenseFetcher).
   Runnable `aegis` binary with 6 commands: parse / analyze / ci / run / sbom /
@@ -262,8 +262,9 @@ CUTOVER (P11): 100% corpus parity, reproduce cosign + SLSA release pipeline, fli
 -------------------------------------------------------------------------------
   GHSA lookup (GitHub GraphQL + token), npm SLSA provenance/attestations,
   per-ecosystem version resolvers (npm needs a node-semver crate, NOT Cargo semver
-  — different range syntax). DiskCache: KEV feed cached (24h TTL, wired into cli
-  cve lookup at $XDG_CACHE_HOME/aegis/kev). OSV per-query caching still TODO.
+  — different range syntax). DiskCache DONE: KEV feed (24h TTL) + OSV advisory
+  docs (7d TTL, immutable) both cached under $XDG_CACHE_HOME/aegis, wired into
+  the cli cve lookup. (OSV batch query stays uncached — new advisories daily.)
   GitHub git-tree fetch — DONE (aegis-registry::github). tarball-drift fires.
   Remaining GH tail: X-RateLimit-Remaining header not inspected (HttpResponse
   drops headers) — 403 is treated as skip; fine for best-effort.
