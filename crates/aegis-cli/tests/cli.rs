@@ -534,6 +534,53 @@ fn reach_reports_import_reachability() {
 }
 
 #[test]
+fn hook_prints_pre_commit_script() {
+    let out = run(&["hook"]);
+    assert_eq!(out.code, 0);
+    assert!(out.stdout.starts_with("#!/bin/sh"), "{}", out.stdout);
+    assert!(out.stdout.contains("aegis ci"), "{}", out.stdout);
+}
+
+#[test]
+fn hook_install_writes_file() {
+    let d = tmp("hook");
+    // fresh git repo
+    std::fs::create_dir_all(d.join(".git")).unwrap();
+    let out = Command::new(BIN)
+        .args(["hook", "--install"])
+        .current_dir(&d)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert!(d.join(".git/hooks/pre-commit").is_file());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn hook_install_no_git_exits_2() {
+    let d = tmp("nogit");
+    let out = Command::new(BIN)
+        .args(["hook", "--install"])
+        .current_dir(&d)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn actions_prints_workflow() {
+    let out = run(&["actions"]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("aegis supply-chain scan"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("upload-sarif"), "{}", out.stdout);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);
