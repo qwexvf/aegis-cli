@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use aegis_ast::{scanner_for, Findings, LanguageScanner};
 use aegis_domain::{
-    build_fix_plan, risk_score, upgrade_command, verdict, AdvisoryQuery, CapabilitySet, Dependency,
-    Ecosystem, Fingerprint, RiskAssessment, Severity,
+    build_fix_plan, builtin_allow_rules, risk_score, upgrade_command, verdict, AdvisoryQuery,
+    CapabilitySet, Dependency, Ecosystem, Fingerprint, RiskAssessment, Severity,
 };
 use aegis_heuristics::go_retract::parse_go_retract;
 use aegis_heuristics::manifest::parse_npm_manifest;
@@ -76,6 +76,12 @@ enum Command {
         /// Emit only the upgrade shell commands (safe to pipe to sh).
         #[arg(long)]
         script: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the built-in capability-suppression allowlist rules.
+    Allowlist {
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -148,6 +154,7 @@ fn main() -> ExitCode {
             sarif,
         } => run_ci(&file, &fail_on, offline, json, sarif),
         Command::Run { config, json } => run_config(&config, json),
+        Command::Allowlist { json } => run_allowlist(json),
         Command::Fix {
             file,
             offline,
@@ -1278,6 +1285,58 @@ fn run_sbom(file: &str, format: &str, project: Option<&str>, serial: Option<&str
         )
     };
     println!("{out}");
+    ExitCode::SUCCESS
+}
+
+#[derive(Serialize)]
+struct AllowRuleView {
+    ecosystem: String,
+    name: String,
+    version_range: String,
+    /// Suppressed capability, or null for "any capability".
+    capability: Option<String>,
+    reason: String,
+    source: String,
+}
+
+/// List the built-in capability-suppression allowlist rules. These are the
+/// curated defaults (e.g. known-good npm packages whose flagged capabilities
+/// are expected) that the risk engine treats as pre-approved.
+fn run_allowlist(json: bool) -> ExitCode {
+    let rules = builtin_allow_rules();
+    if json {
+        let view: Vec<AllowRuleView> = rules
+            .iter()
+            .map(|r| AllowRuleView {
+                ecosystem: r.ecosystem.as_str().to_string(),
+                name: r.name.clone(),
+                version_range: r.version_range.clone(),
+                capability: r.capability.map(|c| c.name().to_string()),
+                reason: r.reason.clone(),
+                source: r.source.clone(),
+            })
+            .collect();
+        match serde_json::to_string_pretty(&view) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("aegis: json encode failed: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        println!("{} built-in allowlist rules:", rules.len());
+        for r in &rules {
+            let cap = r.capability.map(|c| c.name()).unwrap_or("*");
+            println!(
+                "  {}/{} {} — suppress {} ({})",
+                r.ecosystem.as_str(),
+                r.name,
+                r.version_range,
+                cap,
+                r.reason
+            );
+        }
+    }
     ExitCode::SUCCESS
 }
 
