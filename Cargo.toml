@@ -9,6 +9,7 @@ members = [
     "crates/aegis-heuristics",
     "crates/aegis-ast",
     "crates/aegis-sbom",
+    "crates/aegis-image",
     "crates/aegis-cli",
 ]
 

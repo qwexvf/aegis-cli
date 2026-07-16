@@ -1,0 +1,15 @@
+[package]
+name = "aegis-image"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "OCI / Docker container-image supply-chain scanning (layer overlay + first-slice risk checks)."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Pure-Rust tar + gzip readers for `docker save` / OCI-layout tarballs.
+tar = "0.4"
+flate2 = "1"
