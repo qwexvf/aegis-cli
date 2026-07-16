@@ -481,6 +481,14 @@ fn allowlist_lists_builtin_rules() {
 }
 
 #[test]
+fn image_missing_file_exits_2() {
+    // The image scanner's extract/scan logic is unit-tested in aegis-image;
+    // here we only verify the CLI wiring + the error exit code. Network-free.
+    let out = run(&["image", "/nonexistent/image.tar"]);
+    assert_eq!(out.code, 2);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);
