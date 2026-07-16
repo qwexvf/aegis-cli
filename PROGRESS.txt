@@ -10,9 +10,13 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  10 crates · 294 tests (all green) · clippy + rustfmt clean · 76 commits
+  10 crates · 301 tests (all green) · clippy + rustfmt clean · 82 commits
   aegis-cli main.rs split 1385→148 lines (main + commands/scan/enrich/util
   modules) — thin dispatch, one concern per module.
+  Parallel-agent batch #2 (3 phases at once): reachability suppression
+  (aegis-domain, P5), deeper image scan — source-pattern heuristics per
+  extracted file (aegis-image, P6), + npm provenance wired into analyze
+  --online (P8, LIVE: lodash@4.17.10 → provenance-missing flag).
   Parallel-agent batch (crate-level): GHSA lookup (aegis-vuln, github GraphQL —
   WIRED into cli cve lookup, merges with OSV when GITHUB_TOKEN set), capability
   allowlist (aegis-domain, pure semver match + builtin rules — `allowlist`
