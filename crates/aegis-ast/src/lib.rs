@@ -13,6 +13,8 @@ use aegis_domain::Capability;
 mod scanner;
 pub use scanner::GrammarScanner;
 
+#[cfg(feature = "cocoapods")]
+pub mod cocoapods;
 #[cfg(feature = "csharp")]
 pub mod csharp;
 #[cfg(feature = "dart")]
@@ -178,6 +180,10 @@ pub fn scanner_for(filename: &str) -> Option<Box<dyn LanguageScanner>> {
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         #[cfg(feature = "dart")]
         "dart" => dart::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "cocoapods")]
+        "podspec" => cocoapods::scanner()
             .ok()
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         _ => None,
