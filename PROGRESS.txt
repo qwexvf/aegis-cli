@@ -10,7 +10,9 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  9 crates · 288 tests (all green) · clippy + rustfmt clean · 71 commits
+  10 crates · 294 tests (all green) · clippy + rustfmt clean · 76 commits
+  aegis-cli main.rs split 1385→148 lines (main + commands/scan/enrich/util
+  modules) — thin dispatch, one concern per module.
   Parallel-agent batch (crate-level): GHSA lookup (aegis-vuln, github GraphQL —
   WIRED into cli cve lookup, merges with OSV when GITHUB_TOKEN set), capability
   allowlist (aegis-domain, pure semver match + builtin rules — `allowlist`
@@ -18,8 +20,8 @@ Status @ this snapshot:
   CLI wiring of provenance flag still pending).
   Config runner (`run`) now has 5 check types: ast / heuristics / cve /
   deprecated (deps.dev) / license (deny_licenses via LicenseFetcher).
-  Runnable `aegis` binary with 7 commands: parse / analyze / ci / run / sbom /
-  fix / allowlist. `fix` = lockfile → OSV → version-bump plan + safe upgrade
+  Runnable `aegis` binary with 8 commands: parse / analyze / ci / run / sbom /
+  fix / allowlist / image. `fix` = lockfile → OSV → version-bump plan + safe upgrade
   commands (verified LIVE: lodash 4.17.4 → 4.18.0 resolves 10 advisories).
   `ci --sarif` emits SARIF 2.1.0 (GitHub Code Scanning); verified LIVE:
   lodash 4.17.4 → GHSA advisories → SARIF results w/ severity→level.
@@ -62,9 +64,11 @@ Status @ this snapshot:
                                        OCI-layout tarball extract (layer overlay,
                                        whiteout/opaque-dir handling) + shallow risk
                                        scan (dropper/hidden-ELF/embedded-manifest).
-                                       tar+flate2 pure-Rust, no registry pull. LEFT:
-                                       registry image pull, deep per-file scan via
-                                       aegis-ast/heuristics, `image` CLI command.
+                                       tar+flate2 pure-Rust, no registry pull.
+                                       `image` CLI command WIRED (verified LIVE:
+                                       docker-save tarball w/ /tmp dropper → flagged,
+                                       exit 1). LEFT: registry image pull, deep
+                                       per-file scan via aegis-ast/heuristics.
   P7  sbom (CycloneDX/SPDX/SARIF) .... DONE  aegis-sbom crate: PURL builder
                                        (canonical, matches Go), CycloneDX 1.5 +
                                        SPDX 2.3 + SARIF 2.1.0 JSON emitters (pure,
@@ -86,9 +90,9 @@ Status @ this snapshot:
   P9  presenter ..................... PARTIAL  text/json inline in CLI + SARIF
                                        2.1.0 (ci --sarif) + CycloneDX/SPDX (sbom).
                                        LEFT: live-region enrich view (TUI).
-  P10 cli ........................... PARTIAL  6 cmds run (parse/analyze/ci/run/
-                                       sbom/fix); missing snapshot / actions /
-                                       allowlist / hook / explain
+  P10 cli ........................... PARTIAL  8 cmds run (parse/analyze/ci/run/
+                                       sbom/fix/allowlist/image); missing snapshot /
+                                       actions / hook / explain. main.rs modularized.
   P11 parity gate + cutover ......... NOT STARTED  (blocked on --json schema match)
 
   Rough count: 3 done, 5 partial, 3 not-started + parity harness.
