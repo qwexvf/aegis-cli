@@ -10,8 +10,8 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  8 crates · 208 tests (all green) · clippy + rustfmt clean · 48 commits
-  Runnable `aegis` binary with 4 commands: parse / analyze / ci / run.
+  9 crates · 221 tests (all green) · clippy + rustfmt clean · 53 commits
+  Runnable `aegis` binary with 5 commands: parse / analyze / ci / run / sbom.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
   analyze enriches the package from its manifest (npm package.json →
   deps+hooks; go.mod → retract) so metadata heuristics fire. `analyze
@@ -45,7 +45,16 @@ Status @ this snapshot:
                                        + tainted-sinks, ~400 LOC), aegis-reach
                                        depusage reimpl (HIGH RISK). Both long poles.
   P6  image (OCI) .................... NOT STARTED  (long pole — thin Rust OCI eco)
-  P7  sbom (CycloneDX/SPDX/SARIF) .... NOT STARTED
+  P7  sbom (CycloneDX/SPDX/SARIF) .... MOSTLY DONE  aegis-sbom crate: PURL
+                                       builder (canonical, matches Go), CycloneDX
+                                       1.5 + SPDX 2.3 JSON emitters (pure,
+                                       deterministic, hand-rolled base64 for
+                                       integrity hashes → no deps). `sbom` command
+                                       (--format cyclonedx|spdx), LIVE-verified +
+                                       integration-tested. LEFT: SARIF (findings,
+                                       not deps — belongs with P9 presenter);
+                                       license/advisory fields await Dependency
+                                       schema growth (currently NOASSERTION).
   P8  usecase ....................... PARTIAL  analyze wires npm/go manifest
                                        parsers → NormalizedPackage (metadata
                                        heuristics fire, integration-tested), and
@@ -57,8 +66,9 @@ Status @ this snapshot:
                                        only); per-dep enrich fan-out.
   P9  presenter ..................... PARTIAL  text/json inline in CLI; no SARIF,
                                        no live-region enrich view
-  P10 cli ........................... PARTIAL  4 cmds run; missing snapshot / fix /
-                                       sbom / actions / allowlist / hook / explain
+  P10 cli ........................... PARTIAL  5 cmds run (parse/analyze/ci/run/
+                                       sbom); missing snapshot / fix / actions /
+                                       allowlist / hook / explain
   P11 parity gate + cutover ......... NOT STARTED  (blocked on --json schema match)
 
   Rough count: 3 done, 5 partial, 3 not-started + parity harness.
@@ -126,7 +136,11 @@ Status @ this snapshot:
                     from the Go tree. capability + env-read + evidence + JS
                     constant-fold taint. 32 tests (each grammar: query-compiles +
                     detects). Feature-gated per grammar.
-✅ aegis-cli (bin)  clap CLI, 3 commands (below).
+✅ aegis-sbom       PURL builder + CycloneDX 1.5 + SPDX 2.3 JSON emitters. Pure,
+                    deterministic (caller passes timestamp+serial). Hand-rolled
+                    base64/hex for integrity hashes → dep-free beyond serde.
+                    Feature-gated per format. 16 tests.
+✅ aegis-cli (bin)  clap CLI, 5 commands (below).
 
 -------------------------------------------------------------------------------
  WORKING COMMANDS  (all verified end-to-end)
@@ -155,6 +169,15 @@ aegis run <aegis.toml> [--json]
     task's source scan also fans out across cores. `parallelism = N` sets threads.
     Verified: 3-task config → 2 source-scan BLOCKs + 1 cve task (10 live findings),
     overall FAIL, exit 1.
+
+aegis sbom <lockfile> [--format cyclonedx|spdx] [--project N] [--serial urn]
+    Lockfile → dependency graph → CycloneDX 1.5 or SPDX 2.3 JSON on stdout.
+    PURLs per ecosystem, npm integrity → SHA-512 hex hash, dependency graph
+    from the transitive edges. Verified: real package-lock.json → valid BOM
+    both formats.
+
+aegis analyze <dir> [--online] ...
+    --online adds npm packument maintainer checks + GitHub-tag tarball-drift.
 
 CONCURRENCY: rayon (all cores), NOT tokio. Async ≠ fast for a CLI; the work is
 CPU-bound (tree-sitter parsing) + batch network. rayon parallelizes the scan;
