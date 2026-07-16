@@ -465,7 +465,15 @@ pub(crate) fn run_analyze(
     } else {
         Vec::new()
     };
-    let (caps, assessment) = scan_source(&files, &pkg_name, eco, extra_caps);
+    let (caps, mut assessment) = scan_source(&files, &pkg_name, eco, extra_caps);
+    // Online npm packages get an SLSA-provenance check: a missing attestation
+    // adds the `provenance-missing` flag + its weight before the verdict.
+    if online {
+        if let Some(flag) = crate::scan::provenance_flag(&files, &pkg_name, eco) {
+            assessment.score += flag.weight;
+            assessment.flags.push(flag);
+        }
+    }
     let v = verdict(&assessment, &RiskAssessment::default());
 
     if json {

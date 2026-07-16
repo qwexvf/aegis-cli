@@ -251,6 +251,50 @@ pub(crate) fn fetch_online_caps(
     caps
 }
 
+/// Fetch the npm SLSA provenance attestation for this package; when it's
+/// missing, return the `provenance-missing` risk flag. npm-only, best-effort:
+/// any failure (offline, non-npm, no name/version, registry error) → `None`.
+pub(crate) fn provenance_flag(
+    files: &[(String, Vec<u8>)],
+    pkg_name: &str,
+    eco: Ecosystem,
+) -> Option<aegis_domain::RiskFlag> {
+    if eco != Ecosystem::Npm {
+        return None;
+    }
+    let (_, raw) = find_manifest(files, "package.json")?;
+    let manifest: serde_json::Value = serde_json::from_slice(raw).ok()?;
+    let name = manifest
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(pkg_name);
+    let version = manifest.get("version").and_then(|v| v.as_str())?;
+    if name.is_empty() || version.is_empty() {
+        return None;
+    }
+
+    let client = UreqClient::new();
+    let status = aegis_registry::fetch_provenance(
+        &client,
+        aegis_registry::attestations::DEFAULT_REGISTRY_URL,
+        name,
+        version,
+    );
+    if status.has_provenance {
+        return None;
+    }
+    // No attestation → flag it via the domain rule.
+    let dep = Dependency {
+        ecosystem: Ecosystem::Npm,
+        name: name.to_string(),
+        version: version.to_string(),
+        provenance_status: "missing".to_string(),
+        ..Default::default()
+    };
+    aegis_domain::provenance_risk_flag(&dep)
+}
+
 /// Pull the `repository` URL/shorthand out of a package.json (string form or
 /// `{ "url": ... }` object form).
 fn repository_url(manifest: &serde_json::Value) -> Option<String> {
