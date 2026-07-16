@@ -13,8 +13,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [features]
-default = ["cyclonedx", "spdx"]
-# PURL builder is always compiled (tiny, dependency-free); CycloneDX and SPDX
-# are the JSON emitters, each behind its own feature.
+default = ["cyclonedx", "spdx", "sarif"]
+# PURL builder is always compiled (tiny, dependency-free); the document emitters
+# (CycloneDX, SPDX, SARIF) are each behind their own feature.
 cyclonedx = []
 spdx = []
+sarif = []
