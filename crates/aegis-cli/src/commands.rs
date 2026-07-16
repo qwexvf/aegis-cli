@@ -1022,6 +1022,122 @@ pub(crate) fn run_actions() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// A package's behavioral fingerprint: the capabilities its code exercises plus
+/// the risk score. Persisted so a later run can diff against it.
+#[derive(Serialize, Deserialize)]
+struct Snapshot {
+    ecosystem: String,
+    score: i32,
+    capabilities: Vec<String>,
+}
+
+/// Fingerprint a package (or diff it against a baseline). Behavioral drift — a
+/// new capability appearing between versions — is the canonical maintainer-
+/// takeover signal (event-stream shipped `child_process`/`net` it never had).
+/// With `--baseline`, exits 1 when any *new* capability appears.
+pub(crate) fn run_snapshot(
+    dir: &str,
+    ecosystem: &str,
+    out: Option<&str>,
+    baseline: Option<&str>,
+) -> ExitCode {
+    let root = Path::new(dir);
+    if !root.is_dir() {
+        eprintln!("aegis: not a directory: {dir}");
+        return ExitCode::from(2);
+    }
+    let Some(eco) = parse_ecosystem(ecosystem) else {
+        eprintln!("aegis: unknown ecosystem: {ecosystem}");
+        return ExitCode::from(2);
+    };
+    let pkg_name = root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    let files = collect_files(root);
+    let (caps, assessment) = scan_source(&files, &pkg_name, eco, Vec::new());
+    let snap = Snapshot {
+        ecosystem: eco.as_str().to_string(),
+        score: assessment.score,
+        capabilities: caps.iter().map(|c| c.name().to_string()).collect(),
+    };
+
+    // Diff mode: compare current capabilities against the baseline's.
+    if let Some(base_path) = baseline {
+        let base_bytes = match std::fs::read(base_path) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("aegis: cannot read baseline {base_path}: {e}");
+                return ExitCode::from(2);
+            }
+        };
+        let base: Snapshot = match serde_json::from_slice(&base_bytes) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("aegis: invalid baseline {base_path}: {e}");
+                return ExitCode::from(2);
+            }
+        };
+        let base_set: std::collections::HashSet<&str> =
+            base.capabilities.iter().map(String::as_str).collect();
+        let now_set: std::collections::HashSet<&str> =
+            snap.capabilities.iter().map(String::as_str).collect();
+        let added: Vec<&str> = snap
+            .capabilities
+            .iter()
+            .map(String::as_str)
+            .filter(|c| !base_set.contains(c))
+            .collect();
+        let removed: Vec<&str> = base
+            .capabilities
+            .iter()
+            .map(String::as_str)
+            .filter(|c| !now_set.contains(c))
+            .collect();
+
+        if added.is_empty() && removed.is_empty() {
+            println!(
+                "no behavioral drift ({} capabilities)",
+                snap.capabilities.len()
+            );
+            return ExitCode::SUCCESS;
+        }
+        for c in &added {
+            println!("+ {c}  (NEW capability — possible takeover)");
+        }
+        for c in &removed {
+            println!("- {c}  (removed)");
+        }
+        // New capabilities are the risk signal; removals alone are fine.
+        return if added.is_empty() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::from(1)
+        };
+    }
+
+    // Capture mode: write or print the fingerprint.
+    let json = match serde_json::to_string_pretty(&snap) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("aegis: json encode failed: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    match out {
+        Some(path) => match std::fs::write(path, &json) {
+            Ok(()) => println!("wrote snapshot → {path}"),
+            Err(e) => {
+                eprintln!("aegis: cannot write {path}: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        None => println!("{json}"),
+    }
+    ExitCode::SUCCESS
+}
+
 pub(crate) fn run_parse(file: &str, json: bool) -> ExitCode {
     let bytes = match std::fs::read(file) {
         Ok(b) => b,
