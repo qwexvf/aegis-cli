@@ -15,6 +15,9 @@ tar = "0.4"
 flate2 = "1"
 # Source-pattern heuristics for the deeper scan pass. Only the source-pattern
 # detector is needed here, so pull it in without the rest of the default set.
+# HTTP transport seam for the anonymous registry-pull flow. default-features
+# off so the crate stays transport-agnostic; the binary wires the ureq backend.
+aegis-net = { path = "../aegis-net", default-features = false }
 aegis-domain = { path = "../aegis-domain" }
 aegis-heuristics = { path = "../aegis-heuristics", default-features = false, features = ["source-patterns"] }
 # Tree-sitter AST capability scanner for the per-file AST pass. Default

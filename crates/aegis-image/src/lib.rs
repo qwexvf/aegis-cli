@@ -19,8 +19,13 @@
 //!     picked by extension) and maps the emitted capabilities to findings.
 //!     Far fewer false positives than the pattern pass on code-shaped strings.
 //!
+//! Registry pull ([`pull_image`]) fetches an image by `repo:tag` reference
+//! over the OCI distribution API and feeds the layer blobs into the same
+//! overlay assembly — anonymous (unauthenticated) pull from public registries
+//! only for this slice (see [`registry`] for the auth caveat).
+//!
 //! Deliberately out of scope for this slice (follow-ups):
-//!   - Registry pull (no auth flow / remote image fetch).
+//!   - Authenticated registry pull (private images / non-docker.io tokens).
 //!   - OS package databases (apk / dpkg / rpm), per-layer attribution.
 //!   - Streaming: the whole outer tarball is read into memory. Fine for the
 //!     first slice; a streaming layout reader is a later optimisation.
@@ -30,9 +35,11 @@
 
 mod layout;
 mod overlay;
+pub mod registry;
 mod scan;
 
 pub use overlay::ImageFiles;
+pub use registry::{parse_reference, pull_image, ImageRef};
 pub use scan::{ast_scan_image_files, deep_scan_image_files, scan_image_files, Finding};
 
 use std::path::Path;
