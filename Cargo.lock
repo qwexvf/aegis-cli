@@ -68,6 +68,8 @@ dependencies = [
 name = "aegis-image"
 version = "0.1.0"
 dependencies = [
+ "aegis-domain",
+ "aegis-heuristics",
  "flate2",
  "serde",
  "serde_json",

