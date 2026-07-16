@@ -581,6 +581,52 @@ fn actions_prints_workflow() {
 }
 
 #[test]
+fn snapshot_detects_behavioral_drift() {
+    // Capture a clean baseline, then re-snapshot a version that gained a
+    // dangerous capability (the maintainer-takeover shape) → drift, exit 1.
+    let d = tmp("snap");
+    std::fs::create_dir_all(d.join("v1")).unwrap();
+    std::fs::create_dir_all(d.join("v2")).unwrap();
+    write(&d.join("v1"), "index.js", "export const x = 1;\n");
+    let base = d.join("base.json");
+    let out = run(&[
+        "snapshot",
+        d.join("v1").to_str().unwrap(),
+        "--out",
+        base.to_str().unwrap(),
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(base.is_file());
+
+    // no drift against itself
+    let out = run(&[
+        "snapshot",
+        d.join("v1").to_str().unwrap(),
+        "--baseline",
+        base.to_str().unwrap(),
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("no behavioral drift"), "{}", out.stdout);
+
+    // v2 adds a shell-spawn capability → drift, exit 1
+    write(
+        &d.join("v2"),
+        "index.js",
+        "require('child_process').exec('id');\n",
+    );
+    let out = run(&[
+        "snapshot",
+        d.join("v2").to_str().unwrap(),
+        "--baseline",
+        base.to_str().unwrap(),
+    ]);
+    assert_eq!(out.code, 1, "{}", out.stdout);
+    assert!(out.stdout.contains("shell-spawn"), "{}", out.stdout);
+    assert!(out.stdout.contains("NEW capability"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);

@@ -13,7 +13,7 @@ use clap::{Parser, Subcommand};
 
 use commands::{
     run_actions, run_allowlist, run_analyze, run_ci, run_config, run_explain, run_fix, run_hook,
-    run_image, run_parse, run_reach, run_sbom,
+    run_image, run_parse, run_reach, run_sbom, run_snapshot,
 };
 
 #[derive(Parser)]
@@ -100,6 +100,22 @@ enum Command {
     },
     /// Print a GitHub Actions workflow that runs `aegis ci` on every push.
     Actions {},
+    /// Capture a package's capability fingerprint, or diff it against a
+    /// baseline to detect behavioral drift between versions (takeover signal).
+    Snapshot {
+        /// Package source directory to fingerprint.
+        dir: String,
+        /// Ecosystem for heuristics.
+        #[arg(long, default_value = "npm")]
+        ecosystem: String,
+        /// Write the fingerprint JSON to this file (else print it).
+        #[arg(long)]
+        out: Option<String>,
+        /// Compare against this baseline fingerprint; exit 1 if new risky
+        /// capabilities appeared.
+        #[arg(long)]
+        baseline: Option<String>,
+    },
     /// Explain the risk model: capabilities, their meaning, and score weight.
     Explain {
         /// A capability slug (e.g. "shell-spawn"); omit to list them all.
@@ -168,6 +184,12 @@ fn main() -> ExitCode {
         Command::Reach { dir, package, json } => run_reach(&dir, &package, json),
         Command::Hook { install } => run_hook(install),
         Command::Actions {} => run_actions(),
+        Command::Snapshot {
+            dir,
+            ecosystem,
+            out,
+            baseline,
+        } => run_snapshot(&dir, &ecosystem, out.as_deref(), baseline.as_deref()),
         Command::Image { file, json } => run_image(&file, json),
         Command::Fix {
             file,
