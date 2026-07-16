@@ -10,10 +10,12 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  9 crates · 232 tests (all green) · clippy + rustfmt clean · 58 commits
+  9 crates · 242 tests (all green) · clippy + rustfmt clean · 61 commits
   Config runner (`run`) now has 5 check types: ast / heuristics / cve /
   deprecated (deps.dev) / license (deny_licenses via LicenseFetcher).
-  Runnable `aegis` binary with 5 commands: parse / analyze / ci / run / sbom.
+  Runnable `aegis` binary with 6 commands: parse / analyze / ci / run / sbom /
+  fix. `fix` = lockfile → OSV → version-bump plan + safe upgrade commands
+  (verified LIVE: lodash 4.17.4 → 4.18.0 resolves 10 advisories).
   `ci --sarif` emits SARIF 2.1.0 (GitHub Code Scanning); verified LIVE:
   lodash 4.17.4 → GHSA advisories → SARIF results w/ severity→level.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
@@ -73,8 +75,8 @@ Status @ this snapshot:
   P9  presenter ..................... PARTIAL  text/json inline in CLI + SARIF
                                        2.1.0 (ci --sarif) + CycloneDX/SPDX (sbom).
                                        LEFT: live-region enrich view (TUI).
-  P10 cli ........................... PARTIAL  5 cmds run (parse/analyze/ci/run/
-                                       sbom); missing snapshot / fix / actions /
+  P10 cli ........................... PARTIAL  6 cmds run (parse/analyze/ci/run/
+                                       sbom/fix); missing snapshot / actions /
                                        allowlist / hook / explain
   P11 parity gate + cutover ......... NOT STARTED  (blocked on --json schema match)
 
