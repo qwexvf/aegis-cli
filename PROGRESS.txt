@@ -10,8 +10,10 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  9 crates · 221 tests (all green) · clippy + rustfmt clean · 53 commits
+  9 crates · 225 tests (all green) · clippy + rustfmt clean · 55 commits
   Runnable `aegis` binary with 5 commands: parse / analyze / ci / run / sbom.
+  `ci --sarif` emits SARIF 2.1.0 (GitHub Code Scanning); verified LIVE:
+  lodash 4.17.4 → GHSA advisories → SARIF results w/ severity→level.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
   analyze enriches the package from its manifest (npm package.json →
   deps+hooks; go.mod → retract) so metadata heuristics fire. `analyze
@@ -45,16 +47,15 @@ Status @ this snapshot:
                                        + tainted-sinks, ~400 LOC), aegis-reach
                                        depusage reimpl (HIGH RISK). Both long poles.
   P6  image (OCI) .................... NOT STARTED  (long pole — thin Rust OCI eco)
-  P7  sbom (CycloneDX/SPDX/SARIF) .... MOSTLY DONE  aegis-sbom crate: PURL
-                                       builder (canonical, matches Go), CycloneDX
-                                       1.5 + SPDX 2.3 JSON emitters (pure,
-                                       deterministic, hand-rolled base64 for
-                                       integrity hashes → no deps). `sbom` command
-                                       (--format cyclonedx|spdx), LIVE-verified +
-                                       integration-tested. LEFT: SARIF (findings,
-                                       not deps — belongs with P9 presenter);
-                                       license/advisory fields await Dependency
-                                       schema growth (currently NOASSERTION).
+  P7  sbom (CycloneDX/SPDX/SARIF) .... DONE  aegis-sbom crate: PURL builder
+                                       (canonical, matches Go), CycloneDX 1.5 +
+                                       SPDX 2.3 + SARIF 2.1.0 JSON emitters (pure,
+                                       deterministic, hand-rolled base64 → no deps
+                                       beyond serde). `sbom` command (--format
+                                       cyclonedx|spdx) + `ci --sarif`. All
+                                       LIVE-verified + integration-tested. Tail:
+                                       license/advisory SBOM fields await
+                                       Dependency schema growth (now NOASSERTION).
   P8  usecase ....................... PARTIAL  analyze wires npm/go manifest
                                        parsers → NormalizedPackage (metadata
                                        heuristics fire, integration-tested), and
@@ -64,8 +65,9 @@ Status @ this snapshot:
                                        snapshot.Enrich concurrency model; ci/run
                                        don't populate manifest metadata (analyze
                                        only); per-dep enrich fan-out.
-  P9  presenter ..................... PARTIAL  text/json inline in CLI; no SARIF,
-                                       no live-region enrich view
+  P9  presenter ..................... PARTIAL  text/json inline in CLI + SARIF
+                                       2.1.0 (ci --sarif) + CycloneDX/SPDX (sbom).
+                                       LEFT: live-region enrich view (TUI).
   P10 cli ........................... PARTIAL  5 cmds run (parse/analyze/ci/run/
                                        sbom); missing snapshot / fix / actions /
                                        allowlist / hook / explain
@@ -136,10 +138,10 @@ Status @ this snapshot:
                     from the Go tree. capability + env-read + evidence + JS
                     constant-fold taint. 32 tests (each grammar: query-compiles +
                     detects). Feature-gated per grammar.
-✅ aegis-sbom       PURL builder + CycloneDX 1.5 + SPDX 2.3 JSON emitters. Pure,
-                    deterministic (caller passes timestamp+serial). Hand-rolled
-                    base64/hex for integrity hashes → dep-free beyond serde.
-                    Feature-gated per format. 16 tests.
+✅ aegis-sbom       PURL builder + CycloneDX 1.5 + SPDX 2.3 + SARIF 2.1.0 JSON
+                    emitters. Pure, deterministic (caller passes timestamp+serial).
+                    Hand-rolled base64/hex for integrity hashes → dep-free beyond
+                    serde. Feature-gated per format. 22 tests.
 ✅ aegis-cli (bin)  clap CLI, 5 commands (below).
 
 -------------------------------------------------------------------------------
