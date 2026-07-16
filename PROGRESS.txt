@@ -10,7 +10,9 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  9 crates · 230 tests (all green) · clippy + rustfmt clean · 56 commits
+  9 crates · 232 tests (all green) · clippy + rustfmt clean · 58 commits
+  Config runner (`run`) now has 5 check types: ast / heuristics / cve /
+  deprecated (deps.dev) / license (deny_licenses via LicenseFetcher).
   Runnable `aegis` binary with 5 commands: parse / analyze / ci / run / sbom.
   `ci --sarif` emits SARIF 2.1.0 (GitHub Code Scanning); verified LIVE:
   lodash 4.17.4 → GHSA advisories → SARIF results w/ severity→level.
@@ -169,7 +171,8 @@ aegis ci <lockfile> [--fail-on --offline --json]
 
 aegis run <aegis.toml> [--json]
     CONFIG-DRIVEN PARALLEL runner. Declares [[task]] entries; the cfg drives
-    which checks run per task (ast/heuristics = source scan; cve = OSV lookup).
+    which checks run per task: ast/heuristics = source scan; cve = OSV lookup;
+    deprecated = deps.dev health; license = deny_licenses via LicenseFetcher.
     Two-level parallelism: independent tasks run in parallel (rayon), and each
     task's source scan also fans out across cores. `parallelism = N` sets threads.
     Verified: 3-task config → 2 source-scan BLOCKs + 1 cve task (10 live findings),
