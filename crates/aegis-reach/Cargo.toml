@@ -5,9 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Source-code reachability (JS/TS imports) for the aegis supply-chain scanner. First-slice port of the depusage library."
+description = "Source-code reachability (JS/TS + Python imports) for the aegis supply-chain scanner. Port of the depusage library."
 
 [dependencies]
 aegis-domain = { path = "../aegis-domain" }
 tree-sitter = "0.25"
 tree-sitter-javascript = "0.23"
+tree-sitter-python = "0.23"
