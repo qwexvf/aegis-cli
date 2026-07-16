@@ -705,10 +705,12 @@ fn find_manifest<'a>(files: &'a [(String, Vec<u8>)], name: &str) -> Option<(&'a 
         .map(|(rel, bytes)| (rel.as_str(), bytes.as_slice()))
 }
 
-/// Fetch the npm maintainer-hijack signal for this package and run the three
-/// maintainer detectors. npm-only and best-effort: an empty signal (offline,
-/// 404, non-npm) yields no capabilities. Reads name+version from package.json.
-fn fetch_maintainer_caps(
+/// Network checks for `analyze --online` (npm only): the maintainer-hijack
+/// signal (packument) and tarball-drift (local tree vs the upstream GitHub tag).
+/// Best-effort — anything unresolvable (offline, 404, non-npm, non-GitHub repo,
+/// rate-limit) contributes no capabilities. Reads name/version/repository from
+/// package.json.
+fn fetch_online_caps(
     files: &[(String, Vec<u8>)],
     pkg_name: &str,
     eco: Ecosystem,
@@ -736,6 +738,9 @@ fn fetch_maintainer_caps(
     }
 
     let client = UreqClient::new();
+    let mut caps = Vec::new();
+
+    // 1. Maintainer-hijack signal from the npm packument.
     let sig = aegis_registry::fetch_maintainer_signal(
         &client,
         aegis_registry::npm::DEFAULT_REGISTRY_URL,
@@ -753,7 +758,39 @@ fn fetch_maintainer_caps(
         previous_publisher: sig.previous_publisher,
         version_unpublished: sig.version_unpublished,
     };
-    aegis_heuristics::maintainer::check_maintainer_now(&hsig)
+    caps.extend(aegis_heuristics::maintainer::check_maintainer_now(&hsig));
+
+    // 2. Tarball-drift: local tree vs the upstream GitHub tag for this version.
+    if let Some(repo) = repository_url(&manifest) {
+        let token = std::env::var("GITHUB_TOKEN").ok();
+        if let Some(repo_files) = aegis_registry::github::fetch_repo_files(
+            &client,
+            aegis_registry::github::DEFAULT_GITHUB_API,
+            token.as_deref(),
+            &repo,
+            name,
+            version,
+        ) {
+            let normalized = build_normalized(files, name, eco);
+            caps.extend(aegis_heuristics::tarball_drift::check_tarball_drift(
+                &normalized,
+                &repo_files,
+                "",
+            ));
+        }
+    }
+
+    caps
+}
+
+/// Pull the `repository` URL/shorthand out of a package.json (string form or
+/// `{ "url": ... }` object form).
+fn repository_url(manifest: &serde_json::Value) -> Option<String> {
+    let repo = manifest.get("repository")?;
+    if let Some(s) = repo.as_str() {
+        return Some(s.to_string());
+    }
+    repo.get("url").and_then(|u| u.as_str()).map(str::to_string)
 }
 
 fn run_analyze(
@@ -779,7 +816,7 @@ fn run_analyze(
 
     let files = collect_files(root);
     let extra_caps = if online {
-        fetch_maintainer_caps(&files, &pkg_name, eco)
+        fetch_online_caps(&files, &pkg_name, eco)
     } else {
         Vec::new()
     };
