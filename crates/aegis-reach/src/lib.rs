@@ -17,9 +17,23 @@
 //!   `importlib.import_module("m")`. PyPI dep-key normalization to the
 //!   top-level package name (`foo.bar` → `foo`, relative → empty);
 //!   stdlib is not specially filtered.
+//! - **Go** (`tree-sitter-go`): `import "path/to/pkg"`, grouped
+//!   `import ( ... )`, aliased / dot (`.`) / blank (`_`) imports. The Go
+//!   import path *is* the dep key (no truncation); stdlib paths (no `.`
+//!   in the first segment) and `C` normalize to empty. Go has no
+//!   relative-import concept.
+//! - **PHP** (`tree-sitter-php`): `use A\B\C;` (incl. `as` alias and
+//!   group `use A\{B, C};`), and runtime `require`/`include`/
+//!   `require_once`/`include_once "file"`. Dep key is always empty —
+//!   Composer maps namespaces to packages via composer.json autoload,
+//!   which needs project-side data (mirrors depusage's PHP `DepKey`).
+//! - **Ruby** (`tree-sitter-ruby`): `require "x"`, `require_relative "x"`
+//!   (relative → empty dep key), `gem "x"`, `load`, `autoload`. Dep key
+//!   is the first path segment (`foo/bar` → `foo`).
 //!
 //! [`imported_dep_keys`] / [`reachability_of`] dispatch on file
-//! extension: `.js/.ts/.mjs/.cjs/.jsx/.tsx` → JS, `.py/.pyi` → Python.
+//! extension: `.js/.ts/.mjs/.cjs/.jsx/.tsx` → JS, `.py/.pyi` → Python,
+//! `.go` → Go, `.php/.phtml` → PHP, `.rb/.gemspec` → Ruby.
 //!
 //! # Scope of this slice
 //!
@@ -72,6 +86,12 @@ pub enum Language {
     JavaScript,
     /// Python (`tree-sitter-python`).
     Python,
+    /// Go (`tree-sitter-go`).
+    Go,
+    /// PHP (`tree-sitter-php`).
+    Php,
+    /// Ruby (`tree-sitter-ruby`).
+    Ruby,
 }
 
 /// Parse JS/TS source and return every import it declares.
@@ -90,6 +110,27 @@ pub fn extract_imports_python(source: &[u8]) -> Vec<Import> {
     extract_with(Language::Python, source)
 }
 
+/// Parse Go source and return every import it declares.
+///
+/// A parse failure yields an empty vec — never panics.
+pub fn extract_imports_go(source: &[u8]) -> Vec<Import> {
+    extract_with(Language::Go, source)
+}
+
+/// Parse PHP source and return every import it declares.
+///
+/// A parse failure yields an empty vec — never panics.
+pub fn extract_imports_php(source: &[u8]) -> Vec<Import> {
+    extract_with(Language::Php, source)
+}
+
+/// Parse Ruby source and return every import it declares.
+///
+/// A parse failure yields an empty vec — never panics.
+pub fn extract_imports_ruby(source: &[u8]) -> Vec<Import> {
+    extract_with(Language::Ruby, source)
+}
+
 /// Parse `source` with the grammar for `lang` and return every import.
 ///
 /// A parse failure (or a grammar that won't load) yields an empty vec —
@@ -99,6 +140,9 @@ pub fn extract_with(lang: Language, source: &[u8]) -> Vec<Import> {
     let language = match lang {
         Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
         Language::Python => tree_sitter_python::LANGUAGE.into(),
+        Language::Go => tree_sitter_go::LANGUAGE.into(),
+        Language::Php => tree_sitter_php::LANGUAGE_PHP.into(),
+        Language::Ruby => tree_sitter_ruby::LANGUAGE.into(),
     };
     if parser.set_language(&language).is_err() {
         return Vec::new();
@@ -111,14 +155,19 @@ pub fn extract_with(lang: Language, source: &[u8]) -> Vec<Import> {
     match lang {
         Language::JavaScript => walk(tree.root_node(), source, &mut imports),
         Language::Python => walk_python(tree.root_node(), source, &mut imports),
+        Language::Go => walk_go(tree.root_node(), source, &mut imports),
+        Language::Php => walk_php(tree.root_node(), source, &mut imports),
+        Language::Ruby => walk_ruby(tree.root_node(), source, &mut imports),
     }
     imports
 }
 
 /// The union of non-empty dep keys across all recognized source files.
 /// Files are routed by extension — `.js/.ts/.mjs/.cjs/.jsx/.tsx` through
-/// the JS extractor, `.py/.pyi` through the Python extractor. Any other
-/// extension is skipped.
+/// the JS extractor, `.py/.pyi` through Python, `.go` through Go,
+/// `.php/.phtml` through PHP, `.rb/.gemspec` through Ruby. Any other
+/// extension is skipped. (PHP dep keys are always empty, so PHP files
+/// contribute nothing here — see the module docs.)
 pub fn imported_dep_keys(files: &[(String, Vec<u8>)]) -> HashSet<String> {
     let mut keys = HashSet::new();
     for (path, bytes) in files {
@@ -207,6 +256,12 @@ fn language_for(path: &str) -> Option<Language> {
         Some(Language::JavaScript)
     } else if [".py", ".pyi"].iter().any(|ext| lower.ends_with(ext)) {
         Some(Language::Python)
+    } else if lower.ends_with(".go") {
+        Some(Language::Go)
+    } else if [".php", ".phtml"].iter().any(|ext| lower.ends_with(ext)) {
+        Some(Language::Php)
+    } else if [".rb", ".gemspec"].iter().any(|ext| lower.ends_with(ext)) {
+        Some(Language::Ruby)
     } else {
         None
     }
@@ -459,6 +514,343 @@ fn py_string_literal_value(node: Node, body: &[u8]) -> Option<String> {
         match child.kind() {
             "string_content" => return child.utf8_text(body).ok().map(str::to_string),
             "interpolation" => return None,
+            _ => {}
+        }
+    }
+    if node.named_child_count() == 0 {
+        return Some(String::new());
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
+// Go
+// ---------------------------------------------------------------------------
+
+/// Normalize a raw Go import path to its dep key.
+///
+/// The Go import path *is* the key — modules are addressed by their full
+/// import path, not a prefix, so there is no truncation. Standard-library
+/// packages (no `.` in the first path segment, e.g. `fmt`,
+/// `encoding/json`), the cgo placeholder `C`, and the empty string
+/// return empty — they're never a registry dep. Mirrors depusage's Go
+/// `DepKey`.
+///
+/// ```text
+/// "fmt"                    -> ""   (stdlib)
+/// "encoding/json"          -> ""   (stdlib)
+/// "github.com/spf13/cobra" -> "github.com/spf13/cobra"
+/// "C"                      -> ""
+/// ""                       -> ""
+/// ```
+pub fn dep_key_go(raw: &str) -> String {
+    if raw.is_empty() || raw == "C" {
+        return String::new();
+    }
+    // Std-library heuristic: no "." in the first path segment.
+    match raw.find('/') {
+        Some(i) if i > 0 => {
+            if !raw[..i].contains('.') {
+                return String::new();
+            }
+        }
+        _ => {
+            if !raw.contains('.') {
+                return String::new();
+            }
+        }
+    }
+    raw.to_string()
+}
+
+/// Recursively walk a Go tree, converting `import_spec` nodes into
+/// records. Handles bare, aliased, dot (`.`), and blank (`_`) imports —
+/// all are static; the alias itself is dropped for this slice.
+fn walk_go(node: Node, body: &[u8], out: &mut Vec<Import>) {
+    if node.kind() == "import_spec" {
+        if let Some(imp) = parse_go_import_spec(node, body) {
+            out.push(imp);
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        walk_go(child, body, out);
+    }
+}
+
+/// Turn an `import_spec` node into one [`Import`]. Reads the `path` field
+/// (a quoted string literal); the optional `name` alias is ignored.
+fn parse_go_import_spec(node: Node, body: &[u8]) -> Option<Import> {
+    let path = node.child_by_field_name("path")?;
+    let module = go_string_literal_value(path, body)?;
+    Some(Import {
+        dep_key: dep_key_go(&module),
+        module,
+        kind: ImportKind::Static,
+        line: node.start_position().row + 1,
+    })
+}
+
+/// Strip surrounding quotes from an interpreted (`"..."`) or raw
+/// (`` `...` ``) Go string literal node.
+fn go_string_literal_value(node: Node, body: &[u8]) -> Option<String> {
+    let raw = node.utf8_text(body).ok()?.trim();
+    let bytes = raw.as_bytes();
+    if bytes.len() >= 2 {
+        let (first, last) = (bytes[0], bytes[bytes.len() - 1]);
+        if (first == b'"' && last == b'"') || (first == b'`' && last == b'`') {
+            return Some(raw[1..raw.len() - 1].to_string());
+        }
+    }
+    Some(raw.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// PHP
+// ---------------------------------------------------------------------------
+
+/// PHP dep key — always empty. Composer maps namespaces to packages via
+/// composer.json autoload sections, which depusage can't resolve without
+/// project-side data. Consumers match the verbatim `module` against
+/// composer.lock metadata instead. Mirrors depusage's PHP `DepKey`.
+pub fn dep_key_php(_raw: &str) -> String {
+    String::new()
+}
+
+/// Recursively walk a PHP tree, converting `use` declarations and
+/// include/require expressions into records.
+fn walk_php(node: Node, body: &[u8], out: &mut Vec<Import>) {
+    match node.kind() {
+        "namespace_use_declaration" => parse_php_use_decl(node, body, out),
+        "include_expression"
+        | "include_once_expression"
+        | "require_expression"
+        | "require_once_expression" => {
+            if let Some(imp) = parse_php_include(node, body) {
+                out.push(imp);
+            }
+        }
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        walk_php(child, body, out);
+    }
+}
+
+/// Handle `use Foo\Bar;`, `use Foo\Bar as B;`, and the group form
+/// `use Foo\{Bar, Baz};`. Each clause becomes one static [`Import`]; the
+/// `as` alias and imported-symbol name are dropped for this slice.
+fn parse_php_use_decl(node: Node, body: &[u8], out: &mut Vec<Import>) {
+    let line = node.start_position().row + 1;
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "namespace_use_clause" => {
+                if let Some(module) = php_use_clause_name(child, "", body) {
+                    out.push(php_static_import(module, line));
+                }
+            }
+            "namespace_use_group" => {
+                // `use Foo\{Bar, Baz};` — the prefix is the first
+                // `namespace_name` child; the clauses carry the suffixes.
+                let mut prefix = String::new();
+                let mut group_cursor = child.walk();
+                for gchild in child.named_children(&mut group_cursor) {
+                    match gchild.kind() {
+                        "namespace_name" => {
+                            prefix = gchild.utf8_text(body).unwrap_or("").to_string();
+                        }
+                        "namespace_use_clause" | "namespace_use_group_clause" => {
+                            if let Some(module) = php_use_clause_name(gchild, &prefix, body) {
+                                out.push(php_static_import(module, line));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Resolve the full namespace path of one `use` clause, prepending
+/// `prefix` (non-empty inside a `Foo\{Bar}` group). Uses the `name`
+/// field, falling back to the first qualified-name-like child for grammar
+/// versions that don't label it.
+fn php_use_clause_name(clause: Node, prefix: &str, body: &[u8]) -> Option<String> {
+    let mut name = clause
+        .child_by_field_name("name")
+        .and_then(|n| n.utf8_text(body).ok())
+        .map(str::to_string);
+    if name.is_none() {
+        let mut cursor = clause.walk();
+        for child in clause.named_children(&mut cursor) {
+            if matches!(child.kind(), "qualified_name" | "namespace_name") {
+                name = child.utf8_text(body).ok().map(str::to_string);
+                break;
+            }
+        }
+    }
+    let name = name?;
+    if name.is_empty() {
+        return None;
+    }
+    if prefix.is_empty() {
+        Some(name)
+    } else {
+        Some(format!("{prefix}\\{name}"))
+    }
+}
+
+/// Handle `require '...'` / `include '...'` and their `_once` variants.
+/// The argument is a literal file path, which never resolves to a
+/// Composer key — kind is `Relative` with an empty dep key (mirrors
+/// depusage). A non-literal argument yields `None`.
+fn parse_php_include(node: Node, body: &[u8]) -> Option<Import> {
+    let mut cursor = node.walk();
+    // The include expression's first named child is the loaded argument.
+    let child = node.named_children(&mut cursor).next()?;
+    if !matches!(child.kind(), "string" | "encapsed_string") {
+        return None;
+    }
+    let module = php_string_value(child, body)?;
+    Some(Import {
+        module,
+        dep_key: String::new(),
+        kind: ImportKind::Relative,
+        line: node.start_position().row + 1,
+    })
+}
+
+/// Inner content of a PHP `string` / `encapsed_string` node. An
+/// interpolated string returns `None`; an empty literal returns
+/// `Some("")`.
+fn php_string_value(node: Node, body: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "string_value" | "string_content" => {
+                return child.utf8_text(body).ok().map(str::to_string);
+            }
+            "interpolation" => return None,
+            _ => {}
+        }
+    }
+    if node.named_child_count() == 0 {
+        return Some(String::new());
+    }
+    None
+}
+
+/// Assemble a static PHP [`Import`] with an (always-empty) dep key.
+fn php_static_import(module: String, line: usize) -> Import {
+    Import {
+        dep_key: dep_key_php(&module),
+        module,
+        kind: ImportKind::Static,
+        line,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ruby
+// ---------------------------------------------------------------------------
+
+/// Normalize a Ruby `require`/`gem` target to its gem name — the first
+/// path segment (`foo/bar` → `foo`). Relative paths (`./x`, `../x`,
+/// `/abs`) and the empty string return empty. Mirrors depusage's Ruby
+/// `DepKey`.
+///
+/// ```text
+/// "rails"                     -> "rails"
+/// "active_support/core_ext"   -> "active_support"
+/// "./helpers"                 -> ""   (relative)
+/// ""                          -> ""
+/// ```
+pub fn dep_key_ruby(raw: &str) -> String {
+    if raw.is_empty() || is_relative_ruby(raw) {
+        return String::new();
+    }
+    match raw.find('/') {
+        Some(i) if i > 0 => raw[..i].to_string(),
+        _ => raw.to_string(),
+    }
+}
+
+/// Whether a Ruby require target is a project-local file path rather than
+/// a gem. Mirrors depusage's Ruby `IsRelative`.
+fn is_relative_ruby(raw: &str) -> bool {
+    raw.starts_with("./") || raw.starts_with("../") || raw.starts_with('/')
+}
+
+/// Recursively walk a Ruby tree, converting `require`/`require_relative`/
+/// `load`/`gem`/`autoload` calls with a literal string argument into
+/// records.
+fn walk_ruby(node: Node, body: &[u8], out: &mut Vec<Import>) {
+    if node.kind() == "call" {
+        if let Some(imp) = parse_ruby_require(node, body) {
+            out.push(imp);
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        walk_ruby(child, body, out);
+    }
+}
+
+/// Extract the string-literal argument from a require-family call.
+/// `require_relative` (or any relative path) is `Relative` with an empty
+/// dep key; everything else is `Require`. A computed (non-literal)
+/// argument yields `None`. `autoload` takes a symbol first, then the
+/// file string — the symbol is skipped.
+fn parse_ruby_require(node: Node, body: &[u8]) -> Option<Import> {
+    let method = node.child_by_field_name("method")?;
+    if method.kind() != "identifier" {
+        return None;
+    }
+    let method_name = method.utf8_text(body).ok()?;
+    if !matches!(
+        method_name,
+        "require" | "require_relative" | "load" | "gem" | "autoload"
+    ) {
+        return None;
+    }
+    let args = node.child_by_field_name("arguments")?;
+    let mut cursor = args.walk();
+    for child in args.named_children(&mut cursor) {
+        if child.kind() != "string" {
+            // `autoload :Sym, 'file'` — skip the leading symbol.
+            if method_name == "autoload" {
+                continue;
+            }
+            return None;
+        }
+        let module = ruby_string_value(child, body)?;
+        let (kind, dep_key) = if method_name == "require_relative" || is_relative_ruby(&module) {
+            (ImportKind::Relative, String::new())
+        } else {
+            (ImportKind::Require, dep_key_ruby(&module))
+        };
+        return Some(Import {
+            module,
+            dep_key,
+            kind,
+            line: node.start_position().row + 1,
+        });
+    }
+    None
+}
+
+/// Inner content of a Ruby `string` node. An interpolated string
+/// (`"#{...}"`) returns `None`; an empty literal returns `Some("")`.
+fn ruby_string_value(node: Node, body: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "interpolation" => return None,
+            "string_content" => return child.utf8_text(body).ok().map(str::to_string),
             _ => {}
         }
     }
@@ -773,5 +1165,262 @@ mod tests {
         let files = vec![("main.py".to_string(), b"import requests".to_vec())];
         assert_eq!(reachability_of("requests", &files), Reachability::Used);
         assert_eq!(reachability_of("flask", &files), Reachability::Unused);
+    }
+
+    // --- Go -------------------------------------------------------------
+
+    fn extract_go(src: &str) -> Vec<Import> {
+        extract_imports_go(src.as_bytes())
+    }
+
+    #[test]
+    fn go_single_stdlib_import() {
+        let imps = extract_go("package main\nimport \"fmt\"");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "fmt");
+        // stdlib → empty dep key.
+        assert_eq!(imps[0].dep_key, "");
+        assert_eq!(imps[0].kind, ImportKind::Static);
+        assert_eq!(imps[0].line, 2);
+    }
+
+    #[test]
+    fn go_third_party_import() {
+        let imps = extract_go("package main\nimport \"github.com/spf13/cobra\"");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "github.com/spf13/cobra");
+        // import path IS the key — no truncation.
+        assert_eq!(imps[0].dep_key, "github.com/spf13/cobra");
+        assert_eq!(imps[0].kind, ImportKind::Static);
+    }
+
+    #[test]
+    fn go_block_import() {
+        let src = "package main\nimport (\n\t\"fmt\"\n\t\"github.com/spf13/cobra\"\n)";
+        let imps = extract_go(src);
+        assert_eq!(imps.len(), 2, "{imps:?}");
+        assert_eq!(imps[0].module, "fmt");
+        assert_eq!(imps[0].dep_key, "");
+        assert_eq!(imps[0].line, 3);
+        assert_eq!(imps[1].module, "github.com/spf13/cobra");
+        assert_eq!(imps[1].dep_key, "github.com/spf13/cobra");
+        assert_eq!(imps[1].line, 4);
+    }
+
+    #[test]
+    fn go_aliased_and_blank_and_dot_imports() {
+        // Named alias, blank import, dot import — all static; alias dropped.
+        let imps = extract_go("package main\nimport f \"fmt\"");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "fmt");
+        assert_eq!(imps[0].kind, ImportKind::Static);
+
+        let imps = extract_go("package main\nimport _ \"github.com/lib/pq\"");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "github.com/lib/pq");
+        assert_eq!(imps[0].dep_key, "github.com/lib/pq");
+
+        let imps = extract_go("package main\nimport . \"fmt\"");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "fmt");
+    }
+
+    #[test]
+    fn go_dep_key_normalization() {
+        assert_eq!(dep_key_go("fmt"), "");
+        assert_eq!(dep_key_go("encoding/json"), "");
+        assert_eq!(
+            dep_key_go("github.com/spf13/cobra"),
+            "github.com/spf13/cobra"
+        );
+        assert_eq!(dep_key_go("example.com/x"), "example.com/x");
+        assert_eq!(dep_key_go("C"), "");
+        assert_eq!(dep_key_go(""), "");
+    }
+
+    #[test]
+    fn go_bad_source_no_panic() {
+        let _ = extract_go("package main\nimport ( \"broken");
+        let _ = extract_go("<<< not go >>> ???");
+        assert!(extract_go("").is_empty());
+    }
+
+    #[test]
+    fn reachability_over_go_file() {
+        let files = vec![(
+            "main.go".to_string(),
+            b"package main\nimport \"github.com/spf13/cobra\"".to_vec(),
+        )];
+        assert_eq!(
+            reachability_of("github.com/spf13/cobra", &files),
+            Reachability::Used
+        );
+        // stdlib never becomes a dep key.
+        assert_eq!(reachability_of("fmt", &files), Reachability::Unused);
+    }
+
+    // --- PHP ------------------------------------------------------------
+
+    fn extract_php(src: &str) -> Vec<Import> {
+        extract_imports_php(src.as_bytes())
+    }
+
+    #[test]
+    fn php_plain_use() {
+        let imps = extract_php("<?php use Symfony\\Component\\Console\\Application;");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "Symfony\\Component\\Console\\Application");
+        // PHP dep keys are always empty.
+        assert_eq!(imps[0].dep_key, "");
+        assert_eq!(imps[0].kind, ImportKind::Static);
+    }
+
+    #[test]
+    fn php_use_with_alias() {
+        let imps = extract_php("<?php use Symfony\\Component\\Console\\Application as App;");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "Symfony\\Component\\Console\\Application");
+        assert_eq!(imps[0].kind, ImportKind::Static);
+    }
+
+    #[test]
+    fn php_require_include_are_relative() {
+        for src in [
+            "<?php require 'vendor/autoload.php';",
+            "<?php require_once \"vendor/autoload.php\";",
+            "<?php include 'vendor/autoload.php';",
+            "<?php include_once 'vendor/autoload.php';",
+        ] {
+            let imps = extract_php(src);
+            assert_eq!(imps.len(), 1, "{src}: {imps:?}");
+            assert_eq!(imps[0].module, "vendor/autoload.php");
+            assert_eq!(imps[0].dep_key, "");
+            assert_eq!(imps[0].kind, ImportKind::Relative);
+        }
+    }
+
+    #[test]
+    fn php_dep_key_always_empty() {
+        assert_eq!(dep_key_php("Symfony\\Component"), "");
+        assert_eq!(dep_key_php("anything"), "");
+        assert_eq!(dep_key_php(""), "");
+    }
+
+    #[test]
+    fn php_bad_source_no_panic() {
+        let _ = extract_php("<?php use ??? broken");
+        let _ = extract_php("<<< not php >>> ???");
+        assert!(extract_php("").is_empty());
+    }
+
+    #[test]
+    fn reachability_over_php_file() {
+        // PHP dep keys are always empty, so a PHP file contributes no
+        // reachable keys — faithful to depusage (Composer resolution is
+        // the consumer's job).
+        let files = vec![(
+            "index.php".to_string(),
+            b"<?php use Symfony\\Component\\Console\\Application;".to_vec(),
+        )];
+        assert!(imported_dep_keys(&files).is_empty());
+        assert_eq!(
+            reachability_of("Symfony\\Component\\Console\\Application", &files),
+            Reachability::Unused
+        );
+    }
+
+    // --- Ruby -----------------------------------------------------------
+
+    fn extract_rb(src: &str) -> Vec<Import> {
+        extract_imports_ruby(src.as_bytes())
+    }
+
+    #[test]
+    fn rb_plain_require() {
+        let imps = extract_rb("require 'rails'");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "rails");
+        assert_eq!(imps[0].dep_key, "rails");
+        assert_eq!(imps[0].kind, ImportKind::Require);
+        assert_eq!(imps[0].line, 1);
+    }
+
+    #[test]
+    fn rb_require_subpath_dep_key() {
+        let imps = extract_rb("require 'active_support/core_ext'");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "active_support/core_ext");
+        assert_eq!(imps[0].dep_key, "active_support");
+        assert_eq!(imps[0].kind, ImportKind::Require);
+    }
+
+    #[test]
+    fn rb_require_relative_is_relative() {
+        let imps = extract_rb("require_relative './helpers'");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "./helpers");
+        assert_eq!(imps[0].dep_key, "");
+        assert_eq!(imps[0].kind, ImportKind::Relative);
+    }
+
+    #[test]
+    fn rb_gem_call() {
+        let imps = extract_rb("gem 'pg'");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "pg");
+        assert_eq!(imps[0].dep_key, "pg");
+        assert_eq!(imps[0].kind, ImportKind::Require);
+    }
+
+    #[test]
+    fn rb_computed_require_skipped() {
+        let imps = extract_rb("require some_var");
+        assert!(imps.is_empty(), "{imps:?}");
+    }
+
+    #[test]
+    fn rb_dep_key_normalization() {
+        assert_eq!(dep_key_ruby("rails"), "rails");
+        assert_eq!(dep_key_ruby("active_support"), "active_support");
+        assert_eq!(dep_key_ruby("active_support/core_ext"), "active_support");
+        assert_eq!(dep_key_ruby("./local"), "");
+        assert_eq!(dep_key_ruby("../helpers"), "");
+        assert_eq!(dep_key_ruby(""), "");
+    }
+
+    #[test]
+    fn rb_bad_source_no_panic() {
+        let _ = extract_rb("require ??? broken (");
+        let _ = extract_rb("<<< not ruby >>> ???");
+        assert!(extract_rb("").is_empty());
+    }
+
+    #[test]
+    fn reachability_over_ruby_file() {
+        let files = vec![("app.rb".to_string(), b"require 'rails'\ngem 'pg'".to_vec())];
+        assert_eq!(reachability_of("rails", &files), Reachability::Used);
+        assert_eq!(reachability_of("pg", &files), Reachability::Used);
+        assert_eq!(reachability_of("sinatra", &files), Reachability::Unused);
+    }
+
+    #[test]
+    fn imported_dep_keys_routes_all_languages() {
+        let files = vec![
+            (
+                "main.go".to_string(),
+                b"package main\nimport \"github.com/spf13/cobra\"".to_vec(),
+            ),
+            ("app.rb".to_string(), b"require 'rails'".to_vec()),
+            ("lib.gemspec".to_string(), b"gem 'pg'".to_vec()),
+            ("index.php".to_string(), b"<?php use Foo\\Bar;".to_vec()),
+            ("index.ts".to_string(), b"import _ from 'lodash';".to_vec()),
+        ];
+        let keys = imported_dep_keys(&files);
+        assert!(keys.contains("github.com/spf13/cobra"));
+        assert!(keys.contains("rails"));
+        assert!(keys.contains("pg"));
+        assert!(keys.contains("lodash"));
+        // PHP contributes nothing (empty dep keys).
+        assert_eq!(keys.len(), 4);
     }
 }
