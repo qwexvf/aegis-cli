@@ -8,5 +8,7 @@ pub mod purl;
 
 #[cfg(feature = "cyclonedx")]
 pub mod cyclonedx;
+#[cfg(feature = "spdx")]
+pub mod spdx;
 
 pub use purl::purl as package_url;
