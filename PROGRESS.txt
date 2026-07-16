@@ -10,15 +10,17 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  9 crates · 287 tests (all green) · clippy + rustfmt clean · 68 commits
-  NEW (parallel-agent batch, crate-level — CLI wiring pending): GHSA lookup
-  (aegis-vuln, github GraphQL), capability allowlist (aegis-domain, pure semver
-  match + builtin rules), npm provenance/attestations (aegis-registry, SLSA DSSE).
+  9 crates · 288 tests (all green) · clippy + rustfmt clean · 71 commits
+  Parallel-agent batch (crate-level): GHSA lookup (aegis-vuln, github GraphQL —
+  WIRED into cli cve lookup, merges with OSV when GITHUB_TOKEN set), capability
+  allowlist (aegis-domain, pure semver match + builtin rules — `allowlist`
+  command lists them), npm provenance/attestations (aegis-registry, SLSA DSSE —
+  CLI wiring of provenance flag still pending).
   Config runner (`run`) now has 5 check types: ast / heuristics / cve /
   deprecated (deps.dev) / license (deny_licenses via LicenseFetcher).
-  Runnable `aegis` binary with 6 commands: parse / analyze / ci / run / sbom /
-  fix. `fix` = lockfile → OSV → version-bump plan + safe upgrade commands
-  (verified LIVE: lodash 4.17.4 → 4.18.0 resolves 10 advisories).
+  Runnable `aegis` binary with 7 commands: parse / analyze / ci / run / sbom /
+  fix / allowlist. `fix` = lockfile → OSV → version-bump plan + safe upgrade
+  commands (verified LIVE: lodash 4.17.4 → 4.18.0 resolves 10 advisories).
   `ci --sarif` emits SARIF 2.1.0 (GitHub Code Scanning); verified LIVE:
   lodash 4.17.4 → GHSA advisories → SARIF results w/ severity→level.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
