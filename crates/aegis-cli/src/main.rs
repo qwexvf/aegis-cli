@@ -12,7 +12,8 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use commands::{
-    run_allowlist, run_analyze, run_ci, run_config, run_fix, run_image, run_parse, run_sbom,
+    run_allowlist, run_analyze, run_ci, run_config, run_explain, run_fix, run_image, run_parse,
+    run_sbom,
 };
 
 #[derive(Parser)]
@@ -79,6 +80,14 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Explain the risk model: capabilities, their meaning, and score weight.
+    Explain {
+        /// A capability slug (e.g. "shell-spawn"); omit to list them all.
+        capability: Option<String>,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Scan an OCI / `docker save` image tarball for risky files.
     Image {
         /// Path to the image tarball (docker save output or OCI layout).
@@ -135,6 +144,7 @@ fn main() -> ExitCode {
         } => run_ci(&file, &fail_on, offline, json, sarif),
         Command::Run { config, json } => run_config(&config, json),
         Command::Allowlist { json } => run_allowlist(json),
+        Command::Explain { capability, json } => run_explain(capability.as_deref(), json),
         Command::Image { file, json } => run_image(&file, json),
         Command::Fix {
             file,
