@@ -9,6 +9,7 @@ pub mod advisory;
 pub mod allowlist;
 pub mod capability;
 pub mod fix;
+pub mod reachability;
 pub mod risk;
 pub mod types;
 
@@ -16,6 +17,7 @@ pub use advisory::{max_severity, Advisory, AdvisoryQuery, Severity};
 pub use allowlist::{builtin_allow_rules, AllowRule, AllowSet, Match, MatchKind};
 pub use capability::{Capability, CapabilitySet, ALL_CAPABILITIES};
 pub use fix::{build_fix_plan, compare_fix_version, upgrade_command, FixItem};
+pub use reachability::{downgrade_unused, Reachability, UNREACHABLE_SUPPRESS_REASON};
 pub use risk::{
     drift_score, patch_version_drift_flag, provenance_risk_flag, risk_score, verdict,
     RiskAssessment, RiskFlag, VerdictKind, VERDICT_THRESHOLD_BLOCK, VERDICT_THRESHOLD_PROMPT,
