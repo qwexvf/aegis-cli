@@ -507,6 +507,9 @@ struct TaskResult {
     score: i32,
     /// CVE findings count, when the cve check ran.
     cve_findings: usize,
+    /// Deprecated-dependency count, when the deprecated check ran.
+    #[serde(default)]
+    deprecated_findings: usize,
     failed: bool,
     error: Option<String>,
 }
@@ -525,6 +528,7 @@ fn run_task(t: &TaskConfig) -> TaskResult {
         verdict: None,
         score: 0,
         cve_findings: 0,
+        deprecated_findings: 0,
         failed: false,
         error: None,
     };
@@ -555,21 +559,15 @@ fn run_task(t: &TaskConfig) -> TaskResult {
 
     // CVE lookup over any lockfiles found in the task path.
     if want("cve") {
-        let mut queries: Vec<AdvisoryQuery> = Vec::new();
-        for (rel, bytes) in &files {
-            let base = rel.rsplit(['/', '\\']).next().unwrap_or(rel);
-            if let Ok(Some(deps)) = parse_file(base, bytes, &DirectMap::new()) {
-                for d in deps {
-                    if !d.version.is_empty() {
-                        queries.push(AdvisoryQuery {
-                            ecosystem: d.ecosystem,
-                            name: d.name,
-                            version: d.version,
-                        });
-                    }
-                }
-            }
-        }
+        let queries: Vec<AdvisoryQuery> = lockfile_deps(&files)
+            .into_iter()
+            .filter(|d| !d.version.is_empty())
+            .map(|d| AdvisoryQuery {
+                ecosystem: d.ecosystem,
+                name: d.name,
+                version: d.version,
+            })
+            .collect();
         if !queries.is_empty() {
             match cve_findings(&queries) {
                 Ok(findings) => {
@@ -590,7 +588,43 @@ fn run_task(t: &TaskConfig) -> TaskResult {
         }
     }
 
+    // Deprecation check over any lockfiles found in the task path (deps.dev).
+    if want("deprecated") {
+        let deps = lockfile_deps(&files);
+        if !deps.is_empty() {
+            let http = UreqClient::new();
+            let client = aegis_registry::DepsDevClient::default();
+            let deprecated = deps
+                .iter()
+                .filter(|d| !d.version.is_empty())
+                .filter(|d| {
+                    client
+                        .fetch_health(&http, d.ecosystem, &d.name, &d.version)
+                        .map(|h| h.is_deprecated)
+                        .unwrap_or(false)
+                })
+                .count();
+            res.deprecated_findings = deprecated;
+            if deprecated > 0 {
+                res.failed = true;
+            }
+        }
+    }
+
     res
+}
+
+/// Parse every lockfile in a task's file set into its dependency list.
+/// Dispatches by basename; non-lockfiles and parse failures are skipped.
+fn lockfile_deps(files: &[(String, Vec<u8>)]) -> Vec<Dependency> {
+    let mut out = Vec::new();
+    for (rel, bytes) in files {
+        let base = rel.rsplit(['/', '\\']).next().unwrap_or(rel);
+        if let Ok(Some(deps)) = parse_file(base, bytes, &DirectMap::new()) {
+            out.extend(deps);
+        }
+    }
+    out
 }
 
 fn run_config(config_path: &str, json: bool) -> ExitCode {
@@ -643,8 +677,8 @@ fn run_config(config_path: &str, json: bool) -> ExitCode {
             let status = if r.failed { "FAIL" } else { "ok" };
             let verdict = r.verdict.as_deref().unwrap_or("-");
             print!(
-                "[{status}] {} ({}) — verdict={verdict} score={} cve={}",
-                r.name, r.path, r.score, r.cve_findings
+                "[{status}] {} ({}) — verdict={verdict} score={} cve={} deprecated={}",
+                r.name, r.path, r.score, r.cve_findings, r.deprecated_findings
             );
             match &r.error {
                 Some(e) => println!("  error: {e}"),
