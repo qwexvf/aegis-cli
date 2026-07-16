@@ -454,6 +454,33 @@ fn fix_unknown_lockfile_exits_2() {
 }
 
 #[test]
+fn allowlist_lists_builtin_rules() {
+    // Network-free: the builtin allowlist is compiled in.
+    let out = run(&["allowlist"]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("built-in allowlist rules"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("npm/lodash"), "{}", out.stdout);
+    // JSON form is a valid array carrying the capability + reason fields.
+    let out = run(&["allowlist", "--json"]);
+    assert_eq!(out.code, 0);
+    assert!(out.stdout.trim().starts_with('['), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\"capability\": \"dynamic-eval\""),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("\"source\": \"builtin\""),
+        "{}",
+        out.stdout
+    );
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);
