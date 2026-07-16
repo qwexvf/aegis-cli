@@ -44,9 +44,7 @@ pub fn build_fix_plan(deps: &[(Dependency, Vec<Advisory>)]) -> Vec<FixItem> {
                 unresolved.push(a.clone());
                 continue;
             }
-            if target.is_empty()
-                || compare_fix_version(&a.fixed_in, &target) == Ordering::Greater
-            {
+            if target.is_empty() || compare_fix_version(&a.fixed_in, &target) == Ordering::Greater {
                 target = a.fixed_in.clone();
             }
             resolved.push(a.clone());
@@ -101,7 +99,8 @@ fn is_safe_pkg_name(name: &str) -> bool {
         return false;
     }
     name.bytes().all(|c| {
-        c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-' | b'+' | b'/' | b'@' | b':' | b'~')
+        c.is_ascii_alphanumeric()
+            || matches!(c, b'.' | b'_' | b'-' | b'+' | b'/' | b'@' | b':' | b'~')
     })
 }
 
@@ -327,7 +326,11 @@ mod tests {
     #[test]
     fn maven_coord_split() {
         assert_eq!(
-            upgrade_command(&dep(Ecosystem::Maven, "com.google.guava:guava", "0"), "33.0").as_deref(),
+            upgrade_command(
+                &dep(Ecosystem::Maven, "com.google.guava:guava", "0"),
+                "33.0"
+            )
+            .as_deref(),
             Some("mvn versions:set-property -Dproperty=guava.version -DnewVersion=33.0")
         );
     }
