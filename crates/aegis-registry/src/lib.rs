@@ -1,14 +1,19 @@
 //! Package-registry adapters. Ports of `internal/infra/{npm,pypi,crates,
-//! rubygems,nuget}registry`, `licensefetch`, and `depsdotdev`.
+//! rubygems,nuget}registry`, `licensefetch`, `depsdotdev`, and
+//! `npmattestations`.
 //!
-//! Two capabilities the enrich/CI layers consume:
+//! Capabilities the enrich/CI layers consume:
 //!  - **license** lookup per ecosystem (`LicenseFetcher`), for the SPDX
 //!    license-policy gate;
-//!  - **package health** (deprecation) via deps.dev, for `--fail-on-deprecated`.
+//!  - **package health** (deprecation) via deps.dev, for `--fail-on-deprecated`;
+//!  - **npm provenance** attestation lookup (`fetch_provenance`), the SLSA
+//!    build-provenance signal.
 //!
 //! Transport goes through the [`aegis_net::HttpClient`] seam, so every
 //! adapter is unit-tested offline against the mock.
 
+#[cfg(feature = "attestations")]
+pub mod attestations;
 #[cfg(feature = "depsdev")]
 pub mod depsdotdev;
 #[cfg(feature = "github")]
@@ -17,6 +22,8 @@ pub mod license;
 #[cfg(feature = "npm")]
 pub mod npm;
 
+#[cfg(feature = "attestations")]
+pub use attestations::{fetch_provenance, ProvenanceStatus};
 #[cfg(feature = "depsdev")]
 pub use depsdotdev::{DepsDevClient, PackageHealth};
 pub use license::LicenseFetcher;
