@@ -332,3 +332,84 @@ checks = ["ast", "heuristics"]
     assert!(out.stdout.contains("vendored-evil"), "{}", out.stdout);
     assert!(out.stdout.contains("vendored-good"), "{}", out.stdout);
 }
+
+// --- live scenarios against ACTUAL published packages -----------------------
+// These hit the real npm/OSV/GHSA registries, so they're #[ignore]d to keep CI
+// deterministic + offline. Run explicitly:  cargo test -- --ignored
+// They exercise the same code paths as the network-free scenarios above, but
+// against real vulnerable/compromised package versions on the live registry.
+
+#[test]
+#[ignore = "live network: hits api.osv.dev"]
+fn live_ci_gate_blocks_real_vulnerable_lodash() {
+    // lodash 4.17.4 has multiple real published advisories (prototype pollution,
+    // ReDoS). The CI gate must fail at --fail-on high against the live OSV feed.
+    let d = tmp("live-ci");
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.4"}}}"#,
+    );
+    let out = run(&[
+        "ci",
+        d.join("package-lock.json").to_str().unwrap(),
+        "--fail-on",
+        "high",
+    ]);
+    assert_eq!(
+        out.code, 1,
+        "expected CI failure on a real CVE:\n{}",
+        out.stdout
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+#[ignore = "live network: hits registry.npmjs.org packument"]
+fn live_analyze_flags_yanked_event_stream() {
+    // event-stream@3.3.6 — the 2018 compromise — was yanked by npm after the
+    // incident. `analyze --online` must surface it as version-unpublished.
+    let d = tmp("live-es");
+    write(&d, "index.js", "module.exports = 1;\n");
+    write(
+        &d,
+        "package.json",
+        r#"{"name":"event-stream","version":"3.3.6"}"#,
+    );
+    let out = run(&[
+        "analyze",
+        d.to_str().unwrap(),
+        "--ecosystem",
+        "npm",
+        "--online",
+        "--json",
+    ]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("version-unpublished"),
+        "expected version-unpublished for a real yanked package:\n{}",
+        out.stdout
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+#[ignore = "live network: hits registry.npmjs.org + api.github.com"]
+fn live_fix_plan_for_real_vulnerable_package() {
+    // Against the live OSV feed, `fix` must produce a forward upgrade target for
+    // a genuinely vulnerable version.
+    let d = tmp("live-fix");
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.4"}}}"#,
+    );
+    let out = run(&["fix", d.join("package-lock.json").to_str().unwrap()]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("lodash") && out.stdout.contains("npm install lodash@"),
+        "expected an upgrade command:\n{}",
+        out.stdout
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
