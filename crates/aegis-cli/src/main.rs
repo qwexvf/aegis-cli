@@ -63,10 +63,13 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Generate a CycloneDX SBOM (JSON) from a lockfile.
+    /// Generate an SBOM (JSON) from a lockfile.
     Sbom {
         /// Path to the lockfile (e.g. package-lock.json, Cargo.lock).
         file: String,
+        /// SBOM format: cyclonedx (default) or spdx.
+        #[arg(long, default_value = "cyclonedx")]
+        format: String,
         /// Root component / project name for the BOM.
         #[arg(long)]
         project: Option<String>,
@@ -129,9 +132,10 @@ fn main() -> ExitCode {
         Command::Run { config, json } => run_config(&config, json),
         Command::Sbom {
             file,
+            format,
             project,
             serial,
-        } => run_sbom(&file, project.as_deref(), serial.as_deref()),
+        } => run_sbom(&file, &format, project.as_deref(), serial.as_deref()),
         Command::Analyze {
             dir,
             name,
@@ -876,8 +880,13 @@ fn run_analyze(
     ExitCode::SUCCESS
 }
 
-/// Emit a CycloneDX 1.5 SBOM (JSON) for a lockfile's dependency graph.
-fn run_sbom(file: &str, project: Option<&str>, serial: Option<&str>) -> ExitCode {
+/// Emit an SBOM (CycloneDX 1.5 or SPDX 2.3, JSON) for a lockfile's dep graph.
+fn run_sbom(file: &str, format: &str, project: Option<&str>, serial: Option<&str>) -> ExitCode {
+    let fmt = format.to_ascii_lowercase();
+    if fmt != "cyclonedx" && fmt != "spdx" {
+        eprintln!("aegis: unknown sbom format '{format}' (want cyclonedx|spdx)");
+        return ExitCode::from(2);
+    }
     let bytes = match std::fs::read(file) {
         Ok(b) => b,
         Err(e) => {
@@ -904,13 +913,32 @@ fn run_sbom(file: &str, project: Option<&str>, serial: Option<&str>) -> ExitCode
     let timestamp = time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_default();
-    let opts = aegis_sbom::cyclonedx::Options {
-        aegis_version: env!("CARGO_PKG_VERSION").to_string(),
-        project: project.unwrap_or_default().to_string(),
-        timestamp,
-        serial_number: serial.unwrap_or_default().to_string(),
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let project = project.unwrap_or_default().to_string();
+    let serial_number = serial.unwrap_or_default().to_string();
+
+    let out = if fmt == "spdx" {
+        aegis_sbom::spdx::build_json(
+            &deps,
+            &aegis_sbom::spdx::Options {
+                aegis_version: version,
+                project,
+                timestamp,
+                serial_number,
+            },
+        )
+    } else {
+        aegis_sbom::cyclonedx::build_json(
+            &deps,
+            &aegis_sbom::cyclonedx::Options {
+                aegis_version: version,
+                project,
+                timestamp,
+                serial_number,
+            },
+        )
     };
-    println!("{}", aegis_sbom::cyclonedx::build_json(&deps, &opts));
+    println!("{out}");
     ExitCode::SUCCESS
 }
 
