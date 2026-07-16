@@ -58,7 +58,13 @@ Status @ this snapshot:
                                        eval/exec/fetch sinks). ONLY aegis-reach
                                        (depusage reimpl) left — HIGH RISK long pole,
                                        own crate + sub-plan.
-  P6  image (OCI) .................... NOT STARTED  (long pole — thin Rust OCI eco)
+  P6  image (OCI) .................... PARTIAL  aegis-image crate: docker-save +
+                                       OCI-layout tarball extract (layer overlay,
+                                       whiteout/opaque-dir handling) + shallow risk
+                                       scan (dropper/hidden-ELF/embedded-manifest).
+                                       tar+flate2 pure-Rust, no registry pull. LEFT:
+                                       registry image pull, deep per-file scan via
+                                       aegis-ast/heuristics, `image` CLI command.
   P7  sbom (CycloneDX/SPDX/SARIF) .... DONE  aegis-sbom crate: PURL builder
                                        (canonical, matches Go), CycloneDX 1.5 +
                                        SPDX 2.3 + SARIF 2.1.0 JSON emitters (pure,
