@@ -10,7 +10,10 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  9 crates · 244 tests (all green) · clippy + rustfmt clean · 64 commits
+  9 crates · 287 tests (all green) · clippy + rustfmt clean · 68 commits
+  NEW (parallel-agent batch, crate-level — CLI wiring pending): GHSA lookup
+  (aegis-vuln, github GraphQL), capability allowlist (aegis-domain, pure semver
+  match + builtin rules), npm provenance/attestations (aegis-registry, SLSA DSSE).
   Config runner (`run`) now has 5 check types: ast / heuristics / cve /
   deprecated (deps.dev) / license (deny_licenses via LicenseFetcher).
   Runnable `aegis` binary with 6 commands: parse / analyze / ci / run / sbom /
@@ -260,7 +263,11 @@ CUTOVER (P11): 100% corpus parity, reproduce cosign + SLSA release pipeline, fli
 -------------------------------------------------------------------------------
  NETWORK TAIL (Phase 3 leftovers, not blocking)
 -------------------------------------------------------------------------------
-  GHSA lookup (GitHub GraphQL + token), npm SLSA provenance/attestations,
+  GHSA lookup — DONE (aegis-vuln::ghsa, github GraphQL + token; needs CLI wiring
+  into cve_findings alongside OSV). npm SLSA provenance/attestations — DONE
+  (aegis-registry::fetch_provenance; needs wiring to set Dependency.provenance_
+  status → provenance_risk_flag). Capability allowlist — DONE (aegis-domain::
+  AllowSet; needs a config source + wiring into analyze/run suppression).
   per-ecosystem version resolvers (npm needs a node-semver crate, NOT Cargo semver
   — different range syntax). DiskCache DONE: KEV feed (24h TTL) + OSV advisory
   docs (7d TTL, immutable) both cached under $XDG_CACHE_HOME/aegis, wired into
