@@ -10,7 +10,7 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  9 crates · 225 tests (all green) · clippy + rustfmt clean · 55 commits
+  9 crates · 230 tests (all green) · clippy + rustfmt clean · 56 commits
   Runnable `aegis` binary with 5 commands: parse / analyze / ci / run / sbom.
   `ci --sarif` emits SARIF 2.1.0 (GitHub Code Scanning); verified LIVE:
   lodash 4.17.4 → GHSA advisories → SARIF results w/ severity→level.
@@ -42,10 +42,13 @@ Status @ this snapshot:
                                        upstream tag → tarball-source-drift).
   P5  AST + reach .................... PARTIAL  ALL 12 grammars done (js/py/ruby/
                                        rust/go/php/csharp/haskell/lua/gleam/dart/
-                                       cocoapods, native — no CGO) + JS constant-
-                                       fold taint. NOT done: full JS taint (symtab
-                                       + tainted-sinks, ~400 LOC), aegis-reach
-                                       depusage reimpl (HIGH RISK). Both long poles.
+                                       cocoapods, native — no CGO). FULL JS taint
+                                       DONE: symbol table + numeric-array +
+                                       spread-of-array fold + tainted-sink tracking
+                                       (atob/Buffer.from base64/fromCharCode →
+                                       eval/exec/fetch sinks). ONLY aegis-reach
+                                       (depusage reimpl) left — HIGH RISK long pole,
+                                       own crate + sub-plan.
   P6  image (OCI) .................... NOT STARTED  (long pole — thin Rust OCI eco)
   P7  sbom (CycloneDX/SPDX/SARIF) .... DONE  aegis-sbom crate: PURL builder
                                        (canonical, matches Go), CycloneDX 1.5 +
@@ -238,10 +241,14 @@ HARD / LONG POLES (real design work):
   [P7] aegis-sbom — CycloneDX (cyclonedx-bom crate) + SPDX + SARIF. `sbom` command.
 
 GATING (do once --json output stabilizes):
-  [P0/P11] xtask PARITY HARNESS — diff Rust vs Go `--json` over
-       ../aegis-cli/examples/incidents*/, examples/ci/, examples/reachability/.
-       BLOCKED until analyze/ci --json schemas match the Go shapes. This is the
-       real correctness backstop; prioritize once a couple commands are "parity-ready".
+  [P0/P11] xtask PARITY HARNESS — diff Rust vs Go `--json`.
+       FINDING (this session): the Go binary DOES build (GOWORK=off go build
+       ./cmd/aegis). BUT the CLIs diverge structurally: Go has no parse/run;
+       Go `analyze` fetches a package by name (registry) and `sbom` reads a
+       saved snapshot — the Rust port is lockfile-direct. So a naive
+       same-args/diff-output harness won't work. Parity needs a schema-mapping
+       layer first (align Rust JSON to Go shapes, or an adapter per command).
+       That alignment is the real blocker, not the harness plumbing.
 
 CUTOVER (P11): 100% corpus parity, reproduce cosign + SLSA release pipeline, flip default.
 
