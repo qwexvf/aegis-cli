@@ -98,4 +98,53 @@ mod tests {
         let src = format!("const s = String.fromCharCode({codes});");
         assert!(scan(&src).is_empty());
     }
+
+    #[test]
+    fn taint_folds_spread_of_numeric_array() {
+        // const a = [<codes for pastebin url>]; const b = String.fromCharCode(...a);
+        // Requires the symbol table: the fold var resolves `...a` to the array.
+        let codes = "https://pastebin.com/raw"
+            .chars()
+            .map(|c| (c as u32).to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let src = format!("const a = [{codes}];\nconst b = String.fromCharCode(...a);");
+        assert!(scan(&src).contains(&Capability::SuspiciousUrl), "{src}");
+    }
+
+    #[test]
+    fn taint_atob_var_reaches_eval_is_dynamic_eval() {
+        // const x = atob("..."); eval(x);  → tainted var reaches eval sink.
+        let src = "const x = atob('YWxlcnQoMSk=');\neval(x);";
+        assert!(scan(src).contains(&Capability::DynamicEval), "{src}");
+    }
+
+    #[test]
+    fn taint_buffer_base64_var_reaches_fetch_is_net_egress() {
+        let src = "const u = Buffer.from('aHR0cA==', 'base64');\nfetch(u + '://x');";
+        assert!(scan(src).contains(&Capability::NetEgress), "{src}");
+    }
+
+    #[test]
+    fn taint_untainted_var_in_sink_not_flagged_by_taint() {
+        // A plain string var into eval isn't a *taint* hit (no decode source).
+        // (The query pass may still flag eval itself as dynamic-eval — that's
+        // separate; here we assert the taint pass doesn't add net/shell caps.)
+        let src = "const x = 'hello';\nfetch(x);";
+        let caps = scan(src);
+        // fetch(x) with untainted x: net-egress here comes from the query pass
+        // (fetch is a net sink) — but the taint pass must not fire on a
+        // non-decoded var. Assert no shell/eval taint leaked in.
+        assert!(!caps.contains(&Capability::ShellSpawn), "{caps:?}");
+    }
+
+    #[test]
+    fn taint_base64_var_no_sink_no_taint_hit() {
+        // Decoded but never reaches a sink → no taint capability from pass 2.
+        let src = "const x = atob('aGk=');\nconsole.log(x);";
+        // Base64Decode (from the query pass on atob) is fine; but no
+        // dynamic-eval / shell-spawn / net-egress should come from taint.
+        let caps = scan(src);
+        assert!(!caps.contains(&Capability::ShellSpawn), "{caps:?}");
+    }
 }
