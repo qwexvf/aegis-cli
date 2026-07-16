@@ -17,3 +17,7 @@ flate2 = "1"
 # detector is needed here, so pull it in without the rest of the default set.
 aegis-domain = { path = "../aegis-domain" }
 aegis-heuristics = { path = "../aegis-heuristics", default-features = false, features = ["source-patterns"] }
+# Tree-sitter AST capability scanner for the per-file AST pass. Default
+# features pull in every compiled-in grammar so we can pick a scanner by
+# extension for any source file the image ships.
+aegis-ast = { path = "../aegis-ast" }

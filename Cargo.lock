@@ -69,6 +69,7 @@ dependencies = [
 name = "aegis-image"
 version = "0.1.0"
 dependencies = [
+ "aegis-ast",
  "aegis-domain",
  "aegis-heuristics",
  "flate2",
@@ -102,6 +103,7 @@ dependencies = [
  "aegis-domain",
  "tree-sitter",
  "tree-sitter-javascript",
+ "tree-sitter-python",
 ]
 
 [[package]]

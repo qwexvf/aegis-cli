@@ -1,12 +1,13 @@
 //! Risk scan over a flattened image filesystem.
 //!
-//! Two passes live here. [`scan_image_files`] is the SHALLOW, self-contained
+//! Three passes live here. [`scan_image_files`] is the SHALLOW, self-contained
 //! path scan — it flags obviously suspicious *paths* using file location +
 //! magic-byte sniffing, nothing more. [`deep_scan_image_files`] is the deeper
-//! pass: it runs the project's `aegis-heuristics` source-pattern detector over
-//! each text/code file and reports the capabilities it emits. Per-file
-//! tree-sitter AST capability scanning (`aegis-ast`) is still a follow-up and
-//! is noted as out of scope in the crate docs.
+//! source-pattern pass: it runs the project's `aegis-heuristics` source-pattern
+//! detector over each text/code file and reports the capabilities it emits.
+//! [`ast_scan_image_files`] is the deepest pass: it feeds each source file to
+//! the `aegis-ast` tree-sitter capability scanner (real AST parsing, not
+//! substring patterns) and maps the emitted capabilities to findings.
 //!
 //! Shallow-pass checks:
 //!   1. **Dropper in a world-writable / temp location** — a shell script or
@@ -18,6 +19,7 @@
 //!      `*.dist-info/METADATA`). Informational: marks where the follow-up
 //!      per-package capability scan will attach.
 
+use aegis_ast::{scanner_for, Findings};
 use aegis_domain::Ecosystem;
 use aegis_heuristics::source_patterns::check_source_patterns;
 use aegis_heuristics::NormalizedPackage;
@@ -82,9 +84,9 @@ pub fn scan_image_files(files: &ImageFiles) -> Vec<Finding> {
 ///
 /// Deterministic: input is a `BTreeMap`, so findings come out in path order.
 ///
-/// NOTE: this is source-pattern heuristics only. Per-file tree-sitter AST
-/// capability scanning (feeding each captured file to `aegis-ast`) is a
-/// further follow-up and is deliberately out of scope for this slice.
+/// NOTE: this is source-pattern heuristics only — substring matching, not real
+/// parsing. The AST pass ([`ast_scan_image_files`]) complements it by parsing
+/// each source file with tree-sitter.
 pub fn deep_scan_image_files(files: &ImageFiles) -> Vec<Finding> {
     let mut out = Vec::new();
     for (path, body) in &files.files {
@@ -102,6 +104,56 @@ pub fn deep_scan_image_files(files: &ImageFiles) -> Vec<Finding> {
         let pkg = NormalizedPackage::new("image", Ecosystem::Npm)
             .with_file(path.clone(), capped.to_vec());
         for cap in check_source_patterns(&pkg) {
+            out.push(Finding {
+                path: path.clone(),
+                reason: cap.description().to_string(),
+            });
+        }
+    }
+    out
+}
+
+/// Deepest pass: run the `aegis-ast` tree-sitter capability scanner over each
+/// source file extracted from the image and surface the emitted capabilities as
+/// findings. Additive to [`scan_image_files`] and [`deep_scan_image_files`] —
+/// where the deep pass matches source *patterns* (substrings), this one parses
+/// each file into an AST and reports capabilities the grammar query detects
+/// (dynamic-eval, shell-spawn, net-egress, base64-decode, …), giving far fewer
+/// false positives on strings/comments that merely look like code.
+///
+/// A language scanner is chosen by file extension via [`scanner_for`]; files
+/// with no compiled-in grammar are skipped. Each file is scanned in isolation
+/// so a capability maps to the exact path that triggered it. Binary / non-UTF8
+/// files are skipped and each file is capped at [`MAX_SOURCE_FILE_BYTES`];
+/// malformed input never panics — worst case a file is skipped.
+///
+/// Each finding's `reason` is the capability's own `.description()`, so the
+/// wording matches every other capability surface in the project.
+///
+/// Deterministic: input is a `BTreeMap`, so findings come out in path order.
+pub fn ast_scan_image_files(files: &ImageFiles) -> Vec<Finding> {
+    let mut out = Vec::new();
+    for (path, body) in &files.files {
+        let Some(scanner) = scanner_for(path) else {
+            continue; // no grammar for this extension
+        };
+        let capped = if body.len() > MAX_SOURCE_FILE_BYTES {
+            &body[..MAX_SOURCE_FILE_BYTES]
+        } else {
+            &body[..]
+        };
+        if !looks_textual(capped) {
+            continue;
+        }
+        // tree-sitter parses raw bytes; if a file is not valid UTF-8 the parse
+        // just yields no captures rather than panicking, but skip it anyway to
+        // keep the pass honestly "source text only".
+        if std::str::from_utf8(capped).is_err() {
+            continue;
+        }
+        let mut findings = Findings::new(false);
+        scanner.analyze_file(path, capped, &mut findings);
+        for cap in findings.capabilities() {
             out.push(Finding {
                 path: path.clone(),
                 reason: cap.description().to_string(),
@@ -368,6 +420,77 @@ mod tests {
         assert!(
             !findings.iter().any(|f| f.path == "app/util.js"),
             "clean source should produce no findings, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn ast_scan_flags_capabilities_from_parsed_source() {
+        // A JS file whose payload is only detectable by real parsing:
+        // child_process.execSync(...) -> shell-spawn, eval(...) -> dynamic-eval.
+        let evil_js = br#"
+            const cp = require('child_process');
+            cp.execSync('rm -rf /');
+            const r = eval(userInput);
+        "#;
+        let binary_blob = b"\x7fELF\x00execSync('x')"; // NUL -> treated as binary
+        let clean_js = b"export const add = (a, b) => a + b;";
+
+        let layer = make_tar(&[
+            ("app/main.js", evil_js.as_slice()),
+            ("app/bin.node", binary_blob.as_slice()),
+            ("app/util.js", clean_js.as_slice()),
+        ]);
+        let manifest = r#"[{"Layers":["layer.tar"]}]"#;
+        let image = make_image(manifest, &[("layer.tar", &layer)]);
+
+        let files = crate::extract_image_from_bytes(&image).expect("extract");
+        let findings = ast_scan_image_files(&files);
+
+        let js_reasons: Vec<&str> = findings
+            .iter()
+            .filter(|f| f.path == "app/main.js")
+            .map(|f| f.reason.as_str())
+            .collect();
+
+        // Capability descriptions are the finding reasons.
+        assert!(
+            js_reasons
+                .iter()
+                .any(|r| *r == aegis_domain::Capability::ShellSpawn.description()),
+            "expected shell-spawn finding, got {findings:?}"
+        );
+        assert!(
+            js_reasons
+                .iter()
+                .any(|r| *r == aegis_domain::Capability::DynamicEval.description()),
+            "expected dynamic-eval finding, got {findings:?}"
+        );
+
+        // Binary file skipped (also has no grammar-relevant text), clean file
+        // produces nothing.
+        assert!(
+            !findings.iter().any(|f| f.path == "app/bin.node"),
+            "binary file should be skipped, got {findings:?}"
+        );
+        assert!(
+            !findings.iter().any(|f| f.path == "app/util.js"),
+            "clean source should produce no findings, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn ast_scan_skips_files_without_a_grammar() {
+        // A .txt file that literally contains eval() text must not be parsed —
+        // there is no grammar for it, so the AST pass skips it entirely.
+        let layer = make_tar(&[("app/notes.txt", b"eval('nope'); execSync('x')".as_slice())]);
+        let manifest = r#"[{"Layers":["layer.tar"]}]"#;
+        let image = make_image(manifest, &[("layer.tar", &layer)]);
+
+        let files = crate::extract_image_from_bytes(&image).expect("extract");
+        let findings = ast_scan_image_files(&files);
+        assert!(
+            findings.is_empty(),
+            "no grammar for .txt -> no findings, got {findings:?}"
         );
     }
 
