@@ -510,6 +510,30 @@ fn explain_lists_capabilities_and_weights() {
 }
 
 #[test]
+fn reach_reports_import_reachability() {
+    // Network-free: reachability is computed from local JS source imports.
+    let d = tmp("reach");
+    write(
+        &d,
+        "app.js",
+        "import _ from 'lodash';\nconsole.log(_.map);\n",
+    );
+    // imported → reachable, exit 0
+    let out = run(&["reach", d.to_str().unwrap(), "lodash"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("reachable"), "{}", out.stdout);
+    // not imported → unreachable, exit 1
+    let out = run(&["reach", d.to_str().unwrap(), "express"]);
+    assert_eq!(out.code, 1, "{}", out.stdout);
+    assert!(out.stdout.contains("unreachable"), "{}", out.stdout);
+    // json form
+    let out = run(&["reach", d.to_str().unwrap(), "lodash", "--json"]);
+    assert_eq!(out.code, 0);
+    assert!(out.stdout.contains("\"reachable\": true"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);

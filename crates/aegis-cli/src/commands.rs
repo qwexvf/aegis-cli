@@ -897,6 +897,52 @@ pub(crate) fn run_explain(capability: Option<&str>, json: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+#[derive(Serialize)]
+struct ReachView {
+    package: String,
+    reachable: bool,
+    reachability: String,
+}
+
+/// Report whether `package` is imported anywhere in the project's JS/TS source
+/// (reachability). Exit 0 = reachable (used), 1 = unreachable (unused code the
+/// risk engine can downgrade), 2 = not a directory.
+pub(crate) fn run_reach(dir: &str, package: &str, json: bool) -> ExitCode {
+    let root = Path::new(dir);
+    if !root.is_dir() {
+        eprintln!("aegis: not a directory: {dir}");
+        return ExitCode::from(2);
+    }
+    let files = collect_files(root);
+    let reach = aegis_reach::reachability_of(package, &files);
+    let reachable = matches!(reach, aegis_domain::Reachability::Used);
+
+    if json {
+        let view = ReachView {
+            package: package.to_string(),
+            reachable,
+            reachability: format!("{reach:?}").to_lowercase(),
+        };
+        match serde_json::to_string_pretty(&view) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("aegis: json encode failed: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else if reachable {
+        println!("{package}: reachable (imported in project source)");
+    } else {
+        println!("{package}: unreachable (not imported — risk can be downgraded)");
+    }
+
+    if reachable {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
 pub(crate) fn run_parse(file: &str, json: bool) -> ExitCode {
     let bytes = match std::fs::read(file) {
         Ok(b) => b,
