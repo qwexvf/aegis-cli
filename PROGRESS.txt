@@ -10,7 +10,7 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  8 crates · 199 tests (all green) · clippy + rustfmt clean · 45 commits
+  8 crates · 208 tests (all green) · clippy + rustfmt clean · 48 commits
   Runnable `aegis` binary with 4 commands: parse / analyze / ci / run.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
   analyze enriches the package from its manifest (npm package.json →
@@ -33,10 +33,11 @@ Status @ this snapshot:
                                        tarball-drift (pure drift.Diff engine +
                                        monorepo-mismatch confidence cutoff) + npm
                                        manifest parser + go.mod retract parser.
-                                       tarball-drift is DORMANT until the GitHub
-                                       git-tree fetch (repo_files) is wired — that's
-                                       a P3 network item (drift/client.go), not a
-                                       detector. Everything else fires.
+                                       tarball-drift is now LIVE: the GitHub
+                                       git-tree fetch (aegis-registry::github) is
+                                       wired into `analyze --online` (verified LIVE:
+                                       local tree w/ extra file vs lodash@4.17.21
+                                       upstream tag → tarball-source-drift).
   P5  AST + reach .................... PARTIAL  ALL 12 grammars done (js/py/ruby/
                                        rust/go/php/csharp/haskell/lua/gleam/dart/
                                        cocoapods, native — no CGO) + JS constant-
@@ -100,7 +101,9 @@ Status @ this snapshot:
 ✅ aegis-registry   license fetchers (npm/pypi/crates/rubygems/nuget) + deps.dev
                     package-health (deprecation) + advisory lookup + npm
                     packument maintainer-signal fetch (publish times, _npmUser,
-                    weekly downloads, yank detection). 13 tests.
+                    weekly downloads, yank detection) + GitHub git-tree adapter
+                    (repo-field parse, tag candidates, recursive tree fetch →
+                    repo_files for tarball-drift). 22 tests.
 🟡 aegis-heuristics secrets, typosquat (Levenshtein + embedded top-lists),
                     source-patterns (obfuscated-payload / suspicious-url / IDN /
                     known-malware-ioc / curl|sh shell-fetcher, with concat-collapse
@@ -190,8 +193,9 @@ P4 HEURISTICS — COMPLETE. All detectors ported + feature-gated (lean builds
     in analyze (no pinned version in a source tree). `analyze --online` runs the
     3 maintainer detectors off the npm packument (LIVE-verified).
   WIRING STILL TODO (rest of P8): ci/run don't populate manifest metadata —
-    only analyze does. snapshot.Enrich per-dep fan-out not ported. tarball-drift
-    needs the GitHub git-tree fetch wired to fire.
+    only analyze does. snapshot.Enrich per-dep fan-out not ported.
+  DONE: tarball-drift + maintainer both fire via `analyze --online` (GitHub
+    git-tree + npm packument fetches, LIVE-verified).
   [P5] grammars — DONE. gleam (tree-sitter-gleam 1.0), dart (tree-sitter-dart
        0.2), cocoapods (ruby grammar + podspec query) all added + detect-tested.
        ABI compatible with tree-sitter 0.25.
@@ -222,9 +226,9 @@ CUTOVER (P11): 100% corpus parity, reproduce cosign + SLSA release pipeline, fli
   GHSA lookup (GitHub GraphQL + token), npm SLSA provenance/attestations,
   per-ecosystem version resolvers (npm needs a node-semver crate, NOT Cargo semver
   — different range syntax), wire DiskCache into OSV/KEV clients (usecase layer).
-  GitHub git-tree fetch (drift/client.go: Tree + resolveCommitSHA + tags.go
-  repo-field parse + tag candidates) → produces repo_files for the already-ported
-  tarball-drift engine. Once wired, tarball-drift fires.
+  GitHub git-tree fetch — DONE (aegis-registry::github). tarball-drift fires.
+  Remaining GH tail: X-RateLimit-Remaining header not inspected (HttpResponse
+  drops headers) — 403 is treated as skip; fine for best-effort.
 
 -------------------------------------------------------------------------------
  QUICK START TOMORROW
