@@ -12,8 +12,8 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use commands::{
-    run_allowlist, run_analyze, run_ci, run_config, run_explain, run_fix, run_image, run_parse,
-    run_reach, run_sbom,
+    run_actions, run_allowlist, run_analyze, run_ci, run_config, run_explain, run_fix, run_hook,
+    run_image, run_parse, run_reach, run_sbom,
 };
 
 #[derive(Parser)]
@@ -91,6 +91,15 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Print (or install) a git pre-commit hook that scans staged lockfiles.
+    Hook {
+        /// Write the hook to .git/hooks/pre-commit (and chmod +x) instead of
+        /// printing it to stdout.
+        #[arg(long)]
+        install: bool,
+    },
+    /// Print a GitHub Actions workflow that runs `aegis ci` on every push.
+    Actions {},
     /// Explain the risk model: capabilities, their meaning, and score weight.
     Explain {
         /// A capability slug (e.g. "shell-spawn"); omit to list them all.
@@ -157,6 +166,8 @@ fn main() -> ExitCode {
         Command::Allowlist { json } => run_allowlist(json),
         Command::Explain { capability, json } => run_explain(capability.as_deref(), json),
         Command::Reach { dir, package, json } => run_reach(&dir, &package, json),
+        Command::Hook { install } => run_hook(install),
+        Command::Actions {} => run_actions(),
         Command::Image { file, json } => run_image(&file, json),
         Command::Fix {
             file,
