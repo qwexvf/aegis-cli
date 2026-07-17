@@ -78,9 +78,16 @@ Status @ this snapshot:
                                        python + go (selector + qualified-type) + php
                                        (use-binding → :: member) done; Ruby excluded
                                        by design (require/gem bind no local — needs
-                                       project-wide constant resolution). FOLLOW-UP
-                                       (documented): per-file call-graph (rest of
-                                       depusage).
+                                       project-wide constant resolution). CALL-GRAPH
+                                       (additive, no dead-code pruning → no FN risk):
+                                       js/ts + python intra-file caller→callee edges
+                                       (CallNode/call_graph) + used-symbol→enclosing-
+                                       function attribution (SymbolSite). WIRED LIVE:
+                                       functions_reaching + `reach --function` now
+                                       reports which project functions reach the
+                                       vulnerable symbol (↳ file:line fn / json
+                                       callers[]). FOLLOW-UP: go/php call-graph +
+                                       cross-file call resolution.
   P6  image (OCI) .................... DONE (slice)  aegis-image crate: docker-save +
                                        OCI-layout tarball extract (layer overlay,
                                        whiteout/opaque-dir handling) + shallow risk

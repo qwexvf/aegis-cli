@@ -1071,6 +1071,34 @@ struct ReachView {
     symbols: Vec<String>,
 }
 
+/// JSON view for a `reach --function` query: whether the symbol is used and,
+/// when it is, the (file, function) sites that reach it.
+#[derive(Serialize)]
+struct ReachFunctionView {
+    package: String,
+    function: String,
+    used: bool,
+    callers: Vec<CallSiteView>,
+}
+
+/// One caller location in the `reach --function` JSON output.
+#[derive(Serialize)]
+struct CallSiteView {
+    file: String,
+    function: String,
+    line: usize,
+}
+
+impl From<&aegis_reach::CallSite> for CallSiteView {
+    fn from(c: &aegis_reach::CallSite) -> Self {
+        CallSiteView {
+            file: c.file.clone(),
+            function: c.function.clone(),
+            line: c.line,
+        }
+    }
+}
+
 /// Report whether `package` is imported anywhere in the project's JS/TS source
 /// (reachability). Exit 0 = reachable (used), 1 = unreachable (unused code the
 /// risk engine can downgrade), 2 = not a directory.
@@ -1086,13 +1114,33 @@ pub(crate) fn run_reach(dir: &str, package: &str, function: Option<&str>, json: 
     // is advisory reachability — an advisory on an unused function is moot.
     if let Some(func) = function {
         let used = aegis_reach::used_symbols_of(package, &files).contains(func);
+        // Caller detail: which project functions reach the symbol (JS/Py —
+        // Go/PHP have used-symbols but no call graph yet). Additive; never
+        // narrows the `used` verdict.
+        let callers = if used {
+            aegis_reach::functions_reaching(package, func, &files)
+        } else {
+            Vec::new()
+        };
         if json {
-            println!(
-                "{{\n  \"package\": {:?},\n  \"function\": {:?},\n  \"used\": {}\n}}",
-                package, func, used
-            );
+            let view = ReachFunctionView {
+                package: package.to_string(),
+                function: func.to_string(),
+                used,
+                callers: callers.iter().map(CallSiteView::from).collect(),
+            };
+            match serde_json::to_string_pretty(&view) {
+                Ok(s) => println!("{s}"),
+                Err(e) => {
+                    eprintln!("aegis: json encode failed: {e}");
+                    return ExitCode::from(2);
+                }
+            }
         } else if used {
             println!("{package}.{func}: used (advisory on this function is reachable)");
+            for c in &callers {
+                println!("  ↳ {}:{} {}", c.file, c.line, c.function);
+            }
         } else {
             println!("{package}.{func}: not used (advisory on this function is unreachable)");
         }
