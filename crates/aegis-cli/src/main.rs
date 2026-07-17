@@ -59,6 +59,9 @@ enum Command {
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
+        /// Emit aggregate SARIF 2.1.0 across all tasks. Overrides --json.
+        #[arg(long)]
+        sarif: bool,
     },
     /// Suggest version bumps that resolve known CVEs in a lockfile.
     Fix {
@@ -186,7 +189,11 @@ fn main() -> ExitCode {
             json,
             sarif,
         } => run_ci(&file, &fail_on, offline, json, sarif),
-        Command::Run { config, json } => run_config(&config, json),
+        Command::Run {
+            config,
+            json,
+            sarif,
+        } => run_config(&config, json, sarif),
         Command::Allowlist { json } => run_allowlist(json),
         Command::Explain { capability, json } => run_explain(capability.as_deref(), json),
         Command::Reach { dir, package, json } => run_reach(&dir, &package, json),
