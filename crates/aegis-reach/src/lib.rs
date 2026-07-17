@@ -39,8 +39,9 @@
 //!
 //! Imports for all five languages. Used-symbols resolution is ported
 //! for **JavaScript / TypeScript** ([`UsedSymbol`],
-//! [`extract_used_symbols`]) and **Python**
-//! ([`extract_used_symbols_python`]); [`used_symbols_of`] routes both.
+//! [`extract_used_symbols`]), **Python**
+//! ([`extract_used_symbols_python`]), and **Go**
+//! ([`extract_used_symbols_go`]); [`used_symbols_of`] routes all three.
 //! Given the imports a file declares, it tracks which imported bindings
 //! are actually referenced and which members are accessed on them
 //! (`cp.execSync(...)` → symbol `execSync` on the `child_process`
@@ -941,15 +942,16 @@ pub fn extract_used_symbols(source: &[u8]) -> Vec<UsedSymbol> {
 /// The union of symbol names used on `dep_key` across every supported
 /// file in a project. Files are routed by extension —
 /// `.js/.ts/.mjs/.cjs/.jsx/.tsx` through the JS used-symbol pass,
-/// `.py/.pyi` through the Python one; any other extension is skipped
-/// (Go / PHP / Ruby used-symbols are a follow-up). A file whose usages
-/// don't reference `dep_key` contributes nothing.
+/// `.py/.pyi` through the Python one, `.go` through the Go one; any other
+/// extension is skipped (PHP / Ruby used-symbols are a follow-up). A file
+/// whose usages don't reference `dep_key` contributes nothing.
 pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<String> {
     let mut out = HashSet::new();
     for (path, bytes) in files {
         let uses = match language_for(path) {
             Some(Language::JavaScript) => extract_used_symbols(bytes),
             Some(Language::Python) => extract_used_symbols_python(bytes),
+            Some(Language::Go) => extract_used_symbols_go(bytes),
             _ => continue,
         };
         for used in uses {
@@ -1460,6 +1462,156 @@ fn collect_py_uses(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_py_uses(child, body, bindings, out);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Go used-symbols
+// ---------------------------------------------------------------------------
+
+/// Parse Go source and return every use of an imported package.
+///
+/// Go has no named-import form — a package is imported whole and its
+/// exported identifiers are reached through `pkg.Symbol` selector
+/// expressions. So binding is always namespace-style: map each import's
+/// local package name to its module, then walk `selector_expression`
+/// nodes whose operand is a bound package identifier, emitting the
+/// selected field as the symbol (`cobra.Command` → `Command`). A parse
+/// failure yields an empty vec — never panics.
+///
+/// The local name is the import alias when present, else the last path
+/// segment of the import path (the conventional package-name heuristic —
+/// the real `package` clause of a third-party module isn't available
+/// here). Dot imports (`. "pkg"`) merge names into file scope with no
+/// qualifier, and blank imports (`_ "pkg"`) are side-effect-only; both
+/// bind nothing.
+pub fn extract_used_symbols_go(source: &[u8]) -> Vec<UsedSymbol> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_go::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut bindings = HashMap::new();
+    collect_go_bindings(tree.root_node(), source, &mut bindings);
+    if bindings.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    collect_go_uses(tree.root_node(), source, &bindings, &mut out);
+    out
+}
+
+/// Normalize a Go import path to the form stored on [`UsedSymbol::module`]:
+/// its dep key when non-empty, else the verbatim path (stdlib packages,
+/// which never form a registry key, keep their bare name).
+fn used_symbol_module_go(module: &str) -> String {
+    let key = dep_key_go(module);
+    if key.is_empty() {
+        module.to_string()
+    } else {
+        key
+    }
+}
+
+/// Last slash segment of an import path (`github.com/spf13/cobra` →
+/// `cobra`, `fmt` → `fmt`). The conventional Go package-name heuristic.
+fn last_slash_segment(s: &str) -> &str {
+    match s.rfind('/') {
+        Some(i) => &s[i + 1..],
+        None => s,
+    }
+}
+
+/// Recursively walk the Go tree, recording one local-package → module
+/// binding per `import_spec`.
+fn collect_go_bindings(node: Node, body: &[u8], out: &mut HashMap<String, String>) {
+    if node.kind() == "import_spec" {
+        go_binding_from_spec(node, body, out);
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_go_bindings(child, body, out);
+    }
+}
+
+/// Resolve the local package name for one `import_spec` and bind it to the
+/// module. An explicit alias wins; a `.` (dot) or `_` (blank) alias binds
+/// nothing; otherwise the last path segment is the local name.
+fn go_binding_from_spec(node: Node, body: &[u8], out: &mut HashMap<String, String>) {
+    let Some(path) = node.child_by_field_name("path") else {
+        return;
+    };
+    let Some(module) = go_string_literal_value(path, body) else {
+        return;
+    };
+    if module.is_empty() {
+        return;
+    }
+    let local = match node.child_by_field_name("name") {
+        Some(name) => {
+            let Ok(text) = name.utf8_text(body) else {
+                return;
+            };
+            // dot import merges into scope, blank import is side-effect-only.
+            if text == "." || text == "_" {
+                return;
+            }
+            text.to_string()
+        }
+        None => last_slash_segment(&module).to_string(),
+    };
+    if local.is_empty() {
+        return;
+    }
+    out.insert(local, used_symbol_module_go(&module));
+}
+
+/// Recursively walk the Go tree, emitting a [`UsedSymbol`] for every
+/// package-qualified reference to a bound package. Two grammar shapes
+/// carry these: value/func selectors (`cobra.OnInitialize()`) parse as a
+/// `selector_expression` (`operand` . `field`), while type references
+/// (`cobra.Command{}`, `var x cobra.Command`) parse as a `qualified_type`
+/// (`package` . `name`). Both resolve when the qualifier identifier is
+/// bound.
+fn collect_go_uses(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, String>,
+    out: &mut Vec<UsedSymbol>,
+) {
+    let qualified = match node.kind() {
+        "selector_expression" => Some(("operand", "field")),
+        "qualified_type" => Some(("package", "name")),
+        _ => None,
+    };
+    if let Some((qual_field, sym_field)) = qualified {
+        if let (Some(qualifier), Some(symbol)) = (
+            node.child_by_field_name(qual_field),
+            node.child_by_field_name(sym_field),
+        ) {
+            // qualifier is an `identifier` in a selector, `package_identifier`
+            // in a qualified_type — both are single-token package names.
+            if let Ok(name) = qualifier.utf8_text(body) {
+                if let Some(module) = bindings.get(name) {
+                    if let Ok(sym) = symbol.utf8_text(body) {
+                        out.push(UsedSymbol {
+                            module: module.clone(),
+                            symbol: sym.to_string(),
+                            line: symbol.start_position().row + 1,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_go_uses(child, body, bindings, out);
     }
 }
 
@@ -2302,5 +2454,97 @@ mod tests {
         );
         // A dep with no recorded usage → empty set.
         assert!(used_symbols_of("flask", &files).is_empty());
+    }
+
+    // --- Go used-symbols ------------------------------------------------
+
+    fn used_go(src: &str) -> Vec<UsedSymbol> {
+        extract_used_symbols_go(src.as_bytes())
+    }
+
+    #[test]
+    fn go_used_symbols_selector_access() {
+        // Bare third-party import → local is the last path segment.
+        let syms = used_go(
+            "package main\nimport \"github.com/spf13/cobra\"\nfunc main() { cobra.Command{}; cobra.OnInitialize() }",
+        );
+        let names: HashSet<_> = syms
+            .iter()
+            .filter(|u| u.module == "github.com/spf13/cobra")
+            .map(|u| u.symbol.clone())
+            .collect();
+        assert!(names.contains("Command"));
+        assert!(names.contains("OnInitialize"));
+    }
+
+    #[test]
+    fn go_used_symbols_alias() {
+        // Aliased import → the alias is the local name.
+        let syms = used_go(
+            "package main\nimport co \"github.com/spf13/cobra\"\nfunc main() { co.Execute() }",
+        );
+        assert_eq!(
+            syms.iter()
+                .filter(|u| u.module == "github.com/spf13/cobra")
+                .map(|u| u.symbol.clone())
+                .collect::<HashSet<_>>(),
+            HashSet::from(["Execute".to_string()])
+        );
+    }
+
+    #[test]
+    fn go_used_symbols_blank_and_dot_bind_nothing() {
+        // Blank import is side-effect-only; nothing is selector-accessed.
+        assert!(used_go("package main\nimport _ \"github.com/lib/pq\"\nfunc main() {}").is_empty());
+        // Dot import merges names into scope — no qualifier to track.
+        assert!(
+            used_go("package main\nimport . \"fmt\"\nfunc main() { Println(\"x\") }").is_empty()
+        );
+    }
+
+    #[test]
+    fn go_used_symbols_nested_selector() {
+        // `pkg.A.B` surfaces only `A` on the package — the outer selector's
+        // operand is a selector_expression, not the bound identifier.
+        let syms =
+            used_go("package main\nimport \"github.com/x/y\"\nfunc main() { y.Config.Field }");
+        assert_eq!(
+            syms.iter()
+                .filter(|u| u.module == "github.com/x/y")
+                .map(|u| u.symbol.clone())
+                .collect::<HashSet<_>>(),
+            HashSet::from(["Config".to_string()])
+        );
+    }
+
+    #[test]
+    fn go_used_symbols_bad_source_no_panic() {
+        let _ = used_go("package main\nimport ( \"broken");
+        let _ = used_go("<<< not go >>> ???");
+        assert!(used_go("").is_empty());
+    }
+
+    #[test]
+    fn used_symbols_of_routes_go() {
+        let files = vec![
+            (
+                "main.go".to_string(),
+                b"package main\nimport \"github.com/spf13/cobra\"\nfunc main() { cobra.Command{} }"
+                    .to_vec(),
+            ),
+            // stdlib is selector-accessed but never forms a registry dep key.
+            (
+                "util.go".to_string(),
+                b"package main\nimport \"fmt\"\nfunc x() { fmt.Println(\"y\") }".to_vec(),
+            ),
+        ];
+        assert_eq!(
+            used_symbols_of("github.com/spf13/cobra", &files),
+            HashSet::from(["Command".to_string()])
+        );
+        // fmt is used, but its module is the verbatim "fmt", not a dep key.
+        assert!(used_symbols_of("fmt", &files).contains("Println"));
+        // A dep with no recorded usage → empty set.
+        assert!(used_symbols_of("github.com/pkg/errors", &files).is_empty());
     }
 }
