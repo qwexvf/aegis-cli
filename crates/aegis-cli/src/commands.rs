@@ -245,8 +245,20 @@ struct TaskResult {
     /// the "unused-deps" check ran.
     #[serde(default)]
     unused_deps: Vec<String>,
+    /// Retained risk flags from the source scan, for `run --sarif` aggregation.
+    /// Not serialized to `--json` (which reports counts/verdict).
+    #[serde(skip)]
+    flags: Vec<TaskFlag>,
     failed: bool,
     error: Option<String>,
+}
+
+/// One risk flag on a task, kept for SARIF emission.
+struct TaskFlag {
+    code: String,
+    detail: String,
+    weight: i32,
+    suppressed: bool,
 }
 
 #[derive(Serialize)]
@@ -266,6 +278,7 @@ fn run_task(t: &TaskConfig) -> TaskResult {
         deprecated_findings: 0,
         license_findings: 0,
         unused_deps: Vec::new(),
+        flags: Vec::new(),
         failed: false,
         error: None,
     };
@@ -289,6 +302,16 @@ fn run_task(t: &TaskConfig) -> TaskResult {
         let v = verdict(&assessment, &RiskAssessment::default());
         res.verdict = Some(v.name().to_string());
         res.score = assessment.score;
+        res.flags = assessment
+            .flags
+            .iter()
+            .map(|f| TaskFlag {
+                code: f.code.clone(),
+                detail: f.detail.clone(),
+                weight: f.weight,
+                suppressed: f.suppressed,
+            })
+            .collect();
         if matches!(v, aegis_domain::VerdictKind::Block) {
             res.failed = true;
         }
@@ -405,7 +428,7 @@ fn declared_npm_dependencies(files: &[(String, Vec<u8>)]) -> Option<Vec<String>>
     Some(deps.keys().cloned().collect())
 }
 
-pub(crate) fn run_config(config_path: &str, json: bool) -> ExitCode {
+pub(crate) fn run_config(config_path: &str, json: bool, sarif: bool) -> ExitCode {
     let text = match std::fs::read_to_string(config_path) {
         Ok(t) => t,
         Err(e) => {
@@ -437,6 +460,42 @@ pub(crate) fn run_config(config_path: &str, json: bool) -> ExitCode {
     // Independent tasks run in PARALLEL (each task's source scan also fans out).
     let results: Vec<TaskResult> = config.tasks.par_iter().map(run_task).collect();
     let failed = results.iter().any(|r| r.failed);
+
+    if sarif {
+        // One SARIF result per (task, flag); rules deduped by capability code;
+        // logical location = the task's package identity.
+        let mut seen_rules = std::collections::HashSet::new();
+        let mut rules = Vec::new();
+        let mut findings = Vec::new();
+        for r in &results {
+            let loc = format!("{}:{}", r.name, r.path);
+            for f in &r.flags {
+                if seen_rules.insert(f.code.clone()) {
+                    rules.push(aegis_sbom::sarif::RuleDef {
+                        id: f.code.clone(),
+                        description: f.detail.clone(),
+                        level: flag_level(f.weight).to_string(),
+                    });
+                }
+                findings.push(aegis_sbom::sarif::FindingRef {
+                    rule_id: f.code.clone(),
+                    level: flag_level(f.weight).to_string(),
+                    message: format!("{}: {}", r.name, f.detail),
+                    location: Some(loc.clone()),
+                    suppressed: f.suppressed,
+                });
+            }
+        }
+        println!(
+            "{}",
+            aegis_sbom::sarif::build_json(env!("CARGO_PKG_VERSION"), &rules, &findings)
+        );
+        return if failed {
+            ExitCode::from(1)
+        } else {
+            ExitCode::SUCCESS
+        };
+    }
 
     if json {
         let view = RunView {

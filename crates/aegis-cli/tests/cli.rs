@@ -698,6 +698,34 @@ fn analyze_sarif_emits_flags_as_results() {
 }
 
 #[test]
+fn run_sarif_aggregates_task_flags() {
+    // Fleet SARIF: each task's risk flags → one aggregate SARIF log, failing
+    // overall (exit 1) when a task blocks. Network-free.
+    let d = tmp("runsarif");
+    std::fs::create_dir_all(d.join("evil")).unwrap();
+    // shell-spawn + dynamic-eval + base64 → BLOCK, so the fleet fails overall.
+    write(
+        &d.join("evil"),
+        "a.js",
+        "eval(atob('eA=='));\nrequire('child_process').exec('id');\n",
+    );
+    let cfg = format!(
+        "[[task]]\nname=\"evil\"\npath=\"{p}/evil\"\necosystem=\"npm\"\nchecks=[\"ast\",\"heuristics\"]\n",
+        p = d.to_str().unwrap()
+    );
+    write(&d, "aegis.toml", &cfg);
+    let out = run(&["run", d.join("aegis.toml").to_str().unwrap(), "--sarif"]);
+    assert_eq!(out.code, 1, "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\"version\": \"2.1.0\""),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("shell-spawn"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);
