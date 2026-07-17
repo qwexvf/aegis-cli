@@ -644,6 +644,35 @@ fn image_pull_from_registry_scans_clean_alpine() {
 }
 
 #[test]
+fn run_unused_deps_check_flags_declared_but_unimported() {
+    // A declared dependency never imported in source = dead attack surface.
+    // Network-free: reachability is computed from local imports.
+    let d = tmp("unused");
+    std::fs::create_dir_all(d.join("proj")).unwrap();
+    write(
+        &d.join("proj"),
+        "app.js",
+        "import _ from 'lodash';\nconsole.log(_);\n",
+    );
+    write(
+        &d.join("proj"),
+        "package.json",
+        r#"{"name":"p","version":"1.0.0","dependencies":{"lodash":"^4","express":"^4"}}"#,
+    );
+    let cfg = format!(
+        "[[task]]\nname=\"p\"\npath=\"{p}/proj\"\necosystem=\"npm\"\nchecks=[\"unused-deps\"]\n",
+        p = d.to_str().unwrap()
+    );
+    write(&d, "aegis.toml", &cfg);
+    let out = run(&["run", d.join("aegis.toml").to_str().unwrap(), "--json"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    // express is declared but never imported → unused; lodash is imported → not.
+    assert!(out.stdout.contains("\"express\""), "{}", out.stdout);
+    assert!(!out.stdout.contains("\"lodash\""), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);
