@@ -10,9 +10,11 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  11 crates · 360+ tests (all green) · clippy + rustfmt clean · 95+ commits
+  11 crates · 384 tests + 3 live (all green) · clippy + rustfmt clean · 103 commits
   13 CLI commands: parse / analyze / ci / run / sbom / fix / allowlist / image /
-  explain / reach / hook / actions / snapshot.
+  explain / reach / hook / actions / snapshot. `image` scans local tarball OR
+  pulls by ref from a registry (3 scan tiers). GHSA + provenance + allowlist all
+  CLI-wired. aegis-reach = 5 languages (js/ts/py/go/php/ruby).
   SECURITY E2E SUITE: crates/aegis-cli/tests/incidents.rs — 11 scenarios
   reconstruct real supply-chain attacks (event-stream, Shai-Hulud/TanStack
   worm, obfuscated crypto-stealer, fromCharCode C2, hardcoded AWS key, binary
@@ -30,9 +32,8 @@ Status @ this snapshot:
   CLI wiring of provenance flag still pending).
   Config runner (`run`) now has 5 check types: ast / heuristics / cve /
   deprecated (deps.dev) / license (deny_licenses via LicenseFetcher).
-  Runnable `aegis` binary with 8 commands: parse / analyze / ci / run / sbom /
-  fix / allowlist / image. `fix` = lockfile → OSV → version-bump plan + safe upgrade
-  commands (verified LIVE: lodash 4.17.4 → 4.18.0 resolves 10 advisories).
+  `fix` = lockfile → OSV → version-bump plan + safe upgrade commands (verified
+  LIVE: lodash 4.17.4 → 4.18.0 resolves 10 advisories).
   `ci --sarif` emits SARIF 2.1.0 (GitHub Code Scanning); verified LIVE:
   lodash 4.17.4 → GHSA advisories → SARIF results w/ severity→level.
   Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
