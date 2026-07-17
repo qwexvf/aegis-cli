@@ -40,8 +40,9 @@
 //! Imports for all five languages. Used-symbols resolution is ported
 //! for **JavaScript / TypeScript** ([`UsedSymbol`],
 //! [`extract_used_symbols`]), **Python**
-//! ([`extract_used_symbols_python`]), and **Go**
-//! ([`extract_used_symbols_go`]); [`used_symbols_of`] routes all three.
+//! ([`extract_used_symbols_python`]), **Go**
+//! ([`extract_used_symbols_go`]), and **PHP**
+//! ([`extract_used_symbols_php`]); [`used_symbols_of`] routes all four.
 //! Given the imports a file declares, it tracks which imported bindings
 //! are actually referenced and which members are accessed on them
 //! (`cp.execSync(...)` → symbol `execSync` on the `child_process`
@@ -699,7 +700,7 @@ fn php_use_clause_name(clause: Node, prefix: &str, body: &[u8]) -> Option<String
     if name.is_none() {
         let mut cursor = clause.walk();
         for child in clause.named_children(&mut cursor) {
-            if matches!(child.kind(), "qualified_name" | "namespace_name") {
+            if matches!(child.kind(), "qualified_name" | "namespace_name" | "name") {
                 name = child.utf8_text(body).ok().map(str::to_string);
                 break;
             }
@@ -942,9 +943,10 @@ pub fn extract_used_symbols(source: &[u8]) -> Vec<UsedSymbol> {
 /// The union of symbol names used on `dep_key` across every supported
 /// file in a project. Files are routed by extension —
 /// `.js/.ts/.mjs/.cjs/.jsx/.tsx` through the JS used-symbol pass,
-/// `.py/.pyi` through the Python one, `.go` through the Go one; any other
-/// extension is skipped (PHP / Ruby used-symbols are a follow-up). A file
-/// whose usages don't reference `dep_key` contributes nothing.
+/// `.py/.pyi` through the Python one, `.go` through the Go one,
+/// `.php/.phtml` through the PHP one; any other extension is skipped
+/// (Ruby used-symbols are a follow-up). A file whose usages don't
+/// reference `dep_key` contributes nothing.
 pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<String> {
     let mut out = HashSet::new();
     for (path, bytes) in files {
@@ -952,6 +954,7 @@ pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<St
             Some(Language::JavaScript) => extract_used_symbols(bytes),
             Some(Language::Python) => extract_used_symbols_python(bytes),
             Some(Language::Go) => extract_used_symbols_go(bytes),
+            Some(Language::Php) => extract_used_symbols_php(bytes),
             _ => continue,
         };
         for used in uses {
@@ -1612,6 +1615,208 @@ fn collect_go_uses(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_go_uses(child, body, bindings, out);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PHP used-symbols
+// ---------------------------------------------------------------------------
+
+/// Parse PHP source and return every static use of an imported class.
+///
+/// A `use Foo\Bar;` statement binds the short name `Bar` (or its `as`
+/// alias) into scope. Like Go, the binding is namespace-style — the class
+/// is reached whole and its members surface through the `::` accessor. So
+/// bind each `use` clause's local name to its fully-qualified module,
+/// then walk `scoped_call_expression` (`Bar::make()`) and
+/// `class_constant_access_expression` (`Bar::CONST`, `Bar::class`) nodes
+/// whose scope is a bound name, emitting the accessed member as the
+/// symbol. Bare `new Bar()` and type hints reference no member and so
+/// contribute nothing (mirrors the Go/JS namespace rule). A parse failure
+/// yields an empty vec — never panics.
+///
+/// Because [`dep_key_php`] is always empty, [`UsedSymbol::module`] is the
+/// verbatim FQN — the same form the PHP import path stores, matched
+/// against composer.lock metadata downstream.
+pub fn extract_used_symbols_php(source: &[u8]) -> Vec<UsedSymbol> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_php::LANGUAGE_PHP.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut bindings = HashMap::new();
+    collect_php_bindings(tree.root_node(), source, &mut bindings);
+    if bindings.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    collect_php_uses(tree.root_node(), source, &bindings, &mut out);
+    out
+}
+
+/// Normalize a PHP module (FQN) to the form stored on
+/// [`UsedSymbol::module`]. `dep_key_php` is always empty, so this is the
+/// verbatim FQN.
+fn used_symbol_module_php(module: &str) -> String {
+    let key = dep_key_php(module);
+    if key.is_empty() {
+        module.to_string()
+    } else {
+        key
+    }
+}
+
+/// Last backslash segment of a PHP FQN (`Foo\Bar\Baz` → `Baz`). The
+/// short class name a bare `use` binds into scope.
+fn last_backslash_segment(s: &str) -> &str {
+    match s.rfind('\\') {
+        Some(i) => &s[i + 1..],
+        None => s,
+    }
+}
+
+/// Recursively walk the PHP tree, recording one local-name → module
+/// binding per `use` clause.
+fn collect_php_bindings(node: Node, body: &[u8], out: &mut HashMap<String, String>) {
+    if node.kind() == "namespace_use_declaration" {
+        php_bindings_from_use(node, body, out);
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_php_bindings(child, body, out);
+    }
+}
+
+/// Resolve local-name → FQN bindings for one `use` declaration, handling
+/// the plain (`use Foo\Bar;`), aliased (`use Foo\Bar as B;`), and group
+/// (`use Foo\{Bar, Baz as Q};`) forms.
+fn php_bindings_from_use(node: Node, body: &[u8], out: &mut HashMap<String, String>) {
+    // In `use Foo\{Bar, Baz};` the group prefix (`Foo`) is a
+    // `namespace_name` sibling that precedes the `namespace_use_group` at
+    // the declaration level — not a child of the group.
+    let mut prefix = String::new();
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "namespace_name" => {
+                prefix = child.utf8_text(body).unwrap_or("").to_string();
+            }
+            "namespace_use_clause" => php_bind_clause(child, "", body, out),
+            "namespace_use_group" => {
+                let mut group_cursor = child.walk();
+                for gchild in child.named_children(&mut group_cursor) {
+                    if matches!(
+                        gchild.kind(),
+                        "namespace_use_clause" | "namespace_use_group_clause"
+                    ) {
+                        php_bind_clause(gchild, &prefix, body, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Bind one `use` clause's local name (alias if present, else the FQN's
+/// last backslash segment) to its module.
+fn php_bind_clause(clause: Node, prefix: &str, body: &[u8], out: &mut HashMap<String, String>) {
+    let Some(fqn) = php_use_clause_name(clause, prefix, body) else {
+        return;
+    };
+    let local = php_use_clause_alias(clause, body)
+        .unwrap_or_else(|| last_backslash_segment(&fqn).to_string());
+    if local.is_empty() {
+        return;
+    }
+    out.insert(local, used_symbol_module_php(&fqn));
+}
+
+/// The `as` alias of a `use` clause, if any. Uses the `alias` field,
+/// falling back to the last `name` child for grammar versions that don't
+/// label it (the FQN is a `qualified_name`/`namespace_name`, so a bare
+/// `name` child is the alias).
+fn php_use_clause_alias(clause: Node, body: &[u8]) -> Option<String> {
+    if let Some(alias) = clause
+        .child_by_field_name("alias")
+        .and_then(|a| a.utf8_text(body).ok())
+    {
+        return Some(alias.to_string());
+    }
+    let mut cursor = clause.walk();
+    clause
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "name")
+        .last()
+        .and_then(|c| c.utf8_text(body).ok())
+        .map(str::to_string)
+}
+
+/// Recursively walk the PHP tree, emitting a [`UsedSymbol`] for every
+/// `Class::member` access whose class is a bound local name.
+fn collect_php_uses(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, String>,
+    out: &mut Vec<UsedSymbol>,
+) {
+    match node.kind() {
+        // `Bar::make(...)` — scope + name fields.
+        "scoped_call_expression" => {
+            if let (Some(scope), Some(name)) = (
+                node.child_by_field_name("scope"),
+                node.child_by_field_name("name"),
+            ) {
+                php_push_use(scope, name, body, bindings, out);
+            }
+        }
+        // `Bar::CONST` / `Bar::class` — first named child is the scope,
+        // the trailing one is the constant/`class` name.
+        "class_constant_access_expression" => {
+            let mut cursor = node.walk();
+            let kids: Vec<Node> = node.named_children(&mut cursor).collect();
+            if let (Some(scope), Some(name)) = (kids.first(), kids.last()) {
+                if kids.len() == 2 {
+                    php_push_use(*scope, *name, body, bindings, out);
+                }
+            }
+        }
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_php_uses(child, body, bindings, out);
+    }
+}
+
+/// Push a [`UsedSymbol`] when `scope` is a single-token bound class name.
+fn php_push_use(
+    scope: Node,
+    name: Node,
+    body: &[u8],
+    bindings: &HashMap<String, String>,
+    out: &mut Vec<UsedSymbol>,
+) {
+    if scope.kind() != "name" {
+        return;
+    }
+    let Ok(local) = scope.utf8_text(body) else {
+        return;
+    };
+    let Some(module) = bindings.get(local) else {
+        return;
+    };
+    if let Ok(sym) = name.utf8_text(body) {
+        out.push(UsedSymbol {
+            module: module.clone(),
+            symbol: sym.to_string(),
+            line: name.start_position().row + 1,
+        });
     }
 }
 
@@ -2546,5 +2751,85 @@ mod tests {
         assert!(used_symbols_of("fmt", &files).contains("Println"));
         // A dep with no recorded usage → empty set.
         assert!(used_symbols_of("github.com/pkg/errors", &files).is_empty());
+    }
+
+    // --- PHP used-symbols -----------------------------------------------
+
+    fn used_php(src: &str) -> Vec<UsedSymbol> {
+        extract_used_symbols_php(src.as_bytes())
+    }
+
+    fn php_syms(src: &str, module: &str) -> HashSet<String> {
+        used_php(src)
+            .iter()
+            .filter(|u| u.module == module)
+            .map(|u| u.symbol.clone())
+            .collect()
+    }
+
+    #[test]
+    fn php_used_symbols_scoped_call_and_const() {
+        let src = "<?php\nuse Foo\\Bar;\nBar::make();\nBar::VERSION;\n";
+        assert_eq!(
+            php_syms(src, "Foo\\Bar"),
+            HashSet::from(["make".to_string(), "VERSION".to_string()])
+        );
+    }
+
+    #[test]
+    fn php_used_symbols_alias() {
+        let src = "<?php\nuse Foo\\Bar as B;\nB::run();\n";
+        assert_eq!(
+            php_syms(src, "Foo\\Bar"),
+            HashSet::from(["run".to_string()])
+        );
+    }
+
+    #[test]
+    fn php_used_symbols_group() {
+        let src = "<?php\nuse Foo\\{Bar, Baz as Q};\nBar::a();\nQ::b();\n";
+        assert_eq!(php_syms(src, "Foo\\Bar"), HashSet::from(["a".to_string()]));
+        assert_eq!(php_syms(src, "Foo\\Baz"), HashSet::from(["b".to_string()]));
+    }
+
+    #[test]
+    fn php_used_symbols_new_binds_no_member() {
+        // `new Bar()` references the class but no member → no symbol, even
+        // though the import itself is still reachable elsewhere.
+        let src = "<?php\nuse Foo\\Bar;\n$x = new Bar();\n";
+        assert!(php_syms(src, "Foo\\Bar").is_empty());
+    }
+
+    #[test]
+    fn php_used_symbols_bad_source_no_panic() {
+        let _ = used_php("<?php use broken");
+        let _ = used_php("<<< not php >>> ???");
+        assert!(used_php("").is_empty());
+    }
+
+    #[test]
+    fn used_symbols_of_routes_php() {
+        let files = vec![
+            (
+                "app.php".to_string(),
+                b"<?php\nuse Symfony\\Component\\Console\\Application;\nApplication::create();\n"
+                    .to_vec(),
+            ),
+            // .phtml is also routed through the PHP pass.
+            (
+                "view.phtml".to_string(),
+                b"<?php\nuse App\\Helper;\nHelper::render();\n".to_vec(),
+            ),
+        ];
+        assert_eq!(
+            used_symbols_of("Symfony\\Component\\Console\\Application", &files),
+            HashSet::from(["create".to_string()])
+        );
+        assert_eq!(
+            used_symbols_of("App\\Helper", &files),
+            HashSet::from(["render".to_string()])
+        );
+        // A dep with no recorded usage → empty set.
+        assert!(used_symbols_of("App\\Missing", &files).is_empty());
     }
 }
