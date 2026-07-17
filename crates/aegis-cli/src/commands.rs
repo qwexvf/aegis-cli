@@ -791,11 +791,27 @@ struct ImageFindingView {
 /// Scan an OCI / `docker save` image tarball: extract the flattened root
 /// filesystem (layer overlay + whiteouts) and report risky files. Exit 1 when
 /// any finding is present, 0 when clean, 2 on a read/parse error.
-pub(crate) fn run_image(file: &str, json: bool) -> ExitCode {
-    let img = match aegis_image::extract_image_from_path(Path::new(file)) {
-        Ok(i) => i,
-        Err(e) => {
-            eprintln!("aegis: cannot scan image {file}: {e}");
+pub(crate) fn run_image(file: Option<&str>, reference: Option<&str>, json: bool) -> ExitCode {
+    let img = match (file, reference) {
+        (Some(path), None) => match aegis_image::extract_image_from_path(Path::new(path)) {
+            Ok(i) => i,
+            Err(e) => {
+                eprintln!("aegis: cannot read image {path}: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        (None, Some(r)) => {
+            let client = UreqClient::new();
+            match aegis_image::pull_image(&client, r) {
+                Ok(i) => i,
+                Err(e) => {
+                    eprintln!("aegis: cannot pull image {r}: {e}");
+                    return ExitCode::from(2);
+                }
+            }
+        }
+        _ => {
+            eprintln!("aegis: provide exactly one of an image tarball path or --ref <repo:tag>");
             return ExitCode::from(2);
         }
     };
