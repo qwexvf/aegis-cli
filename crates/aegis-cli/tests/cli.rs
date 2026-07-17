@@ -673,6 +673,31 @@ fn run_unused_deps_check_flags_declared_but_unimported() {
 }
 
 #[test]
+fn analyze_sarif_emits_flags_as_results() {
+    // Per-package risk flags → SARIF 2.1.0 for GitHub Code Scanning. Offline.
+    let d = tmp("analyzesarif");
+    write(&d, "index.js", "require('child_process').exec('id');\n");
+    let out = run(&[
+        "analyze",
+        d.to_str().unwrap(),
+        "--ecosystem",
+        "npm",
+        "--name",
+        "evilpkg",
+        "--sarif",
+    ]);
+    assert_eq!(out.code, 0);
+    assert!(
+        out.stdout.contains("\"version\": \"2.1.0\""),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("shell-spawn"), "{}", out.stdout);
+    assert!(out.stdout.contains("npm/evilpkg"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);

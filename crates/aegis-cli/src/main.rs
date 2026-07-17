@@ -169,6 +169,9 @@ enum Command {
         /// Emit machine-readable JSON instead of a text summary.
         #[arg(long)]
         json: bool,
+        /// Emit SARIF 2.1.0 (for GitHub Code Scanning). Overrides --json.
+        #[arg(long)]
+        sarif: bool,
     },
 }
 
@@ -218,6 +221,7 @@ fn main() -> ExitCode {
             ecosystem,
             online,
             json,
-        } => run_analyze(&dir, name.as_deref(), &ecosystem, online, json),
+            sarif,
+        } => run_analyze(&dir, name.as_deref(), &ecosystem, online, json, sarif),
     }
 }

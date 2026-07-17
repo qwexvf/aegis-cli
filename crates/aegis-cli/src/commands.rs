@@ -479,12 +479,25 @@ pub(crate) fn run_config(config_path: &str, json: bool) -> ExitCode {
     }
 }
 
+/// Map a risk-flag weight to a SARIF level (capabilities carry no severity, so
+/// weight is the proxy: heavy → error, moderate → warning, light → note).
+fn flag_level(weight: i32) -> &'static str {
+    if weight >= 60 {
+        "error"
+    } else if weight >= 20 {
+        "warning"
+    } else {
+        "note"
+    }
+}
+
 pub(crate) fn run_analyze(
     dir: &str,
     name: Option<&str>,
     ecosystem: &str,
     online: bool,
     json: bool,
+    sarif: bool,
 ) -> ExitCode {
     let root = Path::new(dir);
     if !root.is_dir() {
@@ -516,6 +529,35 @@ pub(crate) fn run_analyze(
         }
     }
     let v = verdict(&assessment, &RiskAssessment::default());
+
+    if sarif {
+        let loc = format!("{}/{pkg_name}", eco.as_str());
+        let rules: Vec<aegis_sbom::sarif::RuleDef> = assessment
+            .flags
+            .iter()
+            .map(|f| aegis_sbom::sarif::RuleDef {
+                id: f.code.clone(),
+                description: f.detail.clone(),
+                level: flag_level(f.weight).to_string(),
+            })
+            .collect();
+        let findings: Vec<aegis_sbom::sarif::FindingRef> = assessment
+            .flags
+            .iter()
+            .map(|f| aegis_sbom::sarif::FindingRef {
+                rule_id: f.code.clone(),
+                level: flag_level(f.weight).to_string(),
+                message: f.detail.clone(),
+                location: Some(loc.clone()),
+                suppressed: f.suppressed,
+            })
+            .collect();
+        println!(
+            "{}",
+            aegis_sbom::sarif::build_json(env!("CARGO_PKG_VERSION"), &rules, &findings)
+        );
+        return ExitCode::SUCCESS;
+    }
 
     if json {
         let view = AnalysisView {
