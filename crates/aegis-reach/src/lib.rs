@@ -996,9 +996,9 @@ pub struct CallSite {
 /// [`CallSite`] per (file, function), so a caller shown once even when it
 /// uses the symbol repeatedly (the earliest line is kept). Routes
 /// `.js/.ts/.mjs/.cjs/.jsx/.tsx` and `.py/.pyi` files through their
-/// scope-attributed symbol-site passes; other extensions are skipped
-/// (Go / PHP have used-symbols but no call graph yet — see
-/// [`used_symbols_of`] for their function-level reachability). Results
+/// scope-attributed symbol-site passes, `.go` through the Go one; other
+/// extensions are skipped (PHP has used-symbols but no call graph yet —
+/// see [`used_symbols_of`] for its function-level reachability). Results
 /// are sorted by (file, function) for deterministic output.
 ///
 /// This is additive caller detail layered on reachability — it never
@@ -1014,6 +1014,7 @@ pub fn functions_reaching(
         let sites = match language_for(path) {
             Some(Language::JavaScript) => used_symbol_sites(bytes),
             Some(Language::Python) => used_symbol_sites_python(bytes),
+            Some(Language::Go) => used_symbol_sites_go(bytes),
             _ => continue,
         };
         for site in sites {
@@ -2385,6 +2386,152 @@ fn site_walk_py(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Call graph + symbol-site attribution (Go)
+// ---------------------------------------------------------------------------
+
+/// Build the intra-file call graph for Go `source`: one [`CallNode`] per
+/// `func`/method scope reached (plus `<module>` for package-level calls,
+/// e.g. in `init`-free top-level composite literals), in first-appearance
+/// order. Function literals (`func() { … }`) are anonymous and fold into
+/// the nearest named enclosing scope (never a prune). A parse failure
+/// yields an empty vec — never panics.
+pub fn call_graph_go(source: &[u8]) -> Vec<CallNode> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_go::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut acc = CgAcc::default();
+    cg_walk_go(tree.root_node(), source, MODULE_SCOPE, &mut acc);
+    acc.into_nodes()
+}
+
+/// Recursively walk the Go tree, tracking the enclosing func/method scope
+/// (`current`) and recording one edge per `call_expression`.
+fn cg_walk_go(node: Node, body: &[u8], current: &str, acc: &mut CgAcc) {
+    if matches!(node.kind(), "function_declaration" | "method_declaration") {
+        if let Some(name) = node
+            .child_by_field_name("name")
+            .and_then(|n| n.utf8_text(body).ok())
+        {
+            acc.ensure(name);
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                cg_walk_go(child, body, name, acc);
+            }
+            return;
+        }
+    }
+    if node.kind() == "call_expression" {
+        if let Some(callee) = cg_callee_token_go(node, body) {
+            acc.add_call(current, &callee);
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        cg_walk_go(child, body, current, acc);
+    }
+}
+
+/// The callee token of a Go `call_expression`: the called identifier
+/// (`foo()` → `foo`) or, for a package/method call, the selector field
+/// (`pkg.Foo()` → `Foo`). Other callee shapes yield `None`.
+fn cg_callee_token_go(node: Node, body: &[u8]) -> Option<String> {
+    let function = node.child_by_field_name("function")?;
+    match function.kind() {
+        "identifier" => function.utf8_text(body).ok().map(str::to_string),
+        "selector_expression" => function
+            .child_by_field_name("field")
+            .and_then(|f| f.utf8_text(body).ok())
+            .map(str::to_string),
+        _ => None,
+    }
+}
+
+/// Parse Go `source` and return every package-qualified symbol use, each
+/// attributed to its enclosing func/method scope. Same correlation rules
+/// as [`extract_used_symbols_go`] (selector + qualified-type), with scope
+/// tracking layered on. A parse failure yields an empty vec — never
+/// panics.
+pub fn used_symbol_sites_go(source: &[u8]) -> Vec<SymbolSite> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_go::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut bindings = HashMap::new();
+    collect_go_bindings(tree.root_node(), source, &mut bindings);
+    if bindings.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    site_walk_go(tree.root_node(), source, &bindings, MODULE_SCOPE, &mut out);
+    out
+}
+
+/// Recursively walk the Go tree tracking the enclosing scope (`current`),
+/// pushing a [`SymbolSite`] for each package-qualified reference to a
+/// bound package. Scope rules mirror [`cg_walk_go`]; correlation mirrors
+/// [`collect_go_uses`].
+fn site_walk_go(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, String>,
+    current: &str,
+    out: &mut Vec<SymbolSite>,
+) {
+    if matches!(node.kind(), "function_declaration" | "method_declaration") {
+        if let Some(name) = node
+            .child_by_field_name("name")
+            .and_then(|n| n.utf8_text(body).ok())
+        {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                site_walk_go(child, body, bindings, name, out);
+            }
+            return;
+        }
+    }
+    let qualified = match node.kind() {
+        "selector_expression" => Some(("operand", "field")),
+        "qualified_type" => Some(("package", "name")),
+        _ => None,
+    };
+    if let Some((qual_field, sym_field)) = qualified {
+        if let (Some(qualifier), Some(symbol)) = (
+            node.child_by_field_name(qual_field),
+            node.child_by_field_name(sym_field),
+        ) {
+            if let Ok(name) = qualifier.utf8_text(body) {
+                if let Some(module) = bindings.get(name) {
+                    if let Ok(sym) = symbol.utf8_text(body) {
+                        out.push(SymbolSite {
+                            module: module.clone(),
+                            symbol: sym.to_string(),
+                            function: current.to_string(),
+                            line: symbol.start_position().row + 1,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        site_walk_go(child, body, bindings, current, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3695,5 +3842,73 @@ mod tests {
             b"import _ from 'lodash';\n_.merge();".to_vec(),
         )];
         assert!(functions_reaching("lodash", "template", &files).is_empty());
+    }
+
+    // --- Call graph + sites (Go) ----------------------------------------
+
+    fn cg_go(src: &str) -> Vec<CallNode> {
+        call_graph_go(src.as_bytes())
+    }
+
+    fn sites_go(src: &str) -> Vec<SymbolSite> {
+        used_symbol_sites_go(src.as_bytes())
+    }
+
+    #[test]
+    fn cg_go_func_and_method_edges() {
+        let src = "package main\nfunc main() { setup(); cobra.Execute() }\n\
+                   func setup() { helper() }\nfunc (s *S) Run() { s.step() }";
+        let g = cg_go(src);
+        assert_eq!(
+            calls_of(&g, "main"),
+            Some(&["setup".to_string(), "Execute".to_string()][..])
+        );
+        assert_eq!(calls_of(&g, "setup"), Some(&["helper".to_string()][..]));
+        assert_eq!(calls_of(&g, "Run"), Some(&["step".to_string()][..]));
+    }
+
+    #[test]
+    fn sites_go_selector_attributed_to_func() {
+        let src = "package main\nimport \"github.com/spf13/cobra\"\n\
+                   func run() { cobra.OnInitialize() }";
+        let hit = sites_go(src)
+            .into_iter()
+            .find(|s| s.module == "github.com/spf13/cobra" && s.symbol == "OnInitialize")
+            .expect("OnInitialize site");
+        assert_eq!(hit.function, "run");
+    }
+
+    #[test]
+    fn sites_go_qualified_type_in_method() {
+        let src = "package main\nimport \"github.com/x/y\"\n\
+                   func (r *R) build() y.Config { return y.Config{} }";
+        let scopes: HashSet<String> = sites_go(src)
+            .into_iter()
+            .filter(|s| s.module == "github.com/x/y" && s.symbol == "Config")
+            .map(|s| s.function)
+            .collect();
+        // Both the return-type and composite-literal `y.Config` land in `build`.
+        assert_eq!(scopes, HashSet::from(["build".to_string()]));
+    }
+
+    #[test]
+    fn functions_reaching_routes_go() {
+        let files = vec![(
+            "main.go".to_string(),
+            b"package main\nimport \"github.com/spf13/cobra\"\nfunc run() { cobra.Execute() }"
+                .to_vec(),
+        )];
+        let sites = functions_reaching("github.com/spf13/cobra", "Execute", &files);
+        assert_eq!(sites.len(), 1);
+        assert_eq!(sites[0].file, "main.go");
+        assert_eq!(sites[0].function, "run");
+    }
+
+    #[test]
+    fn cg_go_bad_source_no_panic() {
+        let _ = cg_go("package main\nfunc ( broken {");
+        let _ = sites_go("package main\nimport ( \"broken");
+        assert!(cg_go("").is_empty());
+        assert!(sites_go("").is_empty());
     }
 }
