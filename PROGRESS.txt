@@ -75,17 +75,18 @@ Status @ this snapshot:
                                        Python (+go/php/ruby in-flight); `reach` CLI
                                        command LIVE. FOLLOW-UP (documented): used-
                                        symbols + call-graph (rest of depusage).
-  P6  image (OCI) .................... PARTIAL  aegis-image crate: docker-save +
+  P6  image (OCI) .................... DONE (slice)  aegis-image crate: docker-save +
                                        OCI-layout tarball extract (layer overlay,
                                        whiteout/opaque-dir handling) + shallow risk
                                        scan (dropper/hidden-ELF/embedded-manifest).
                                        tar+flate2 pure-Rust, no registry pull.
-                                       `image` CLI command WIRED (verified LIVE:
-                                       docker-save tarball w/ /tmp dropper → flagged,
-                                       exit 1). THREE scan tiers: shallow + source-
-                                       pattern-per-file + tree-sitter-AST-per-file.
-                                       FOLLOW-UP (documented): registry image pull
-                                       (OCI distribution auth/blob GETs).
+                                       `image` CLI command: scans a local tarball
+                                       OR pulls by ref (`--ref alpine:latest`,
+                                       ghcr.io/...) via anonymous OCI distribution
+                                       (token → manifest → blobs → overlay), LIVE-
+                                       verified against Docker Hub. THREE scan tiers:
+                                       shallow + source-pattern + tree-sitter AST.
+                                       FOLLOW-UP: authenticated/private-registry pull.
   P7  sbom (CycloneDX/SPDX/SARIF) .... DONE  aegis-sbom crate: PURL builder
                                        (canonical, matches Go), CycloneDX 1.5 +
                                        SPDX 2.3 + SARIF 2.1.0 JSON emitters (pure,
