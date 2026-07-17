@@ -58,18 +58,19 @@
 //! import-level (is the gem required at all?); a sound function-level
 //! pass would need project-wide constant resolution, out of scope here.
 //!
-//! The intra-file **call graph** ([`CallNode`], [`call_graph`] /
-//! [`call_graph_python`]) and its join to the used-symbol pass
-//! ([`SymbolSite`], [`used_symbol_sites`] / [`used_symbol_sites_python`])
-//! are ported for **JavaScript / TypeScript** and **Python** — caller →
-//! callee edges within one file, and each imported-symbol use attributed
-//! to its enclosing function scope. This is additive groundwork: it adds
-//! precision (which function reaches a symbol) without ever pruning a
-//! call path, so it can't turn a reachable advisory into a false
-//! negative. Cross-file call resolution and the remaining grammars stay a
-//! **follow-up**. Per-import `Symbols`/`Aliases`/`Column` are still
-//! dropped from [`Import`]; the used-symbol pass re-derives bindings
-//! straight from the AST.
+//! The intra-file **call graph** ([`CallNode`], `call_graph*`) and its
+//! join to the used-symbol pass ([`SymbolSite`], `used_symbol_sites*`)
+//! are ported for **JavaScript / TypeScript**, **Python**, **Go**, and
+//! **PHP** — caller → callee edges within one file, and each
+//! imported-symbol use attributed to its enclosing function scope
+//! ([`functions_reaching`] joins them into project-level caller detail).
+//! This is additive groundwork: it adds precision (which function reaches
+//! a symbol) without ever pruning a call path, so it can't turn a
+//! reachable advisory into a false negative. Cross-file call resolution
+//! stays a **follow-up** (Ruby is excluded from every symbol pass — see
+//! above). Per-import `Symbols`/`Aliases`/`Column` are still dropped from
+//! [`Import`]; the used-symbol pass re-derives bindings straight from the
+//! AST.
 //!
 //! # Degradation
 //!
@@ -996,10 +997,10 @@ pub struct CallSite {
 /// [`CallSite`] per (file, function), so a caller shown once even when it
 /// uses the symbol repeatedly (the earliest line is kept). Routes
 /// `.js/.ts/.mjs/.cjs/.jsx/.tsx` and `.py/.pyi` files through their
-/// scope-attributed symbol-site passes, `.go` through the Go one; other
-/// extensions are skipped (PHP has used-symbols but no call graph yet —
-/// see [`used_symbols_of`] for its function-level reachability). Results
-/// are sorted by (file, function) for deterministic output.
+/// scope-attributed symbol-site passes, `.go` through the Go one,
+/// `.php/.phtml` through the PHP one; other extensions are skipped (Ruby
+/// has no symbol pass at all — see the module docs). Results are sorted
+/// by (file, function) for deterministic output.
 ///
 /// This is additive caller detail layered on reachability — it never
 /// prunes, so it cannot turn a reachable advisory unreachable.
@@ -1015,6 +1016,7 @@ pub fn functions_reaching(
             Some(Language::JavaScript) => used_symbol_sites(bytes),
             Some(Language::Python) => used_symbol_sites_python(bytes),
             Some(Language::Go) => used_symbol_sites_go(bytes),
+            Some(Language::Php) => used_symbol_sites_php(bytes),
             _ => continue,
         };
         for site in sites {
@@ -2532,6 +2534,174 @@ fn site_walk_go(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Call graph + symbol-site attribution (PHP)
+// ---------------------------------------------------------------------------
+
+/// Build the intra-file call graph for PHP `source`: one [`CallNode`] per
+/// function/method scope reached (plus `<module>` for top-level calls),
+/// in first-appearance order. Closures/arrow functions are anonymous and
+/// fold into the nearest named enclosing scope (never a prune). A parse
+/// failure yields an empty vec — never panics.
+pub fn call_graph_php(source: &[u8]) -> Vec<CallNode> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_php::LANGUAGE_PHP.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut acc = CgAcc::default();
+    cg_walk_php(tree.root_node(), source, MODULE_SCOPE, &mut acc);
+    acc.into_nodes()
+}
+
+/// Recursively walk the PHP tree, tracking the enclosing function/method
+/// scope (`current`) and recording one edge per call expression.
+fn cg_walk_php(node: Node, body: &[u8], current: &str, acc: &mut CgAcc) {
+    if matches!(node.kind(), "function_definition" | "method_declaration") {
+        if let Some(name) = node
+            .child_by_field_name("name")
+            .and_then(|n| n.utf8_text(body).ok())
+        {
+            acc.ensure(name);
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                cg_walk_php(child, body, name, acc);
+            }
+            return;
+        }
+    }
+    if let Some(callee) = cg_callee_token_php(node, body) {
+        acc.add_call(current, &callee);
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        cg_walk_php(child, body, current, acc);
+    }
+}
+
+/// The callee token of a PHP call expression: the bare function name for
+/// `foo()` / `\Ns\foo()` (last namespace segment), or the method name for
+/// `$o->m()`, `$o?->m()`, and `C::m()`. Non-call nodes yield `None`.
+fn cg_callee_token_php(node: Node, body: &[u8]) -> Option<String> {
+    match node.kind() {
+        "function_call_expression" => node
+            .child_by_field_name("function")
+            .and_then(|f| f.utf8_text(body).ok())
+            .map(|s| last_backslash_segment(s).to_string()),
+        "member_call_expression" | "nullsafe_member_call_expression" | "scoped_call_expression" => {
+            node.child_by_field_name("name")
+                .and_then(|n| n.utf8_text(body).ok())
+                .map(str::to_string)
+        }
+        _ => None,
+    }
+}
+
+/// Parse PHP `source` and return every static `Class::member` use, each
+/// attributed to its enclosing function/method scope. Same correlation
+/// rules as [`extract_used_symbols_php`], with scope tracking layered on.
+/// A parse failure yields an empty vec — never panics.
+pub fn used_symbol_sites_php(source: &[u8]) -> Vec<SymbolSite> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_php::LANGUAGE_PHP.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut bindings = HashMap::new();
+    collect_php_bindings(tree.root_node(), source, &mut bindings);
+    if bindings.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    site_walk_php(tree.root_node(), source, &bindings, MODULE_SCOPE, &mut out);
+    out
+}
+
+/// Recursively walk the PHP tree tracking the enclosing scope (`current`),
+/// pushing a [`SymbolSite`] for each `Class::member` access whose class is
+/// a bound local name. Scope rules mirror [`cg_walk_php`]; correlation
+/// mirrors [`collect_php_uses`].
+fn site_walk_php(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, String>,
+    current: &str,
+    out: &mut Vec<SymbolSite>,
+) {
+    if matches!(node.kind(), "function_definition" | "method_declaration") {
+        if let Some(name) = node
+            .child_by_field_name("name")
+            .and_then(|n| n.utf8_text(body).ok())
+        {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                site_walk_php(child, body, bindings, name, out);
+            }
+            return;
+        }
+    }
+    match node.kind() {
+        "scoped_call_expression" => {
+            if let (Some(scope), Some(name)) = (
+                node.child_by_field_name("scope"),
+                node.child_by_field_name("name"),
+            ) {
+                php_push_site(scope, name, body, bindings, current, out);
+            }
+        }
+        "class_constant_access_expression" => {
+            let mut cursor = node.walk();
+            let kids: Vec<Node> = node.named_children(&mut cursor).collect();
+            if kids.len() == 2 {
+                php_push_site(kids[0], kids[1], body, bindings, current, out);
+            }
+        }
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        site_walk_php(child, body, bindings, current, out);
+    }
+}
+
+/// Push a [`SymbolSite`] when `scope` is a single-token bound class name,
+/// attributing the member access to the enclosing scope `current`.
+fn php_push_site(
+    scope: Node,
+    name: Node,
+    body: &[u8],
+    bindings: &HashMap<String, String>,
+    current: &str,
+    out: &mut Vec<SymbolSite>,
+) {
+    if scope.kind() != "name" {
+        return;
+    }
+    let Ok(local) = scope.utf8_text(body) else {
+        return;
+    };
+    let Some(module) = bindings.get(local) else {
+        return;
+    };
+    if let Ok(sym) = name.utf8_text(body) {
+        out.push(SymbolSite {
+            module: module.clone(),
+            symbol: sym.to_string(),
+            function: current.to_string(),
+            line: name.start_position().row + 1,
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3910,5 +4080,75 @@ mod tests {
         let _ = sites_go("package main\nimport ( \"broken");
         assert!(cg_go("").is_empty());
         assert!(sites_go("").is_empty());
+    }
+
+    // --- Call graph + sites (PHP) ---------------------------------------
+
+    fn cg_php(src: &str) -> Vec<CallNode> {
+        call_graph_php(src.as_bytes())
+    }
+
+    fn sites_php(src: &str) -> Vec<SymbolSite> {
+        used_symbol_sites_php(src.as_bytes())
+    }
+
+    #[test]
+    fn cg_php_function_method_and_static_edges() {
+        let src = "<?php\nfunction boot() { setup(); Bar::make(); }\n\
+                   class C { function run() { $this->step(); helper(); } }\n";
+        let g = cg_php(src);
+        assert_eq!(
+            calls_of(&g, "boot"),
+            Some(&["setup".to_string(), "make".to_string()][..])
+        );
+        assert_eq!(
+            calls_of(&g, "run"),
+            Some(&["step".to_string(), "helper".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn sites_php_scoped_call_attributed_to_function() {
+        let src = "<?php\nuse Foo\\Bar;\nfunction build() { Bar::make(); }\n";
+        let hit = sites_php(src)
+            .into_iter()
+            .find(|s| s.module == "Foo\\Bar" && s.symbol == "make")
+            .expect("Bar::make site");
+        assert_eq!(hit.function, "build");
+    }
+
+    #[test]
+    fn sites_php_top_level_and_const_access() {
+        let src = "<?php\nuse Foo\\Bar;\nBar::VERSION;\nfunction f() { Bar::run(); }\n";
+        let scopes: HashSet<(String, String)> = sites_php(src)
+            .into_iter()
+            .filter(|s| s.module == "Foo\\Bar")
+            .map(|s| (s.symbol, s.function))
+            .collect();
+        assert!(scopes.contains(&("VERSION".to_string(), "<module>".to_string())));
+        assert!(scopes.contains(&("run".to_string(), "f".to_string())));
+    }
+
+    #[test]
+    fn functions_reaching_routes_php() {
+        let files = vec![(
+            "app.php".to_string(),
+            b"<?php\nuse Symfony\\Component\\Console\\Application;\n\
+              function main() { Application::create(); }\n"
+                .to_vec(),
+        )];
+        let sites =
+            functions_reaching("Symfony\\Component\\Console\\Application", "create", &files);
+        assert_eq!(sites.len(), 1);
+        assert_eq!(sites[0].file, "app.php");
+        assert_eq!(sites[0].function, "main");
+    }
+
+    #[test]
+    fn cg_php_bad_source_no_panic() {
+        let _ = cg_php("<?php function ( broken {");
+        let _ = sites_php("<?php use broken");
+        assert!(cg_php("").is_empty());
+        assert!(sites_php("").is_empty());
     }
 }
