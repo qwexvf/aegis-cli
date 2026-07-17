@@ -2002,6 +2002,159 @@ fn cg_callee_token(node: Node, body: &[u8]) -> Option<String> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Used-symbol → enclosing-function attribution (JavaScript / TypeScript)
+// ---------------------------------------------------------------------------
+
+/// A use of an imported symbol, located to the function scope that
+/// contains it. This is [`UsedSymbol`] plus the enclosing scope — the
+/// bridge between the used-symbol pass and the [`call_graph`]: it answers
+/// "which local function reaches `lodash.template`?", the join point for
+/// call-graph-aware reachability.
+///
+/// `function` follows the same scope rules as [`CallNode`]: a named
+/// function/method/const-assigned scope, or `<module>` for top-level use.
+/// Uses inside an anonymous callback fold into the nearest named
+/// enclosing scope (conservative over-approximation, never a prune).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymbolSite {
+    pub module: String,
+    pub symbol: String,
+    pub function: String,
+    pub line: usize,
+}
+
+/// Parse JS/TS `source` and return every imported-symbol use, each
+/// attributed to its enclosing function scope. Same correlation rules as
+/// [`extract_used_symbols`], with scope tracking layered on. A parse
+/// failure yields an empty vec — never panics.
+pub fn used_symbol_sites(source: &[u8]) -> Vec<SymbolSite> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_javascript::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut bindings = HashMap::new();
+    collect_js_bindings(tree.root_node(), source, &mut bindings);
+    if bindings.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    site_walk(tree.root_node(), source, &bindings, MODULE_SCOPE, &mut out);
+    out
+}
+
+/// Recursively walk the JS tree tracking the enclosing named scope
+/// (`current`), pushing a [`SymbolSite`] for each member/call use that
+/// resolves to a binding. Scope-opening rules mirror [`cg_walk`]; the
+/// correlation rules mirror [`collect_js_uses`].
+fn site_walk(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, JsBinding>,
+    current: &str,
+    out: &mut Vec<SymbolSite>,
+) {
+    match node.kind() {
+        "function_declaration" | "generator_function_declaration" => {
+            if let Some(name) = node
+                .child_by_field_name("name")
+                .and_then(|n| n.utf8_text(body).ok())
+            {
+                site_recurse(node, body, bindings, name, out);
+                return;
+            }
+        }
+        "method_definition" => {
+            if let Some(name) = node
+                .child_by_field_name("name")
+                .and_then(|n| n.utf8_text(body).ok())
+            {
+                site_recurse(node, body, bindings, name, out);
+                return;
+            }
+        }
+        "variable_declarator" => {
+            if let (Some(name), Some(value)) = (
+                node.child_by_field_name("name"),
+                node.child_by_field_name("value"),
+            ) {
+                if name.kind() == "identifier"
+                    && matches!(value.kind(), "arrow_function" | "function_expression")
+                {
+                    if let Ok(fname) = name.utf8_text(body) {
+                        site_walk(value, body, bindings, fname, out);
+                        return;
+                    }
+                }
+            }
+        }
+        // `obj.prop` where `obj` is a bound identifier → symbol `prop`.
+        "member_expression" => {
+            if let (Some(object), Some(property)) = (
+                node.child_by_field_name("object"),
+                node.child_by_field_name("property"),
+            ) {
+                if object.kind() == "identifier" {
+                    if let (Ok(name), Ok(prop)) = (object.utf8_text(body), property.utf8_text(body))
+                    {
+                        if let Some(binding) = bindings.get(name) {
+                            out.push(SymbolSite {
+                                module: binding.module.clone(),
+                                symbol: prop.to_string(),
+                                function: current.to_string(),
+                                line: property.start_position().row + 1,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        // `fn(...)` where `fn` is a bound identifier → the binding's
+        // canonical name. Namespace/require bindings (`*`) only surface
+        // through member access — skip.
+        "call_expression" => {
+            if let Some(function) = node.child_by_field_name("function") {
+                if function.kind() == "identifier" {
+                    if let Ok(name) = function.utf8_text(body) {
+                        if let Some(binding) = bindings.get(name) {
+                            if binding.symbol != "*" {
+                                out.push(SymbolSite {
+                                    module: binding.module.clone(),
+                                    symbol: binding.symbol.clone(),
+                                    function: current.to_string(),
+                                    line: function.start_position().row + 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    site_recurse(node, body, bindings, current, out);
+}
+
+/// Walk `node`'s children under scope `current` for the symbol-site pass.
+fn site_recurse(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, JsBinding>,
+    current: &str,
+    out: &mut Vec<SymbolSite>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        site_walk(child, body, bindings, current, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3096,5 +3249,83 @@ mod tests {
         let _ = cg("function ( { broken");
         let _ = cg("<<< not js >>> ???");
         assert!(cg("").is_empty());
+    }
+
+    // --- Used-symbol sites (JS scope attribution) -----------------------
+
+    fn sites(src: &str) -> Vec<SymbolSite> {
+        used_symbol_sites(src.as_bytes())
+    }
+
+    #[test]
+    fn sites_attribute_member_use_to_enclosing_function() {
+        let src = "import cp from 'child_process';\nfunction run() { cp.execSync('ls'); }";
+        let s = sites(src);
+        let hit = s
+            .iter()
+            .find(|s| s.module == "child_process" && s.symbol == "execSync")
+            .expect("execSync site");
+        assert_eq!(hit.function, "run");
+    }
+
+    #[test]
+    fn sites_named_import_call_in_arrow_scope() {
+        let src = "import { merge } from 'lodash';\nconst combine = () => merge({}, {});";
+        let s = sites(src);
+        let hit = s
+            .iter()
+            .find(|s| s.module == "lodash" && s.symbol == "merge")
+            .expect("merge site");
+        // Attributed to the const-arrow scope, not <module>.
+        assert_eq!(hit.function, "combine");
+    }
+
+    #[test]
+    fn sites_top_level_use_is_module_scope() {
+        let src = "const _ = require('lodash');\n_.template('<%= x %>');";
+        let s = sites(src);
+        let hit = s
+            .iter()
+            .find(|s| s.module == "lodash" && s.symbol == "template")
+            .expect("template site");
+        assert_eq!(hit.function, "<module>");
+    }
+
+    #[test]
+    fn sites_use_in_callback_folds_to_named_scope() {
+        // `_.merge` inside the forEach arrow attributes to `apply`, the
+        // nearest named enclosing scope — the callback opens none.
+        let src =
+            "import _ from 'lodash';\nfunction apply(items) { items.forEach(i => _.merge(i)); }";
+        let s = sites(src);
+        let hit = s
+            .iter()
+            .find(|s| s.module == "lodash" && s.symbol == "merge")
+            .expect("merge site");
+        assert_eq!(hit.function, "apply");
+    }
+
+    #[test]
+    fn sites_and_used_symbols_agree_on_symbol_set() {
+        // The scope-aware pass must surface exactly the same (module,
+        // symbol) pairs the flat pass does — attribution only adds scope.
+        let src = "import cp from 'child_process';\nimport { merge } from 'lodash';\n\
+                   function a() { cp.execSync('x'); }\nfunction b() { merge({}); }";
+        let flat: HashSet<(String, String)> = extract_used_symbols(src.as_bytes())
+            .into_iter()
+            .map(|u| (u.module, u.symbol))
+            .collect();
+        let scoped: HashSet<(String, String)> = sites(src)
+            .into_iter()
+            .map(|s| (s.module, s.symbol))
+            .collect();
+        assert_eq!(flat, scoped);
+    }
+
+    #[test]
+    fn sites_bad_source_no_panic() {
+        let _ = sites("import x from 'y'; function ( { broken");
+        let _ = sites("<<< not js >>> ???");
+        assert!(sites("").is_empty());
     }
 }
