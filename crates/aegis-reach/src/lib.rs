@@ -58,10 +58,18 @@
 //! import-level (is the gem required at all?); a sound function-level
 //! pass would need project-wide constant resolution, out of scope here.
 //!
-//! The per-file call graph from depusage remains a **follow-up**, not
-//! ported here. Per-import `Symbols`/`Aliases`/`Column` are still dropped
-//! from [`Import`]; the used-symbol pass re-derives bindings straight
-//! from the AST.
+//! The intra-file **call graph** ([`CallNode`], [`call_graph`] /
+//! [`call_graph_python`]) and its join to the used-symbol pass
+//! ([`SymbolSite`], [`used_symbol_sites`] / [`used_symbol_sites_python`])
+//! are ported for **JavaScript / TypeScript** and **Python** — caller →
+//! callee edges within one file, and each imported-symbol use attributed
+//! to its enclosing function scope. This is additive groundwork: it adds
+//! precision (which function reaches a symbol) without ever pruning a
+//! call path, so it can't turn a reachable advisory into a false
+//! negative. Cross-file call resolution and the remaining grammars stay a
+//! **follow-up**. Per-import `Symbols`/`Aliases`/`Column` are still
+//! dropped from [`Import`]; the used-symbol pass re-derives bindings
+//! straight from the AST.
 //!
 //! # Degradation
 //!
@@ -2155,6 +2163,174 @@ fn site_recurse(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Call graph + symbol-site attribution (Python)
+// ---------------------------------------------------------------------------
+
+/// Build the intra-file call graph for Python `source`: one [`CallNode`]
+/// per `def` scope reached (plus `<module>` for top-level calls), in
+/// first-appearance order. Nested and class-method `def`s open their own
+/// scope by name; lambdas are anonymous and fold into the nearest named
+/// enclosing scope (never a prune — see [`CallNode`]). A parse failure
+/// yields an empty vec — never panics.
+pub fn call_graph_python(source: &[u8]) -> Vec<CallNode> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_python::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut acc = CgAcc::default();
+    cg_walk_py(tree.root_node(), source, MODULE_SCOPE, &mut acc);
+    acc.into_nodes()
+}
+
+/// Recursively walk the Python tree, tracking the enclosing `def` scope
+/// (`current`) and recording one edge per `call`.
+fn cg_walk_py(node: Node, body: &[u8], current: &str, acc: &mut CgAcc) {
+    if node.kind() == "function_definition" {
+        if let Some(name) = node
+            .child_by_field_name("name")
+            .and_then(|n| n.utf8_text(body).ok())
+        {
+            acc.ensure(name);
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                cg_walk_py(child, body, name, acc);
+            }
+            return;
+        }
+    }
+    if node.kind() == "call" {
+        if let Some(callee) = cg_callee_token_py(node, body) {
+            acc.add_call(current, &callee);
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        cg_walk_py(child, body, current, acc);
+    }
+}
+
+/// The callee token of a Python `call`: the called identifier (`foo()` →
+/// `foo`) or, for a method call, the accessed attribute (`obj.bar()` →
+/// `bar`). Other callee shapes (subscripts, calls on calls) yield `None`.
+fn cg_callee_token_py(node: Node, body: &[u8]) -> Option<String> {
+    let function = node.child_by_field_name("function")?;
+    match function.kind() {
+        "identifier" => function.utf8_text(body).ok().map(str::to_string),
+        "attribute" => function
+            .child_by_field_name("attribute")
+            .and_then(|a| a.utf8_text(body).ok())
+            .map(str::to_string),
+        _ => None,
+    }
+}
+
+/// Parse Python `source` and return every imported-symbol use, each
+/// attributed to its enclosing `def` scope. Same correlation rules as
+/// [`extract_used_symbols_python`], with scope tracking layered on. A
+/// parse failure yields an empty vec — never panics.
+pub fn used_symbol_sites_python(source: &[u8]) -> Vec<SymbolSite> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_python::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut infos = Vec::new();
+    collect_py_import_infos(tree.root_node(), source, &mut infos);
+    let bindings = build_py_bindings(&infos);
+    if bindings.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    site_walk_py(tree.root_node(), source, &bindings, MODULE_SCOPE, &mut out);
+    out
+}
+
+/// Recursively walk the Python tree tracking the enclosing `def` scope
+/// (`current`), pushing a [`SymbolSite`] for each attribute/call use that
+/// resolves to a binding. Scope rules mirror [`cg_walk_py`]; correlation
+/// mirrors [`collect_py_uses`].
+fn site_walk_py(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, PyBinding>,
+    current: &str,
+    out: &mut Vec<SymbolSite>,
+) {
+    match node.kind() {
+        "function_definition" => {
+            if let Some(name) = node
+                .child_by_field_name("name")
+                .and_then(|n| n.utf8_text(body).ok())
+            {
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    site_walk_py(child, body, bindings, name, out);
+                }
+                return;
+            }
+        }
+        // `obj.attr` where `obj` is a bound identifier → symbol `attr`.
+        "attribute" => {
+            if let (Some(object), Some(attribute)) = (
+                node.child_by_field_name("object"),
+                node.child_by_field_name("attribute"),
+            ) {
+                if object.kind() == "identifier" {
+                    if let (Ok(name), Ok(attr)) =
+                        (object.utf8_text(body), attribute.utf8_text(body))
+                    {
+                        if let Some(binding) = bindings.get(name) {
+                            out.push(SymbolSite {
+                                module: binding.module.clone(),
+                                symbol: attr.to_string(),
+                                function: current.to_string(),
+                                line: attribute.start_position().row + 1,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        // `fn(...)` where `fn` is a bound identifier → the binding's
+        // canonical name. Whole-module bindings (`*`) only surface through
+        // attribute access — skip.
+        "call" => {
+            if let Some(function) = node.child_by_field_name("function") {
+                if function.kind() == "identifier" {
+                    if let Ok(name) = function.utf8_text(body) {
+                        if let Some(binding) = bindings.get(name) {
+                            if binding.symbol != "*" {
+                                out.push(SymbolSite {
+                                    module: binding.module.clone(),
+                                    symbol: binding.symbol.clone(),
+                                    function: current.to_string(),
+                                    line: function.start_position().row + 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        site_walk_py(child, body, bindings, current, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3327,5 +3503,92 @@ mod tests {
         let _ = sites("import x from 'y'; function ( { broken");
         let _ = sites("<<< not js >>> ???");
         assert!(sites("").is_empty());
+    }
+
+    // --- Call graph + sites (Python) ------------------------------------
+
+    fn cg_py(src: &str) -> Vec<CallNode> {
+        call_graph_python(src.as_bytes())
+    }
+
+    fn sites_py(src: &str) -> Vec<SymbolSite> {
+        used_symbol_sites_python(src.as_bytes())
+    }
+
+    #[test]
+    fn cg_py_def_edges_and_module_scope() {
+        let src = "setup()\ndef setup():\n    init()\n    helper()\ndef helper():\n    pass\n";
+        let g = cg_py(src);
+        assert_eq!(calls_of(&g, "<module>"), Some(&["setup".to_string()][..]));
+        assert_eq!(
+            calls_of(&g, "setup"),
+            Some(&["init".to_string(), "helper".to_string()][..])
+        );
+        assert_eq!(calls_of(&g, "helper"), Some(&[][..]));
+    }
+
+    #[test]
+    fn cg_py_method_and_attribute_callee() {
+        let src = "class C:\n    def run(self):\n        self.step()\n        os.system('ls')\n";
+        assert_eq!(
+            calls_of(&cg_py(src), "run"),
+            Some(&["step".to_string(), "system".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn cg_py_nested_def_opens_scope() {
+        let src = "def outer():\n    def inner():\n        leaf()\n    inner()\n";
+        let g = cg_py(src);
+        assert_eq!(calls_of(&g, "outer"), Some(&["inner".to_string()][..]));
+        assert_eq!(calls_of(&g, "inner"), Some(&["leaf".to_string()][..]));
+    }
+
+    #[test]
+    fn sites_py_attribute_use_attributed_to_def() {
+        let src = "import os\ndef work():\n    os.system('ls')\n";
+        let hit = sites_py(src)
+            .into_iter()
+            .find(|s| s.module == "os" && s.symbol == "system")
+            .expect("os.system site");
+        assert_eq!(hit.function, "work");
+    }
+
+    #[test]
+    fn sites_py_from_import_call_and_top_level() {
+        let src =
+            "from requests import get\nget('https://x')\ndef fetch():\n    get('https://y')\n";
+        let s = sites_py(src);
+        let scopes: HashSet<String> = s
+            .iter()
+            .filter(|s| s.module == "requests" && s.symbol == "get")
+            .map(|s| s.function.clone())
+            .collect();
+        assert_eq!(
+            scopes,
+            HashSet::from(["<module>".to_string(), "fetch".to_string()])
+        );
+    }
+
+    #[test]
+    fn sites_py_agree_with_flat_used_symbols() {
+        let src = "import os\nfrom requests import get\ndef a():\n    os.getcwd()\ndef b():\n    get('x')\n";
+        let flat: HashSet<(String, String)> = extract_used_symbols_python(src.as_bytes())
+            .into_iter()
+            .map(|u| (u.module, u.symbol))
+            .collect();
+        let scoped: HashSet<(String, String)> = sites_py(src)
+            .into_iter()
+            .map(|s| (s.module, s.symbol))
+            .collect();
+        assert_eq!(flat, scoped);
+    }
+
+    #[test]
+    fn cg_py_bad_source_no_panic() {
+        let _ = cg_py("def ( broken:");
+        let _ = sites_py("import ??? broken");
+        assert!(cg_py("").is_empty());
+        assert!(sites_py("").is_empty());
     }
 }
