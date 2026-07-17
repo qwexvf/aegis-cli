@@ -37,16 +37,25 @@
 //!
 //! # Scope of this slice
 //!
-//! Imports only. Used-symbols resolution and the per-file callgraph
-//! from depusage are **follow-ups**, not ported here — nor are further
-//! languages. Per-import `Symbols`/`Aliases`/`Column` are dropped; the
-//! reachability question only needs the normalized dep key.
+//! Imports for all five languages. Used-symbols resolution is ported
+//! for **JavaScript / TypeScript only** ([`UsedSymbol`],
+//! [`extract_used_symbols`], [`used_symbols_of`]): given the imports a
+//! file declares, it tracks which imported bindings are actually
+//! referenced and which members are accessed on them (`cp.execSync(...)`
+//! → symbol `execSync` on the `child_process` import). This answers
+//! function-level questions like "the project imports lodash, but does it
+//! use `lodash.template`?" against an advisory's affected functions.
+//!
+//! Python (and other-language) used-symbols and the per-file call graph
+//! from depusage remain **follow-ups**, not ported here. Per-import
+//! `Symbols`/`Aliases`/`Column` are still dropped from [`Import`]; the
+//! used-symbol pass re-derives JS bindings straight from the AST.
 //!
 //! # Degradation
 //!
 //! Bad source never panics: a parse that fails yields an empty result.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use aegis_domain::Reachability;
 use tree_sitter::{Node, Parser};
@@ -860,6 +869,286 @@ fn ruby_string_value(node: Node, body: &[u8]) -> Option<String> {
     None
 }
 
+// ---------------------------------------------------------------------------
+// JavaScript / TypeScript used-symbols
+// ---------------------------------------------------------------------------
+
+/// A single use of an imported binding: a member access or call that
+/// resolves back to a module import. Port of depusage's `UsedSymbol`
+/// (the `DepKey`/`Column` fields are folded away).
+///
+/// `module` is the imported module in dep-key form when it normalizes to
+/// a registry key (`lodash/fp` → `lodash`, `child_process` →
+/// `child_process`), otherwise the verbatim module string (relative
+/// paths, `node:` builtins). `symbol` is the referenced member or binding
+/// name — e.g. `execSync`, `readFile`, `template`, or the sentinel
+/// `default` for a directly-called default import.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsedSymbol {
+    pub module: String,
+    pub symbol: String,
+    pub line: usize,
+}
+
+/// A resolved local binding: which module an in-scope identifier refers
+/// to, and the canonical symbol within it. `symbol` is `"*"` for a
+/// namespace import or a `require` local (member-accessed), `"default"`
+/// for a default import, otherwise the named-export name.
+struct JsBinding {
+    module: String,
+    symbol: String,
+}
+
+/// Parse JS/TS source and return every use of an imported binding.
+///
+/// Two passes over one parse: first re-derive local bindings from the
+/// file's imports (ES `import` clauses + `const x = require('m')`), then
+/// walk member-expression / call-expression usages and correlate them
+/// against those bindings. A parse failure yields an empty vec — never
+/// panics.
+///
+/// Correlation rules (mirrors depusage's `collectUsedSymbols`):
+/// - `obj.prop` where `obj` is a bound identifier → symbol is `prop`
+///   (covers default / namespace / `require` bindings, incl. the head of
+///   a member chain like `_.a.b`).
+/// - `fn(...)` where `fn` is a bound identifier → symbol is the binding's
+///   canonical name (the named-import case: `import { merge }; merge()`).
+///   Namespace / `require` bindings (`symbol == "*"`) are skipped here —
+///   they only surface useful symbols through member access.
+pub fn extract_used_symbols(source: &[u8]) -> Vec<UsedSymbol> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_javascript::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut bindings = HashMap::new();
+    collect_js_bindings(tree.root_node(), source, &mut bindings);
+    if bindings.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    collect_js_uses(tree.root_node(), source, &bindings, &mut out);
+    out
+}
+
+/// The union of symbol names used on `dep_key` across every JS/TS file in
+/// a project. Files are routed by extension —
+/// `.js/.ts/.mjs/.cjs/.jsx/.tsx` only; any other extension is skipped
+/// (non-JS used-symbols are a follow-up). A file whose usages don't
+/// reference `dep_key` contributes nothing.
+pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for (path, bytes) in files {
+        if language_for(path) != Some(Language::JavaScript) {
+            continue;
+        }
+        for used in extract_used_symbols(bytes) {
+            if used.module == dep_key {
+                out.insert(used.symbol);
+            }
+        }
+    }
+    out
+}
+
+/// Normalize a module string to the form stored on [`UsedSymbol::module`]:
+/// its dep key when non-empty, else the verbatim string.
+fn used_symbol_module(module: &str) -> String {
+    let key = dep_key(module);
+    if key.is_empty() {
+        module.to_string()
+    } else {
+        key
+    }
+}
+
+/// Recursively walk the JS tree, recording local bindings from `import`
+/// statements and `const x = require('m')` declarators.
+fn collect_js_bindings(node: Node, body: &[u8], out: &mut HashMap<String, JsBinding>) {
+    match node.kind() {
+        "import_statement" => js_bindings_from_import(node, body, out),
+        "variable_declarator" => js_binding_from_require(node, body, out),
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_js_bindings(child, body, out);
+    }
+}
+
+/// Bind the locals introduced by one `import_statement`: default
+/// (`import X`), namespace (`import * as ns`), and named
+/// (`import { a, b as c }`) clauses. A side-effect import binds nothing.
+fn js_bindings_from_import(node: Node, body: &[u8], out: &mut HashMap<String, JsBinding>) {
+    let Some(source) = node.child_by_field_name("source") else {
+        return;
+    };
+    let Some(module) = string_literal_value(source, body) else {
+        return;
+    };
+    let module = used_symbol_module(&module);
+
+    let mut cursor = node.walk();
+    for clause in node.named_children(&mut cursor) {
+        if clause.kind() != "import_clause" {
+            continue;
+        }
+        let mut clause_cursor = clause.walk();
+        for spec in clause.named_children(&mut clause_cursor) {
+            match spec.kind() {
+                // `import X from 'm'`
+                "identifier" => {
+                    if let Ok(local) = spec.utf8_text(body) {
+                        out.insert(local.to_string(), js_binding(&module, "default"));
+                    }
+                }
+                // `import * as ns from 'm'`
+                "namespace_import" => {
+                    let mut ns_cursor = spec.walk();
+                    for id in spec.named_children(&mut ns_cursor) {
+                        if id.kind() == "identifier" {
+                            if let Ok(local) = id.utf8_text(body) {
+                                out.insert(local.to_string(), js_binding(&module, "*"));
+                            }
+                            break;
+                        }
+                    }
+                }
+                // `import { a, b as c } from 'm'`
+                "named_imports" => {
+                    let mut named_cursor = spec.walk();
+                    for isp in spec.named_children(&mut named_cursor) {
+                        if isp.kind() != "import_specifier" {
+                            continue;
+                        }
+                        let Some(name) = isp.child_by_field_name("name") else {
+                            continue;
+                        };
+                        let Ok(canonical) = name.utf8_text(body) else {
+                            continue;
+                        };
+                        // Aliased? The local name is the alias; else the
+                        // canonical name is itself the local.
+                        let local = isp
+                            .child_by_field_name("alias")
+                            .and_then(|a| a.utf8_text(body).ok())
+                            .unwrap_or(canonical);
+                        out.insert(local.to_string(), js_binding(&module, canonical));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Bind the local of a `const x = require('m')` declarator as a
+/// namespace-style binding (`symbol == "*"`) — members accessed on `x`
+/// surface the real symbol. A computed require argument, or a value that
+/// isn't a bare `require(...)` call, binds nothing.
+fn js_binding_from_require(node: Node, body: &[u8], out: &mut HashMap<String, JsBinding>) {
+    let Some(name) = node.child_by_field_name("name") else {
+        return;
+    };
+    if name.kind() != "identifier" {
+        return;
+    }
+    let Some(value) = node.child_by_field_name("value") else {
+        return;
+    };
+    if value.kind() != "call_expression" {
+        return;
+    }
+    let Some(function) = value.child_by_field_name("function") else {
+        return;
+    };
+    if function.kind() != "identifier" || function.utf8_text(body).ok() != Some("require") {
+        return;
+    }
+    let Some(args) = value.child_by_field_name("arguments") else {
+        return;
+    };
+    let Some(module) = first_string_arg(args, body) else {
+        return;
+    };
+    if let Ok(local) = name.utf8_text(body) {
+        out.insert(
+            local.to_string(),
+            js_binding(&used_symbol_module(&module), "*"),
+        );
+    }
+}
+
+/// Construct a [`JsBinding`] from a (already dep-key-normalized) module
+/// and a canonical symbol.
+fn js_binding(module: &str, symbol: &str) -> JsBinding {
+    JsBinding {
+        module: module.to_string(),
+        symbol: symbol.to_string(),
+    }
+}
+
+/// Recursively walk the JS tree, correlating member/call usages against
+/// the resolved bindings and pushing matches into `out`.
+fn collect_js_uses(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, JsBinding>,
+    out: &mut Vec<UsedSymbol>,
+) {
+    match node.kind() {
+        "member_expression" => {
+            if let (Some(object), Some(property)) = (
+                node.child_by_field_name("object"),
+                node.child_by_field_name("property"),
+            ) {
+                if object.kind() == "identifier" {
+                    if let Ok(name) = object.utf8_text(body) {
+                        if let Some(binding) = bindings.get(name) {
+                            if let Ok(prop) = property.utf8_text(body) {
+                                out.push(UsedSymbol {
+                                    module: binding.module.clone(),
+                                    symbol: prop.to_string(),
+                                    line: property.start_position().row + 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "call_expression" => {
+            if let Some(function) = node.child_by_field_name("function") {
+                if function.kind() == "identifier" {
+                    if let Ok(name) = function.utf8_text(body) {
+                        if let Some(binding) = bindings.get(name) {
+                            // Namespace / require bindings only surface
+                            // symbols through member access — skip here.
+                            if binding.symbol != "*" {
+                                out.push(UsedSymbol {
+                                    module: binding.module.clone(),
+                                    symbol: binding.symbol.clone(),
+                                    line: function.start_position().row + 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_js_uses(child, body, bindings, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1422,5 +1711,138 @@ mod tests {
         assert!(keys.contains("lodash"));
         // PHP contributes nothing (empty dep keys).
         assert_eq!(keys.len(), 4);
+    }
+
+    // --- JS/TS used-symbols ---------------------------------------------
+
+    fn used(src: &str) -> Vec<UsedSymbol> {
+        extract_used_symbols(src.as_bytes())
+    }
+
+    fn symbols_on(src: &str, module: &str) -> Vec<String> {
+        let mut names: Vec<String> = used(src)
+            .into_iter()
+            .filter(|u| u.module == module)
+            .map(|u| u.symbol)
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn require_member_access() {
+        let uses = used("const cp = require('child_process');\ncp.execSync('x');");
+        assert_eq!(uses.len(), 1, "{uses:?}");
+        assert_eq!(uses[0].module, "child_process");
+        assert_eq!(uses[0].symbol, "execSync");
+        assert_eq!(uses[0].line, 2);
+    }
+
+    #[test]
+    fn named_import_call() {
+        let uses = used("import { readFile } from 'fs';\nreadFile('a', cb);");
+        assert_eq!(uses.len(), 1, "{uses:?}");
+        assert_eq!(uses[0].module, "fs");
+        assert_eq!(uses[0].symbol, "readFile");
+    }
+
+    #[test]
+    fn multiple_named_import_calls() {
+        let src = "import { merge, debounce } from 'lodash';\nmerge({}, {});\ndebounce(fn, 200);";
+        assert_eq!(symbols_on(src, "lodash"), ["debounce", "merge"]);
+    }
+
+    #[test]
+    fn default_import_member() {
+        let src = "import _ from 'lodash';\n_.merge({}, {});\nconst x = _.PI;";
+        assert_eq!(symbols_on(src, "lodash"), ["PI", "merge"]);
+    }
+
+    #[test]
+    fn namespace_import_member() {
+        let src = "import * as L from 'lodash';\nL.merge({}, {});\nL.debounce(fn);";
+        assert_eq!(symbols_on(src, "lodash"), ["debounce", "merge"]);
+    }
+
+    #[test]
+    fn aliased_named_import_maps_to_canonical() {
+        // `merge as m` used as `m(...)` resolves back to canonical "merge".
+        let uses = used("import { merge as m } from 'lodash';\nm({}, {});");
+        assert_eq!(uses.len(), 1, "{uses:?}");
+        assert_eq!(uses[0].symbol, "merge");
+        assert_eq!(uses[0].module, "lodash");
+    }
+
+    #[test]
+    fn member_chain_yields_head_property() {
+        // `_.a.b()` — the head member access on the bound identifier wins.
+        assert_eq!(
+            symbols_on("import _ from 'lodash';\n_.a.b();", "lodash"),
+            ["a"]
+        );
+    }
+
+    #[test]
+    fn subpath_import_normalizes_module_to_dep_key() {
+        // `lodash/fp` normalizes to dep key `lodash`.
+        let uses = used("import { flow } from 'lodash/fp';\nflow(a, b);");
+        assert_eq!(uses.len(), 1, "{uses:?}");
+        assert_eq!(uses[0].module, "lodash");
+        assert_eq!(uses[0].symbol, "flow");
+    }
+
+    #[test]
+    fn unused_import_contributes_no_symbol() {
+        // Imported but never referenced.
+        assert!(used("import { unused } from 'lodash';").is_empty());
+        // Bound, but only a same-named local (not the import) is called.
+        let uses = used("import { merge } from 'lodash';\nconst z = other();");
+        assert!(uses.is_empty(), "{uses:?}");
+    }
+
+    #[test]
+    fn no_bindings_yields_empty() {
+        // Nothing imported → no bindings → no used-symbols.
+        assert!(used("cp.execSync('x');\nfoo.bar();").is_empty());
+    }
+
+    #[test]
+    fn used_symbols_bad_source_no_panic() {
+        let _ = used("const cp = require( broken");
+        let _ = used("<<< not javascript >>> ???");
+        assert!(used("").is_empty());
+    }
+
+    #[test]
+    fn used_symbols_of_present_and_absent() {
+        let files = vec![
+            (
+                "worker.ts".to_string(),
+                b"const cp = require('child_process');\ncp.execSync('ls');\ncp.spawn('x');"
+                    .to_vec(),
+            ),
+            (
+                "util.js".to_string(),
+                b"import { merge } from 'lodash';\nmerge({}, {});".to_vec(),
+            ),
+            // Non-JS file must be skipped.
+            (
+                "notes.md".to_string(),
+                b"const cp = require('child_process');\ncp.fork('x');".to_vec(),
+            ),
+        ];
+        let syms = used_symbols_of("child_process", &files);
+        assert!(syms.contains("execSync"));
+        assert!(syms.contains("spawn"));
+        // Present via a skipped non-JS file → absent.
+        assert!(!syms.contains("fork"));
+        assert_eq!(syms.len(), 2);
+
+        assert_eq!(
+            used_symbols_of("lodash", &files),
+            HashSet::from(["merge".to_string()])
+        );
+        // A dep with no recorded usage → empty set.
+        assert!(used_symbols_of("express", &files).is_empty());
     }
 }
