@@ -1829,6 +1829,179 @@ fn php_push_use(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Call graph (JavaScript / TypeScript)
+// ---------------------------------------------------------------------------
+
+/// One node in a file's intra-file call graph: a named function scope and
+/// the callee tokens invoked directly within it.
+///
+/// `function` is the scope name — a function declaration's name, a class
+/// method's name, or the identifier a function/arrow expression is
+/// assigned to (`const f = () => …` → `f`). Top-level statements
+/// attribute to the sentinel `<module>`. Anonymous inline functions
+/// (unnamed callbacks) do **not** open their own scope; their calls fold
+/// into the nearest named enclosing scope — a conservative
+/// over-approximation (the callback body is treated as reachable whenever
+/// its enclosing function is), never a prune. This is groundwork for
+/// reachability that will *add* precision without ever hiding a call
+/// path, so it can't introduce a false-negative advisory verdict.
+///
+/// `calls` is the ordered, de-duplicated list of callee tokens: the
+/// called identifier for a direct call (`foo()` → `foo`) or the property
+/// name for a method call (`obj.bar()` → `bar`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallNode {
+    pub function: String,
+    pub calls: Vec<String>,
+}
+
+/// The `<module>` scope name for top-level (non-function-nested) calls.
+const MODULE_SCOPE: &str = "<module>";
+
+/// Build the intra-file call graph for JS/TS `source`: one [`CallNode`]
+/// per named function scope reached (plus `<module>` when top-level code
+/// makes calls), in first-appearance order. A parse failure yields an
+/// empty vec — never panics.
+///
+/// This is the additive groundwork slice of depusage's call graph:
+/// caller → callee edges within one file. It does not yet resolve callees
+/// to their definitions across files, and deliberately does no dead-code
+/// pruning (see [`CallNode`]).
+pub fn call_graph(source: &[u8]) -> Vec<CallNode> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_javascript::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut acc = CgAcc::default();
+    cg_walk(tree.root_node(), source, MODULE_SCOPE, &mut acc);
+    acc.into_nodes()
+}
+
+/// Accumulator that keeps call-graph nodes in first-appearance order while
+/// de-duplicating callee tokens per scope.
+#[derive(Default)]
+struct CgAcc {
+    order: Vec<String>,
+    index: HashMap<String, usize>,
+    calls: Vec<Vec<String>>,
+}
+
+impl CgAcc {
+    /// Ensure a node exists for `function`, returning its slot index.
+    fn ensure(&mut self, function: &str) -> usize {
+        if let Some(&i) = self.index.get(function) {
+            return i;
+        }
+        let i = self.order.len();
+        self.order.push(function.to_string());
+        self.index.insert(function.to_string(), i);
+        self.calls.push(Vec::new());
+        i
+    }
+
+    /// Record that `caller` invokes `callee` (deduped, order-preserving).
+    fn add_call(&mut self, caller: &str, callee: &str) {
+        let i = self.ensure(caller);
+        if !self.calls[i].iter().any(|c| c == callee) {
+            self.calls[i].push(callee.to_string());
+        }
+    }
+
+    fn into_nodes(self) -> Vec<CallNode> {
+        self.order
+            .into_iter()
+            .zip(self.calls)
+            .map(|(function, calls)| CallNode { function, calls })
+            .collect()
+    }
+}
+
+/// Recursively walk the JS tree, tracking the enclosing named scope
+/// (`current`) and recording one edge per `call_expression`.
+fn cg_walk(node: Node, body: &[u8], current: &str, acc: &mut CgAcc) {
+    match node.kind() {
+        // `function foo() {}` / `function* foo() {}` — opens scope `foo`.
+        "function_declaration" | "generator_function_declaration" => {
+            if let Some(name) = node
+                .child_by_field_name("name")
+                .and_then(|n| n.utf8_text(body).ok())
+            {
+                acc.ensure(name);
+                recurse_children(node, body, name, acc);
+                return;
+            }
+        }
+        // Class method `foo() {}` — opens scope `foo`.
+        "method_definition" => {
+            if let Some(name) = node
+                .child_by_field_name("name")
+                .and_then(|n| n.utf8_text(body).ok())
+            {
+                acc.ensure(name);
+                recurse_children(node, body, name, acc);
+                return;
+            }
+        }
+        // `const foo = () => {}` / `const foo = function () {}` — the
+        // assigned identifier names the function/arrow value's scope.
+        "variable_declarator" => {
+            if let (Some(name), Some(value)) = (
+                node.child_by_field_name("name"),
+                node.child_by_field_name("value"),
+            ) {
+                if name.kind() == "identifier"
+                    && matches!(value.kind(), "arrow_function" | "function_expression")
+                {
+                    if let Ok(fname) = name.utf8_text(body) {
+                        acc.ensure(fname);
+                        cg_walk(value, body, fname, acc);
+                        return;
+                    }
+                }
+            }
+        }
+        // A call reached in `current` scope → one edge.
+        "call_expression" => {
+            if let Some(callee) = cg_callee_token(node, body) {
+                acc.add_call(current, &callee);
+            }
+            // fall through: nested calls in the arguments still count.
+        }
+        _ => {}
+    }
+    recurse_children(node, body, current, acc);
+}
+
+/// Walk `node`'s children under scope `current`.
+fn recurse_children(node: Node, body: &[u8], current: &str, acc: &mut CgAcc) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        cg_walk(child, body, current, acc);
+    }
+}
+
+/// The callee token of a `call_expression`: the called identifier
+/// (`foo()` → `foo`) or, for a method call, the accessed property
+/// (`obj.bar()` → `bar`). Other callee shapes (computed access, IIFEs)
+/// yield `None`.
+fn cg_callee_token(node: Node, body: &[u8]) -> Option<String> {
+    let function = node.child_by_field_name("function")?;
+    match function.kind() {
+        "identifier" => function.utf8_text(body).ok().map(str::to_string),
+        "member_expression" => function
+            .child_by_field_name("property")
+            .and_then(|p| p.utf8_text(body).ok())
+            .map(str::to_string),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2840,5 +3013,88 @@ mod tests {
         );
         // A dep with no recorded usage → empty set.
         assert!(used_symbols_of("App\\Missing", &files).is_empty());
+    }
+
+    // --- Call graph (JS) ------------------------------------------------
+
+    fn cg(src: &str) -> Vec<CallNode> {
+        call_graph(src.as_bytes())
+    }
+
+    /// Callees recorded for `function` in a call graph, or `None` if the
+    /// scope isn't present.
+    fn calls_of<'a>(graph: &'a [CallNode], function: &str) -> Option<&'a [String]> {
+        graph
+            .iter()
+            .find(|n| n.function == function)
+            .map(|n| n.calls.as_slice())
+    }
+
+    #[test]
+    fn cg_function_declaration_edges() {
+        let src = "function a() { b(); c(); }\nfunction b() { c(); }\nfunction c() {}";
+        let g = cg(src);
+        assert_eq!(
+            calls_of(&g, "a"),
+            Some(&["b".to_string(), "c".to_string()][..])
+        );
+        assert_eq!(calls_of(&g, "b"), Some(&["c".to_string()][..]));
+        // `c` makes no calls but is still a node.
+        assert_eq!(calls_of(&g, "c"), Some(&[][..]));
+    }
+
+    #[test]
+    fn cg_top_level_calls_attribute_to_module() {
+        let src = "setup();\nfunction setup() { init(); }";
+        let g = cg(src);
+        assert_eq!(calls_of(&g, "<module>"), Some(&["setup".to_string()][..]));
+        assert_eq!(calls_of(&g, "setup"), Some(&["init".to_string()][..]));
+    }
+
+    #[test]
+    fn cg_const_arrow_and_function_expression() {
+        let src = "const f = () => { helper(); };\nconst g = function () { f(); };";
+        let g = cg(src);
+        assert_eq!(calls_of(&g, "f"), Some(&["helper".to_string()][..]));
+        assert_eq!(calls_of(&g, "g"), Some(&["f".to_string()][..]));
+    }
+
+    #[test]
+    fn cg_method_and_member_callee_token() {
+        // Method scope named by the method; member calls record the property.
+        let src = "class C { run() { this.step(); lib.doThing(); } }";
+        let g = cg(src);
+        assert_eq!(
+            calls_of(&g, "run"),
+            Some(&["step".to_string(), "doThing".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn cg_anonymous_callback_folds_into_enclosing_scope() {
+        // The arrow passed to `arr.forEach` opens no scope — its `sink()`
+        // call attributes to the enclosing named function `process`.
+        let src = "function process(arr) { arr.forEach(x => { sink(x); }); }";
+        let g = cg(src);
+        let calls = calls_of(&g, "process").unwrap();
+        // `forEach` (the method call) and `sink` (inside the callback) both
+        // land in `process` — the callback body is not pruned away.
+        assert!(calls.contains(&"forEach".to_string()));
+        assert!(calls.contains(&"sink".to_string()));
+        // No separate anonymous scope was created.
+        assert!(g.iter().all(|n| n.function != "<anon>"));
+    }
+
+    #[test]
+    fn cg_dedup_repeated_callee() {
+        let src = "function a() { log(); log(); log(); }";
+        assert_eq!(calls_of(&cg(src), "a"), Some(&["log".to_string()][..]));
+    }
+
+    #[test]
+    fn cg_bad_source_no_panic() {
+        let _ = cg("function ( { broken");
+        let _ = cg("<<< not js >>> ???");
+        assert!(cg("").is_empty());
     }
 }
