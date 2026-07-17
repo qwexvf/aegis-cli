@@ -983,6 +983,60 @@ pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<St
     out
 }
 
+/// One project location that reaches a dep symbol: the file and the
+/// enclosing function (or `<module>`) where the use sits, plus its line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallSite {
+    pub file: String,
+    pub function: String,
+    pub line: usize,
+}
+
+/// The project functions that reach `symbol` of `dep_key` — one
+/// [`CallSite`] per (file, function), so a caller shown once even when it
+/// uses the symbol repeatedly (the earliest line is kept). Routes
+/// `.js/.ts/.mjs/.cjs/.jsx/.tsx` and `.py/.pyi` files through their
+/// scope-attributed symbol-site passes; other extensions are skipped
+/// (Go / PHP have used-symbols but no call graph yet — see
+/// [`used_symbols_of`] for their function-level reachability). Results
+/// are sorted by (file, function) for deterministic output.
+///
+/// This is additive caller detail layered on reachability — it never
+/// prunes, so it cannot turn a reachable advisory unreachable.
+pub fn functions_reaching(
+    dep_key: &str,
+    symbol: &str,
+    files: &[(String, Vec<u8>)],
+) -> Vec<CallSite> {
+    // (file, function) -> earliest line seen.
+    let mut seen: HashMap<(String, String), usize> = HashMap::new();
+    for (path, bytes) in files {
+        let sites = match language_for(path) {
+            Some(Language::JavaScript) => used_symbol_sites(bytes),
+            Some(Language::Python) => used_symbol_sites_python(bytes),
+            _ => continue,
+        };
+        for site in sites {
+            if site.module == dep_key && site.symbol == symbol {
+                let key = (path.clone(), site.function);
+                seen.entry(key)
+                    .and_modify(|l| *l = (*l).min(site.line))
+                    .or_insert(site.line);
+            }
+        }
+    }
+    let mut out: Vec<CallSite> = seen
+        .into_iter()
+        .map(|((file, function), line)| CallSite {
+            file,
+            function,
+            line,
+        })
+        .collect();
+    out.sort_by(|a, b| a.file.cmp(&b.file).then(a.function.cmp(&b.function)));
+    out
+}
+
 /// Normalize a module string to the form stored on [`UsedSymbol::module`]:
 /// its dep key when non-empty, else the verbatim string.
 fn used_symbol_module(module: &str) -> String {
@@ -3590,5 +3644,56 @@ mod tests {
         let _ = sites_py("import ??? broken");
         assert!(cg_py("").is_empty());
         assert!(sites_py("").is_empty());
+    }
+
+    // --- functions_reaching (project-level caller detail) ---------------
+
+    #[test]
+    fn functions_reaching_across_js_and_python() {
+        let files = vec![
+            (
+                "a.js".to_string(),
+                b"import cp from 'child_process';\nfunction run() { cp.execSync('x'); }".to_vec(),
+            ),
+            (
+                "b.py".to_string(),
+                b"import subprocess as cp\ndef go():\n    cp.run('x')\n".to_vec(),
+            ),
+            // Different symbol on the same dep → not a hit for execSync.
+            (
+                "c.js".to_string(),
+                b"import cp from 'child_process';\nfunction other() { cp.spawn('y'); }".to_vec(),
+            ),
+        ];
+        let sites = functions_reaching("child_process", "execSync", &files);
+        assert_eq!(sites.len(), 1);
+        assert_eq!(sites[0].file, "a.js");
+        assert_eq!(sites[0].function, "run");
+
+        // subprocess.run in b.py, attributed to `go`.
+        let py = functions_reaching("subprocess", "run", &files);
+        assert_eq!(py.len(), 1);
+        assert_eq!(py[0].function, "go");
+    }
+
+    #[test]
+    fn functions_reaching_dedups_repeated_use_per_function() {
+        let files = vec![(
+            "x.js".to_string(),
+            b"import _ from 'lodash';\nfunction f() { _.merge(); _.merge(); _.merge(); }".to_vec(),
+        )];
+        let sites = functions_reaching("lodash", "merge", &files);
+        // One (file, function) entry despite three uses.
+        assert_eq!(sites.len(), 1);
+        assert_eq!(sites[0].function, "f");
+    }
+
+    #[test]
+    fn functions_reaching_empty_when_symbol_absent() {
+        let files = vec![(
+            "x.js".to_string(),
+            b"import _ from 'lodash';\n_.merge();".to_vec(),
+        )];
+        assert!(functions_reaching("lodash", "template", &files).is_empty());
     }
 }

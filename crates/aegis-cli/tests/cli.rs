@@ -555,6 +555,42 @@ fn reach_reports_import_reachability() {
 }
 
 #[test]
+fn reach_function_reports_calling_functions() {
+    // Caller detail: which project function reaches the vulnerable symbol.
+    let d = tmp("reach-callers");
+    write(
+        &d,
+        "app.js",
+        "import _ from 'lodash';\nfunction render() { return _.template('x'); }\n",
+    );
+    // text form lists the enclosing function + file.
+    let out = run(&[
+        "reach",
+        d.to_str().unwrap(),
+        "lodash",
+        "--function",
+        "template",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("used"), "{}", out.stdout);
+    assert!(out.stdout.contains("render"), "{}", out.stdout);
+    assert!(out.stdout.contains("app.js"), "{}", out.stdout);
+    // json form carries a callers array with the function.
+    let out = run(&[
+        "reach",
+        d.to_str().unwrap(),
+        "lodash",
+        "--function",
+        "template",
+        "--json",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("\"callers\""), "{}", out.stdout);
+    assert!(out.stdout.contains("\"render\""), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn hook_prints_pre_commit_script() {
     let out = run(&["hook"]);
     assert_eq!(out.code, 0);
