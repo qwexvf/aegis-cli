@@ -72,10 +72,15 @@ Status @ this snapshot:
                                        cocoapods, native — no CGO). FULL JS taint
                                        (symtab + numeric-array + spread fold +
                                        tainted-sink). aegis-reach crate: import
-                                       extraction + reachability_of for JS/TS +
-                                       Python (+go/php/ruby in-flight); `reach` CLI
-                                       command LIVE. FOLLOW-UP (documented): used-
-                                       symbols + call-graph (rest of depusage).
+                                       extraction + reachability_of for all 5 langs
+                                       (js/ts/py/go/php/ruby); `reach` CLI command
+                                       LIVE. USED-SYMBOLS (function-level): js/ts +
+                                       python + go (selector + qualified-type) + php
+                                       (use-binding → :: member) done; Ruby excluded
+                                       by design (require/gem bind no local — needs
+                                       project-wide constant resolution). FOLLOW-UP
+                                       (documented): per-file call-graph (rest of
+                                       depusage).
   P6  image (OCI) .................... DONE (slice)  aegis-image crate: docker-save +
                                        OCI-layout tarball extract (layer overlay,
                                        whiteout/opaque-dir handling) + shallow risk

@@ -50,10 +50,18 @@
 //! function-level questions like "the project imports lodash, but does it
 //! use `lodash.template`?" against an advisory's affected functions.
 //!
-//! Other-language used-symbols and the per-file call graph from depusage
-//! remain **follow-ups**, not ported here. Per-import
-//! `Symbols`/`Aliases`/`Column` are still dropped from [`Import`]; the
-//! used-symbol pass re-derives bindings straight from the AST.
+//! **Ruby has no used-symbol pass by design**: `require "pg"` / `gem "pg"`
+//! load a gem but bind no local — the gem's constants (`PG.connect`)
+//! enter the global namespace with no syntactic link back to the require,
+//! so there is nothing to correlate a member access against without a
+//! constant → gem map the AST can't supply. Ruby reachability stays
+//! import-level (is the gem required at all?); a sound function-level
+//! pass would need project-wide constant resolution, out of scope here.
+//!
+//! The per-file call graph from depusage remains a **follow-up**, not
+//! ported here. Per-import `Symbols`/`Aliases`/`Column` are still dropped
+//! from [`Import`]; the used-symbol pass re-derives bindings straight
+//! from the AST.
 //!
 //! # Degradation
 //!
@@ -944,9 +952,10 @@ pub fn extract_used_symbols(source: &[u8]) -> Vec<UsedSymbol> {
 /// file in a project. Files are routed by extension —
 /// `.js/.ts/.mjs/.cjs/.jsx/.tsx` through the JS used-symbol pass,
 /// `.py/.pyi` through the Python one, `.go` through the Go one,
-/// `.php/.phtml` through the PHP one; any other extension is skipped
-/// (Ruby used-symbols are a follow-up). A file whose usages don't
-/// reference `dep_key` contributes nothing.
+/// `.php/.phtml` through the PHP one; any other extension is skipped.
+/// Ruby has no used-symbol pass by design (`require`/`gem` bind no local
+/// — see the module docs), so `.rb` files contribute nothing here. A
+/// file whose usages don't reference `dep_key` contributes nothing.
 pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<String> {
     let mut out = HashSet::new();
     for (path, bytes) in files {
