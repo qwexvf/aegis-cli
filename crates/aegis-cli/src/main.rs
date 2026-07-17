@@ -90,6 +90,10 @@ enum Command {
         dir: String,
         /// Dependency key to look up (e.g. "lodash", "@scope/pkg").
         package: String,
+        /// Check whether this specific symbol/function of the package is used
+        /// (e.g. an advisory's affected function). Exit 0 if used, 1 if not.
+        #[arg(long)]
+        function: Option<String>,
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -196,7 +200,12 @@ fn main() -> ExitCode {
         } => run_config(&config, json, sarif),
         Command::Allowlist { json } => run_allowlist(json),
         Command::Explain { capability, json } => run_explain(capability.as_deref(), json),
-        Command::Reach { dir, package, json } => run_reach(&dir, &package, json),
+        Command::Reach {
+            dir,
+            package,
+            function,
+            json,
+        } => run_reach(&dir, &package, function.as_deref(), json),
         Command::Hook { install } => run_hook(install),
         Command::Actions {} => run_actions(),
         Command::Snapshot {
