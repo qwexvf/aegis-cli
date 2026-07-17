@@ -1074,13 +1074,35 @@ struct ReachView {
 /// Report whether `package` is imported anywhere in the project's JS/TS source
 /// (reachability). Exit 0 = reachable (used), 1 = unreachable (unused code the
 /// risk engine can downgrade), 2 = not a directory.
-pub(crate) fn run_reach(dir: &str, package: &str, json: bool) -> ExitCode {
+pub(crate) fn run_reach(dir: &str, package: &str, function: Option<&str>, json: bool) -> ExitCode {
     let root = Path::new(dir);
     if !root.is_dir() {
         eprintln!("aegis: not a directory: {dir}");
         return ExitCode::from(2);
     }
     let files = collect_files(root);
+
+    // Function-level query: is this specific symbol of the package used? This
+    // is advisory reachability — an advisory on an unused function is moot.
+    if let Some(func) = function {
+        let used = aegis_reach::used_symbols_of(package, &files).contains(func);
+        if json {
+            println!(
+                "{{\n  \"package\": {:?},\n  \"function\": {:?},\n  \"used\": {}\n}}",
+                package, func, used
+            );
+        } else if used {
+            println!("{package}.{func}: used (advisory on this function is reachable)");
+        } else {
+            println!("{package}.{func}: not used (advisory on this function is unreachable)");
+        }
+        return if used {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::from(1)
+        };
+    }
+
     let reach = aegis_reach::reachability_of(package, &files);
     let reachable = matches!(reach, aegis_domain::Reachability::Used);
     // When reachable, list which of the package's symbols the project uses —

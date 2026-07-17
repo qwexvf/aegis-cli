@@ -532,6 +532,25 @@ fn reach_reports_import_reachability() {
     assert_eq!(out.code, 0);
     assert!(out.stdout.contains("\"reachable\": true"), "{}", out.stdout);
     assert!(out.stdout.contains("\"template\""), "{}", out.stdout);
+    // function-level: the used function is reachable (0), an unused one isn't (1)
+    let out = run(&[
+        "reach",
+        d.to_str().unwrap(),
+        "lodash",
+        "--function",
+        "template",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("used"), "{}", out.stdout);
+    let out = run(&[
+        "reach",
+        d.to_str().unwrap(),
+        "lodash",
+        "--function",
+        "merge",
+    ]);
+    assert_eq!(out.code, 1, "{}", out.stdout);
+    assert!(out.stdout.contains("not used"), "{}", out.stdout);
     let _ = std::fs::remove_dir_all(&d);
 }
 
