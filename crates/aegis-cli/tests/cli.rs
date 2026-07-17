@@ -591,6 +591,58 @@ fn reach_function_reports_calling_functions() {
 }
 
 #[test]
+fn reach_function_transitive_walks_callers_across_files() {
+    // sink.js uses cp.execSync; entry.js calls sink(). --transitive links them.
+    let d = tmp("reach-transitive");
+    write(
+        &d,
+        "sink.js",
+        "import cp from 'child_process';\nfunction sink() { cp.execSync('x'); }\n",
+    );
+    write(&d, "entry.js", "function boot() { sink(); }\n");
+
+    // Without --transitive: only the direct user shows.
+    let out = run(&[
+        "reach",
+        d.to_str().unwrap(),
+        "child_process",
+        "--function",
+        "execSync",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("sink"), "{}", out.stdout);
+    assert!(!out.stdout.contains("boot"), "{}", out.stdout);
+
+    // With --transitive: the cross-file caller appears, tagged transitive.
+    let out = run(&[
+        "reach",
+        d.to_str().unwrap(),
+        "child_process",
+        "--function",
+        "execSync",
+        "--transitive",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("sink (direct)"), "{}", out.stdout);
+    assert!(out.stdout.contains("boot (transitive)"), "{}", out.stdout);
+
+    // json form carries the reaching array with direct flags.
+    let out = run(&[
+        "reach",
+        d.to_str().unwrap(),
+        "child_process",
+        "--function",
+        "execSync",
+        "--transitive",
+        "--json",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("\"reaching\""), "{}", out.stdout);
+    assert!(out.stdout.contains("\"direct\": false"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn hook_prints_pre_commit_script() {
     let out = run(&["hook"]);
     assert_eq!(out.code, 0);

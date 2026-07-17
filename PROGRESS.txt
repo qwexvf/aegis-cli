@@ -87,9 +87,14 @@ Status @ this snapshot:
                                        functions_reaching (routes all 4 langs) +
                                        `reach --function` now reports which project
                                        functions reach the vulnerable symbol (↳
-                                       file:line fn / json callers[]). Call-graph
-                                       language parity w/ used-symbols complete.
-                                       FOLLOW-UP: cross-file call resolution.
+                                       file:line fn / json callers[]). CROSS-FILE
+                                       DONE: functions_reaching_transitive walks
+                                       call-graph callers across files (name-based,
+                                       over-approximate → additive/no-FN); wired as
+                                       `reach --function --transitive` (direct vs
+                                       transitive tagged, LIVE-verified cross-file).
+                                       Call-graph follow-up COMPLETE — P5 has no
+                                       open reachability items.
   P6  image (OCI) .................... DONE (slice)  aegis-image crate: docker-save +
                                        OCI-layout tarball extract (layer overlay,
                                        whiteout/opaque-dir handling) + shallow risk
