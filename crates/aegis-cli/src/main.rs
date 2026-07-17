@@ -94,6 +94,10 @@ enum Command {
         /// (e.g. an advisory's affected function). Exit 0 if used, 1 if not.
         #[arg(long)]
         function: Option<String>,
+        /// With --function: also report functions that reach the symbol
+        /// transitively through the call graph (cross-file, name-based).
+        #[arg(long)]
+        transitive: bool,
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -204,8 +208,9 @@ fn main() -> ExitCode {
             dir,
             package,
             function,
+            transitive,
             json,
-        } => run_reach(&dir, &package, function.as_deref(), json),
+        } => run_reach(&dir, &package, function.as_deref(), transitive, json),
         Command::Hook { install } => run_hook(install),
         Command::Actions {} => run_actions(),
         Command::Snapshot {

@@ -1012,14 +1012,7 @@ pub fn functions_reaching(
     // (file, function) -> earliest line seen.
     let mut seen: HashMap<(String, String), usize> = HashMap::new();
     for (path, bytes) in files {
-        let sites = match language_for(path) {
-            Some(Language::JavaScript) => used_symbol_sites(bytes),
-            Some(Language::Python) => used_symbol_sites_python(bytes),
-            Some(Language::Go) => used_symbol_sites_go(bytes),
-            Some(Language::Php) => used_symbol_sites_php(bytes),
-            _ => continue,
-        };
-        for site in sites {
+        for site in symbol_sites_for(path, bytes) {
             if site.module == dep_key && site.symbol == symbol {
                 let key = (path.clone(), site.function);
                 seen.entry(key)
@@ -1037,6 +1030,136 @@ pub fn functions_reaching(
         })
         .collect();
     out.sort_by(|a, b| a.file.cmp(&b.file).then(a.function.cmp(&b.function)));
+    out
+}
+
+/// Run the scope-attributed symbol-site pass for `path` by extension,
+/// returning `[]` for unsupported/Ruby files. Shared by
+/// [`functions_reaching`] and [`functions_reaching_transitive`].
+fn symbol_sites_for(path: &str, bytes: &[u8]) -> Vec<SymbolSite> {
+    match language_for(path) {
+        Some(Language::JavaScript) => used_symbol_sites(bytes),
+        Some(Language::Python) => used_symbol_sites_python(bytes),
+        Some(Language::Go) => used_symbol_sites_go(bytes),
+        Some(Language::Php) => used_symbol_sites_php(bytes),
+        _ => Vec::new(),
+    }
+}
+
+/// Run the intra-file call-graph pass for `path` by extension, returning
+/// `[]` for unsupported/Ruby files.
+fn call_graph_for(path: &str, bytes: &[u8]) -> Vec<CallNode> {
+    match language_for(path) {
+        Some(Language::JavaScript) => call_graph(bytes),
+        Some(Language::Python) => call_graph_python(bytes),
+        Some(Language::Go) => call_graph_go(bytes),
+        Some(Language::Php) => call_graph_php(bytes),
+        _ => Vec::new(),
+    }
+}
+
+/// A project function that reaches a dep symbol, either by using it
+/// directly or by (transitively) calling a function that does.
+///
+/// `direct` is true when this function references the symbol itself; the
+/// `line` is then the use site. `direct` is false for a transitive-only
+/// caller — it reaches the symbol solely through the call graph, so no
+/// single use-site line applies and `line` is 0.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReachEntry {
+    pub file: String,
+    pub function: String,
+    pub line: usize,
+    pub direct: bool,
+}
+
+/// The project functions that reach `symbol` of `dep_key`, **transitively
+/// through the call graph** — every direct user (as [`functions_reaching`]
+/// finds) plus every function that calls, directly or indirectly, one of
+/// those users.
+///
+/// Resolution is **name-based across files**: a callee token `foo` links
+/// to every function named `foo` in the project (cross-file call
+/// resolution without a full symbol table). This deliberately
+/// over-approximates — a name collision may mark an extra caller reachable
+/// — but it can only ever *add* callers, never drop a real one, so it
+/// preserves the additive, no-false-negative contract of the reachability
+/// layer. Results are sorted direct-first, then by (file, function).
+pub fn functions_reaching_transitive(
+    dep_key: &str,
+    symbol: &str,
+    files: &[(String, Vec<u8>)],
+) -> Vec<ReachEntry> {
+    // Direct users first — these seed the transitive walk.
+    let mut entries: HashMap<(String, String), ReachEntry> = HashMap::new();
+    let mut frontier: Vec<String> = Vec::new();
+    let mut reached_names: HashSet<String> = HashSet::new();
+    for (path, bytes) in files {
+        for site in symbol_sites_for(path, bytes) {
+            if site.module == dep_key && site.symbol == symbol {
+                if reached_names.insert(site.function.clone()) {
+                    frontier.push(site.function.clone());
+                }
+                entries
+                    .entry((path.clone(), site.function.clone()))
+                    .and_modify(|e| {
+                        e.direct = true;
+                        e.line = e.line.min(site.line);
+                    })
+                    .or_insert(ReachEntry {
+                        file: path.clone(),
+                        function: site.function,
+                        line: site.line,
+                        direct: true,
+                    });
+            }
+        }
+    }
+    if entries.is_empty() {
+        return Vec::new();
+    }
+
+    // Reverse call edges: callee name -> the (file, function) sites that
+    // call it. Name-based, so it spans files.
+    let mut callers_of: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for (path, bytes) in files {
+        for node in call_graph_for(path, bytes) {
+            for callee in node.calls {
+                callers_of
+                    .entry(callee)
+                    .or_default()
+                    .push((path.clone(), node.function.clone()));
+            }
+        }
+    }
+
+    // Walk callers transitively over function names.
+    while let Some(name) = frontier.pop() {
+        let Some(callers) = callers_of.get(&name) else {
+            continue;
+        };
+        for (file, caller) in callers.clone() {
+            entries
+                .entry((file.clone(), caller.clone()))
+                .or_insert(ReachEntry {
+                    file,
+                    function: caller.clone(),
+                    line: 0,
+                    direct: false,
+                });
+            if reached_names.insert(caller.clone()) {
+                frontier.push(caller);
+            }
+        }
+    }
+
+    let mut out: Vec<ReachEntry> = entries.into_values().collect();
+    out.sort_by(|a, b| {
+        b.direct
+            .cmp(&a.direct)
+            .then(a.file.cmp(&b.file))
+            .then(a.function.cmp(&b.function))
+    });
     out
 }
 
@@ -4150,5 +4273,91 @@ mod tests {
         let _ = sites_php("<?php use broken");
         assert!(cg_php("").is_empty());
         assert!(sites_php("").is_empty());
+    }
+
+    // --- functions_reaching_transitive (cross-file resolution) ----------
+
+    /// Find the entry for a (file, function), or None.
+    fn entry<'a>(v: &'a [ReachEntry], file: &str, func: &str) -> Option<&'a ReachEntry> {
+        v.iter().find(|e| e.file == file && e.function == func)
+    }
+
+    #[test]
+    fn transitive_walks_callers_across_files() {
+        // sink.js uses cp.execSync directly; middle.js calls sink();
+        // entry.js calls middle(). All three should reach `execSync`.
+        let files = vec![
+            (
+                "sink.js".to_string(),
+                b"import cp from 'child_process';\nfunction sink() { cp.execSync('x'); }".to_vec(),
+            ),
+            (
+                "middle.js".to_string(),
+                b"function middle() { sink(); }".to_vec(),
+            ),
+            (
+                "entry.js".to_string(),
+                b"function boot() { middle(); }".to_vec(),
+            ),
+            // unrelated function — must not appear.
+            (
+                "other.js".to_string(),
+                b"function idle() { noop(); }".to_vec(),
+            ),
+        ];
+        let r = functions_reaching_transitive("child_process", "execSync", &files);
+
+        let direct = entry(&r, "sink.js", "sink").expect("sink direct");
+        assert!(direct.direct);
+        assert!(direct.line > 0);
+
+        let mid = entry(&r, "middle.js", "middle").expect("middle transitive");
+        assert!(!mid.direct);
+        assert_eq!(mid.line, 0);
+
+        assert!(entry(&r, "entry.js", "boot").is_some());
+        assert!(entry(&r, "other.js", "idle").is_none());
+        // Direct entries sort first.
+        assert!(r[0].direct);
+    }
+
+    #[test]
+    fn transitive_crosses_language_by_name() {
+        // A Python `runner` calls `sink`; the JS `sink` is the direct user.
+        // Name-based resolution links them even across languages.
+        let files = vec![
+            (
+                "s.js".to_string(),
+                b"import _ from 'lodash';\nfunction sink() { _.template('x'); }".to_vec(),
+            ),
+            ("r.py".to_string(), b"def runner():\n    sink()\n".to_vec()),
+        ];
+        let r = functions_reaching_transitive("lodash", "template", &files);
+        assert!(entry(&r, "s.js", "sink").is_some_and(|e| e.direct));
+        assert!(entry(&r, "r.py", "runner").is_some_and(|e| !e.direct));
+    }
+
+    #[test]
+    fn transitive_terminates_on_recursion() {
+        // Mutually recursive callers must not loop forever.
+        let files = vec![(
+            "x.js".to_string(),
+            b"import cp from 'child_process';\n\
+              function a() { cp.execSync('x'); b(); }\n\
+              function b() { a(); }"
+                .to_vec(),
+        )];
+        let r = functions_reaching_transitive("child_process", "execSync", &files);
+        assert!(entry(&r, "x.js", "a").is_some_and(|e| e.direct));
+        assert!(entry(&r, "x.js", "b").is_some());
+    }
+
+    #[test]
+    fn transitive_empty_when_symbol_absent() {
+        let files = vec![(
+            "x.js".to_string(),
+            b"import _ from 'lodash';\nfunction f() { _.merge(); }".to_vec(),
+        )];
+        assert!(functions_reaching_transitive("lodash", "template", &files).is_empty());
     }
 }

@@ -1099,10 +1099,49 @@ impl From<&aegis_reach::CallSite> for CallSiteView {
     }
 }
 
+/// JSON view for `reach --function --transitive`: the direct users plus the
+/// call-graph callers that reach the symbol.
+#[derive(Serialize)]
+struct ReachTransitiveView {
+    package: String,
+    function: String,
+    used: bool,
+    transitive: bool,
+    reaching: Vec<ReachEntryView>,
+}
+
+/// One reaching function in the transitive JSON output. `direct` = uses the
+/// symbol itself; otherwise it only calls (directly or indirectly) one that
+/// does, and `line` is 0.
+#[derive(Serialize)]
+struct ReachEntryView {
+    file: String,
+    function: String,
+    line: usize,
+    direct: bool,
+}
+
+impl From<&aegis_reach::ReachEntry> for ReachEntryView {
+    fn from(e: &aegis_reach::ReachEntry) -> Self {
+        ReachEntryView {
+            file: e.file.clone(),
+            function: e.function.clone(),
+            line: e.line,
+            direct: e.direct,
+        }
+    }
+}
+
 /// Report whether `package` is imported anywhere in the project's JS/TS source
 /// (reachability). Exit 0 = reachable (used), 1 = unreachable (unused code the
 /// risk engine can downgrade), 2 = not a directory.
-pub(crate) fn run_reach(dir: &str, package: &str, function: Option<&str>, json: bool) -> ExitCode {
+pub(crate) fn run_reach(
+    dir: &str,
+    package: &str,
+    function: Option<&str>,
+    transitive: bool,
+    json: bool,
+) -> ExitCode {
     let root = Path::new(dir);
     if !root.is_dir() {
         eprintln!("aegis: not a directory: {dir}");
@@ -1114,9 +1153,51 @@ pub(crate) fn run_reach(dir: &str, package: &str, function: Option<&str>, json: 
     // is advisory reachability — an advisory on an unused function is moot.
     if let Some(func) = function {
         let used = aegis_reach::used_symbols_of(package, &files).contains(func);
-        // Caller detail: which project functions reach the symbol (JS/Py —
-        // Go/PHP have used-symbols but no call graph yet). Additive; never
-        // narrows the `used` verdict.
+
+        // --transitive: also walk call-graph callers (cross-file, name-based).
+        // Additive over the direct view; never narrows the `used` verdict.
+        if transitive {
+            let reaching = if used {
+                aegis_reach::functions_reaching_transitive(package, func, &files)
+            } else {
+                Vec::new()
+            };
+            if json {
+                let view = ReachTransitiveView {
+                    package: package.to_string(),
+                    function: func.to_string(),
+                    used,
+                    transitive: true,
+                    reaching: reaching.iter().map(ReachEntryView::from).collect(),
+                };
+                match serde_json::to_string_pretty(&view) {
+                    Ok(s) => println!("{s}"),
+                    Err(e) => {
+                        eprintln!("aegis: json encode failed: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            } else if used {
+                println!("{package}.{func}: used (advisory on this function is reachable)");
+                for e in &reaching {
+                    if e.direct {
+                        println!("  ↳ {}:{} {} (direct)", e.file, e.line, e.function);
+                    } else {
+                        println!("  ↳ {} {} (transitive)", e.file, e.function);
+                    }
+                }
+            } else {
+                println!("{package}.{func}: not used (advisory on this function is unreachable)");
+            }
+            return if used {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            };
+        }
+
+        // Direct caller detail only (default): which project functions
+        // reference the symbol themselves.
         let callers = if used {
             aegis_reach::functions_reaching(package, func, &files)
         } else {
