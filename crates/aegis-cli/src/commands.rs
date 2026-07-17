@@ -1067,6 +1067,8 @@ struct ReachView {
     package: String,
     reachable: bool,
     reachability: String,
+    /// Symbols of the package used in the project (function-level reachability).
+    symbols: Vec<String>,
 }
 
 /// Report whether `package` is imported anywhere in the project's JS/TS source
@@ -1081,12 +1083,23 @@ pub(crate) fn run_reach(dir: &str, package: &str, json: bool) -> ExitCode {
     let files = collect_files(root);
     let reach = aegis_reach::reachability_of(package, &files);
     let reachable = matches!(reach, aegis_domain::Reachability::Used);
+    // When reachable, list which of the package's symbols the project uses —
+    // the function-level detail for judging a function-scoped advisory.
+    let mut symbols: Vec<String> = if reachable {
+        aegis_reach::used_symbols_of(package, &files)
+            .into_iter()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    symbols.sort();
 
     if json {
         let view = ReachView {
             package: package.to_string(),
             reachable,
             reachability: format!("{reach:?}").to_lowercase(),
+            symbols,
         };
         match serde_json::to_string_pretty(&view) {
             Ok(s) => println!("{s}"),
@@ -1096,7 +1109,11 @@ pub(crate) fn run_reach(dir: &str, package: &str, json: bool) -> ExitCode {
             }
         }
     } else if reachable {
-        println!("{package}: reachable (imported in project source)");
+        if symbols.is_empty() {
+            println!("{package}: reachable (imported in project source)");
+        } else {
+            println!("{package}: reachable — uses: {}", symbols.join(", "));
+        }
     } else {
         println!("{package}: unreachable (not imported — risk can be downgraded)");
     }
