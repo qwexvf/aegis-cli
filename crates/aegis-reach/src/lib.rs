@@ -38,18 +38,20 @@
 //! # Scope of this slice
 //!
 //! Imports for all five languages. Used-symbols resolution is ported
-//! for **JavaScript / TypeScript only** ([`UsedSymbol`],
-//! [`extract_used_symbols`], [`used_symbols_of`]): given the imports a
-//! file declares, it tracks which imported bindings are actually
-//! referenced and which members are accessed on them (`cp.execSync(...)`
-//! → symbol `execSync` on the `child_process` import). This answers
+//! for **JavaScript / TypeScript** ([`UsedSymbol`],
+//! [`extract_used_symbols`]) and **Python**
+//! ([`extract_used_symbols_python`]); [`used_symbols_of`] routes both.
+//! Given the imports a file declares, it tracks which imported bindings
+//! are actually referenced and which members are accessed on them
+//! (`cp.execSync(...)` → symbol `execSync` on the `child_process`
+//! import; `os.system(...)` → symbol `system` on `os`). This answers
 //! function-level questions like "the project imports lodash, but does it
 //! use `lodash.template`?" against an advisory's affected functions.
 //!
-//! Python (and other-language) used-symbols and the per-file call graph
-//! from depusage remain **follow-ups**, not ported here. Per-import
+//! Other-language used-symbols and the per-file call graph from depusage
+//! remain **follow-ups**, not ported here. Per-import
 //! `Symbols`/`Aliases`/`Column` are still dropped from [`Import`]; the
-//! used-symbol pass re-derives JS bindings straight from the AST.
+//! used-symbol pass re-derives bindings straight from the AST.
 //!
 //! # Degradation
 //!
@@ -936,18 +938,21 @@ pub fn extract_used_symbols(source: &[u8]) -> Vec<UsedSymbol> {
     out
 }
 
-/// The union of symbol names used on `dep_key` across every JS/TS file in
-/// a project. Files are routed by extension —
-/// `.js/.ts/.mjs/.cjs/.jsx/.tsx` only; any other extension is skipped
-/// (non-JS used-symbols are a follow-up). A file whose usages don't
-/// reference `dep_key` contributes nothing.
+/// The union of symbol names used on `dep_key` across every supported
+/// file in a project. Files are routed by extension —
+/// `.js/.ts/.mjs/.cjs/.jsx/.tsx` through the JS used-symbol pass,
+/// `.py/.pyi` through the Python one; any other extension is skipped
+/// (Go / PHP / Ruby used-symbols are a follow-up). A file whose usages
+/// don't reference `dep_key` contributes nothing.
 pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<String> {
     let mut out = HashSet::new();
     for (path, bytes) in files {
-        if language_for(path) != Some(Language::JavaScript) {
-            continue;
-        }
-        for used in extract_used_symbols(bytes) {
+        let uses = match language_for(path) {
+            Some(Language::JavaScript) => extract_used_symbols(bytes),
+            Some(Language::Python) => extract_used_symbols_python(bytes),
+            _ => continue,
+        };
+        for used in uses {
             if used.module == dep_key {
                 out.insert(used.symbol);
             }
@@ -1146,6 +1151,315 @@ fn collect_js_uses(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_js_uses(child, body, bindings, out);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Python used-symbols
+// ---------------------------------------------------------------------------
+
+/// A resolved Python local binding: which module an in-scope identifier
+/// refers to, and the canonical symbol within it. `symbol` is `"*"` for a
+/// whole-module import (`import os`, `import numpy as np` — the member
+/// resolves at the use site via attribute access), otherwise the named
+/// `from`-import symbol (its canonical name, pre-alias). Port of
+/// depusage's Python `binding`.
+struct PyBinding {
+    module: String,
+    symbol: String,
+}
+
+/// One import's binding-relevant shape, mirroring the depusage
+/// `extract.Import` fields (`Symbols` / `Aliases`) that the Rust
+/// [`Import`] drops. `raw_module` is the verbatim dotted path (needed for
+/// the last-segment local of a whole-module import); `module` is its
+/// dep-key form (or verbatim when it doesn't normalize). `aliases` is a
+/// list of `(local_alias, canonical)` pairs where `canonical` is `"*"`
+/// for an aliased whole-module import.
+struct PyImportInfo {
+    raw_module: String,
+    module: String,
+    symbols: Vec<String>,
+    aliases: Vec<(String, String)>,
+}
+
+/// Parse Python source and return every use of an imported binding.
+///
+/// Two passes over one parse: first re-derive local bindings from the
+/// file's `import` / `from ... import` statements, then walk attribute /
+/// call usages and correlate them against those bindings. A parse failure
+/// yields an empty vec — never panics.
+///
+/// Correlation rules (mirrors depusage's `collectUsedSymbols`):
+/// - `obj.attr` where `obj` is a bound identifier → symbol is `attr`
+///   (covers whole-module bindings: `np.array` → `array`, `os.system` →
+///   `system`).
+/// - `fn(...)` where `fn` is a bound identifier → symbol is the binding's
+///   canonical name (the `from x import y` case: `y()` → `y`; aliased
+///   `y as z` then `z()` → `y`). Whole-module bindings (`symbol == "*"`)
+///   are skipped here — they only surface symbols through attribute
+///   access.
+pub fn extract_used_symbols_python(source: &[u8]) -> Vec<UsedSymbol> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_python::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let mut infos = Vec::new();
+    collect_py_import_infos(tree.root_node(), source, &mut infos);
+    let bindings = build_py_bindings(&infos);
+    if bindings.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    collect_py_uses(tree.root_node(), source, &bindings, &mut out);
+    out
+}
+
+/// Normalize a Python module string to the form stored on
+/// [`UsedSymbol::module`]: its dep key when non-empty, else the verbatim
+/// string (relative imports keep their leading-dot form).
+fn used_symbol_module_python(module: &str) -> String {
+    let key = dep_key_python(module);
+    if key.is_empty() {
+        module.to_string()
+    } else {
+        key
+    }
+}
+
+/// Last dotted segment of a module path (`os.path` → `path`, `os` →
+/// `os`). Port of depusage's `lastDotSegment`.
+fn last_dot_segment(s: &str) -> &str {
+    match s.rfind('.') {
+        Some(i) => &s[i + 1..],
+        None => s,
+    }
+}
+
+/// Recursively walk a Python tree, collecting one [`PyImportInfo`] per
+/// imported module from `import` and `from ... import` statements.
+/// Dynamic `__import__` / `importlib.import_module` calls carry no
+/// symbols or aliases and so bind nothing — they are skipped here.
+fn collect_py_import_infos(node: Node, body: &[u8], out: &mut Vec<PyImportInfo>) {
+    match node.kind() {
+        "import_statement" => py_import_infos_from_statement(node, body, out),
+        "import_from_statement" => {
+            if let Some(info) = py_import_info_from_from(node, body) {
+                out.push(info);
+            }
+        }
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_py_import_infos(child, body, out);
+    }
+}
+
+/// Handle `import a, b as c, d.e` — each `dotted_name` / `aliased_import`
+/// becomes one [`PyImportInfo`] with a single `"*"` symbol (aliased forms
+/// also record the alias against `"*"`).
+fn py_import_infos_from_statement(node: Node, body: &[u8], out: &mut Vec<PyImportInfo>) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "dotted_name" => {
+                if let Ok(raw) = child.utf8_text(body) {
+                    out.push(py_star_info(raw, None));
+                }
+            }
+            "aliased_import" => {
+                let Some(name) = child
+                    .child_by_field_name("name")
+                    .and_then(|n| n.utf8_text(body).ok())
+                else {
+                    continue;
+                };
+                let alias = child
+                    .child_by_field_name("alias")
+                    .and_then(|a| a.utf8_text(body).ok());
+                out.push(py_star_info(name, alias));
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Build a whole-module [`PyImportInfo`] (`symbols == ["*"]`) for
+/// `raw_module`, recording `alias` (if any) against `"*"`.
+fn py_star_info(raw_module: &str, alias: Option<&str>) -> PyImportInfo {
+    PyImportInfo {
+        module: used_symbol_module_python(raw_module),
+        raw_module: raw_module.to_string(),
+        symbols: vec!["*".to_string()],
+        aliases: alias
+            .map(|a| vec![(a.to_string(), "*".to_string())])
+            .unwrap_or_default(),
+    }
+}
+
+/// Handle `from foo.bar import a, b as c, *` — one [`PyImportInfo`] whose
+/// `symbols` are the imported names (canonical, pre-alias) and whose
+/// `aliases` map each `as`-rename back to its canonical name.
+fn py_import_info_from_from(node: Node, body: &[u8]) -> Option<PyImportInfo> {
+    let module_node = node.child_by_field_name("module_name")?;
+    let raw_module = module_node.utf8_text(body).ok()?.to_string();
+    if raw_module.is_empty() {
+        return None;
+    }
+    let module_id = module_node.id();
+    let mut info = PyImportInfo {
+        module: used_symbol_module_python(&raw_module),
+        raw_module,
+        symbols: Vec::new(),
+        aliases: Vec::new(),
+    };
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.id() == module_id {
+            continue;
+        }
+        match child.kind() {
+            "dotted_name" | "identifier" => {
+                if let Ok(sym) = child.utf8_text(body) {
+                    info.symbols.push(sym.to_string());
+                }
+            }
+            "aliased_import" => {
+                let Some(canonical) = child
+                    .child_by_field_name("name")
+                    .and_then(|n| n.utf8_text(body).ok())
+                else {
+                    continue;
+                };
+                info.symbols.push(canonical.to_string());
+                if let Some(alias) = child
+                    .child_by_field_name("alias")
+                    .and_then(|a| a.utf8_text(body).ok())
+                {
+                    info.aliases
+                        .push((alias.to_string(), canonical.to_string()));
+                }
+            }
+            "wildcard_import" => info.symbols.push("*".to_string()),
+            _ => {}
+        }
+    }
+    Some(info)
+}
+
+/// Resolve local bindings from the collected imports. Port of depusage's
+/// `buildBindings`: aliases bind first, then symbols — a `"*"` symbol
+/// binds the module's last dotted segment (unless an alias already covers
+/// it), and a named symbol that is some alias's canonical target is
+/// skipped (the alias binding already carries it).
+fn build_py_bindings(imports: &[PyImportInfo]) -> HashMap<String, PyBinding> {
+    let mut out = HashMap::new();
+    for imp in imports {
+        if imp.raw_module.is_empty() {
+            continue;
+        }
+        for (local, canonical) in &imp.aliases {
+            out.insert(
+                local.clone(),
+                PyBinding {
+                    module: imp.module.clone(),
+                    symbol: canonical.clone(),
+                },
+            );
+        }
+        for sym in &imp.symbols {
+            if sym == "*" {
+                if imp.aliases.iter().any(|(_, canonical)| canonical == "*") {
+                    continue;
+                }
+                let local = last_dot_segment(&imp.raw_module);
+                if local.is_empty() {
+                    continue;
+                }
+                out.insert(
+                    local.to_string(),
+                    PyBinding {
+                        module: imp.module.clone(),
+                        symbol: "*".to_string(),
+                    },
+                );
+                continue;
+            }
+            if imp.aliases.iter().any(|(_, canonical)| canonical == sym) {
+                continue;
+            }
+            out.insert(
+                sym.clone(),
+                PyBinding {
+                    module: imp.module.clone(),
+                    symbol: sym.clone(),
+                },
+            );
+        }
+    }
+    out
+}
+
+/// Recursively walk the Python tree, correlating attribute / call usages
+/// against the resolved bindings and pushing matches into `out`.
+fn collect_py_uses(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, PyBinding>,
+    out: &mut Vec<UsedSymbol>,
+) {
+    match node.kind() {
+        "attribute" => {
+            if let (Some(object), Some(attribute)) = (
+                node.child_by_field_name("object"),
+                node.child_by_field_name("attribute"),
+            ) {
+                if object.kind() == "identifier" {
+                    if let Ok(name) = object.utf8_text(body) {
+                        if let Some(binding) = bindings.get(name) {
+                            if let Ok(attr) = attribute.utf8_text(body) {
+                                out.push(UsedSymbol {
+                                    module: binding.module.clone(),
+                                    symbol: attr.to_string(),
+                                    line: attribute.start_position().row + 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "call" => {
+            if let Some(function) = node.child_by_field_name("function") {
+                if function.kind() == "identifier" {
+                    if let Ok(name) = function.utf8_text(body) {
+                        if let Some(binding) = bindings.get(name) {
+                            // Whole-module bindings only surface symbols
+                            // through attribute access — skip here.
+                            if binding.symbol != "*" {
+                                out.push(UsedSymbol {
+                                    module: binding.module.clone(),
+                                    symbol: binding.symbol.clone(),
+                                    line: function.start_position().row + 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_py_uses(child, body, bindings, out);
     }
 }
 
@@ -1844,5 +2158,149 @@ mod tests {
         );
         // A dep with no recorded usage → empty set.
         assert!(used_symbols_of("express", &files).is_empty());
+    }
+
+    // --- Python used-symbols --------------------------------------------
+
+    fn used_py(src: &str) -> Vec<UsedSymbol> {
+        extract_used_symbols_python(src.as_bytes())
+    }
+
+    fn py_symbols_on(src: &str, module: &str) -> Vec<String> {
+        let mut names: Vec<String> = used_py(src)
+            .into_iter()
+            .filter(|u| u.module == module)
+            .map(|u| u.symbol)
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn py_import_attribute_call() {
+        // `import os` then `os.system(...)` → symbol `system` on `os`.
+        let uses = used_py("import os\nos.system('ls')");
+        assert_eq!(uses.len(), 1, "{uses:?}");
+        assert_eq!(uses[0].module, "os");
+        assert_eq!(uses[0].symbol, "system");
+        assert_eq!(uses[0].line, 2);
+    }
+
+    #[test]
+    fn py_aliased_module_attribute() {
+        // `import numpy as np` then `np.array(...)`, `np.matmul(...)`.
+        assert_eq!(
+            py_symbols_on(
+                "import numpy as np\narr = np.array([1, 2])\nm = np.matmul(a, b)",
+                "numpy"
+            ),
+            ["array", "matmul"]
+        );
+    }
+
+    #[test]
+    fn py_from_import_call() {
+        // `from subprocess import run` then `run(...)` → symbol `run`.
+        let uses = used_py("from subprocess import run\nrun(['ls'])");
+        assert_eq!(uses.len(), 1, "{uses:?}");
+        assert_eq!(uses[0].module, "subprocess");
+        assert_eq!(uses[0].symbol, "run");
+    }
+
+    #[test]
+    fn py_from_import_multiple_calls() {
+        let src =
+            "from requests import get, post\nr = get('https://x')\npost('https://x', json={})";
+        assert_eq!(py_symbols_on(src, "requests"), ["get", "post"]);
+    }
+
+    #[test]
+    fn py_aliased_named_import_maps_to_canonical() {
+        // `from a import b as c` then `c(...)` → canonical symbol `b`.
+        let uses = used_py("from requests import get as g\ng('https://x')");
+        assert_eq!(uses.len(), 1, "{uses:?}");
+        assert_eq!(uses[0].module, "requests");
+        assert_eq!(uses[0].symbol, "get");
+    }
+
+    #[test]
+    fn py_dotted_import_binds_last_segment() {
+        // `import os.path` binds the module's last dotted segment (`path`)
+        // as the local — faithful to depusage's `buildBindings`
+        // (last-segment rule). The dep-key of the usage is the top-level
+        // package `os`. Accessing via that local records the attribute.
+        let uses = used_py("import os.path\npath.join('a', 'b')");
+        assert_eq!(uses.len(), 1, "{uses:?}");
+        assert_eq!(uses[0].module, "os");
+        assert_eq!(uses[0].symbol, "join");
+    }
+
+    #[test]
+    fn py_dotted_import_compound_head_unbound() {
+        // `os.path.join(...)` accesses through the compound `os.path`
+        // head, whose object `os` is not itself bound by `import os.path`
+        // (only `path` is) — so nothing is recorded. Ported quirk.
+        assert!(used_py("import os.path\nos.path.join('a', 'b')").is_empty());
+    }
+
+    #[test]
+    fn py_unused_import_contributes_no_symbol() {
+        assert!(used_py("import os").is_empty());
+        assert!(used_py("from subprocess import run").is_empty());
+        // A same-named local call that isn't the whole-module binding.
+        assert!(used_py("import numpy as np\nother()").is_empty());
+    }
+
+    #[test]
+    fn py_no_bindings_yields_empty() {
+        assert!(used_py("os.system('x')\nfoo.bar()").is_empty());
+    }
+
+    #[test]
+    fn py_used_symbols_bad_source_no_panic() {
+        let _ = used_py("from import import ??? broken");
+        let _ = used_py("<<< not python >>> ???");
+        assert!(used_py("").is_empty());
+    }
+
+    #[test]
+    fn used_symbols_of_routes_python() {
+        let files = vec![
+            (
+                "worker.py".to_string(),
+                b"import os\nos.system('ls')\nos.getcwd()".to_vec(),
+            ),
+            (
+                "client.pyi".to_string(),
+                b"from requests import get\nget('https://x')".to_vec(),
+            ),
+            // JS file still routed to the JS used-symbol pass.
+            (
+                "util.js".to_string(),
+                b"import { merge } from 'lodash';\nmerge({}, {});".to_vec(),
+            ),
+            // Non-source file must be skipped.
+            (
+                "notes.md".to_string(),
+                b"import os\nos.remove('x')".to_vec(),
+            ),
+        ];
+        let syms = used_symbols_of("os", &files);
+        assert!(syms.contains("system"));
+        assert!(syms.contains("getcwd"));
+        // Present only via a skipped non-source file → absent.
+        assert!(!syms.contains("remove"));
+        assert_eq!(syms.len(), 2);
+
+        assert_eq!(
+            used_symbols_of("requests", &files),
+            HashSet::from(["get".to_string()])
+        );
+        assert_eq!(
+            used_symbols_of("lodash", &files),
+            HashSet::from(["merge".to_string()])
+        );
+        // A dep with no recorded usage → empty set.
+        assert!(used_symbols_of("flask", &files).is_empty());
     }
 }
