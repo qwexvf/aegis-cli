@@ -241,6 +241,10 @@ struct TaskResult {
     /// Denied-license count, when the license check ran.
     #[serde(default)]
     license_findings: usize,
+    /// Dependencies present in the lockfile but never imported in source, when
+    /// the "unused-deps" check ran.
+    #[serde(default)]
+    unused_deps: Vec<String>,
     failed: bool,
     error: Option<String>,
 }
@@ -261,6 +265,7 @@ fn run_task(t: &TaskConfig) -> TaskResult {
         cve_findings: 0,
         deprecated_findings: 0,
         license_findings: 0,
+        unused_deps: Vec::new(),
         failed: false,
         error: None,
     };
@@ -367,7 +372,37 @@ fn run_task(t: &TaskConfig) -> TaskResult {
         }
     }
 
+    // Unused-dependency check: packages declared in package.json `dependencies`
+    // but never imported in the task's JS/TS source are dead attack surface
+    // (a barely-used dependency is exactly the event-stream vector). Reported,
+    // not fail-by-default. Uses declared deps, not the lockfile — transitive
+    // deps are legitimately not imported by the top-level source.
+    if want("unused-deps") {
+        if let Some(declared) = declared_npm_dependencies(&files) {
+            let imported = aegis_reach::imported_dep_keys(&files);
+            let mut unused: Vec<String> = declared
+                .into_iter()
+                .filter(|name| !imported.contains(name))
+                .collect();
+            unused.sort();
+            unused.dedup();
+            res.unused_deps = unused;
+        }
+    }
+
     res
+}
+
+/// The `dependencies` keys declared in a task's package.json (runtime deps
+/// only). `None` if there's no package.json.
+fn declared_npm_dependencies(files: &[(String, Vec<u8>)]) -> Option<Vec<String>> {
+    let (_, raw) = files
+        .iter()
+        .find(|(rel, _)| rel.rsplit(['/', '\\']).next() == Some("package.json"))
+        .map(|(rel, bytes)| (rel.as_str(), bytes.as_slice()))?;
+    let manifest: serde_json::Value = serde_json::from_slice(raw).ok()?;
+    let deps = manifest.get("dependencies").and_then(|d| d.as_object())?;
+    Some(deps.keys().cloned().collect())
 }
 
 pub(crate) fn run_config(config_path: &str, json: bool) -> ExitCode {
@@ -420,8 +455,14 @@ pub(crate) fn run_config(config_path: &str, json: bool) -> ExitCode {
             let status = if r.failed { "FAIL" } else { "ok" };
             let verdict = r.verdict.as_deref().unwrap_or("-");
             print!(
-                "[{status}] {} ({}) — verdict={verdict} score={} cve={} deprecated={} license={}",
-                r.name, r.path, r.score, r.cve_findings, r.deprecated_findings, r.license_findings
+                "[{status}] {} ({}) — verdict={verdict} score={} cve={} deprecated={} license={} unused={}",
+                r.name,
+                r.path,
+                r.score,
+                r.cve_findings,
+                r.deprecated_findings,
+                r.license_findings,
+                r.unused_deps.len()
             );
             match &r.error {
                 Some(e) => println!("  error: {e}"),
