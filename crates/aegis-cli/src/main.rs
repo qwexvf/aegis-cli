@@ -124,10 +124,15 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Scan an OCI / `docker save` image tarball for risky files.
+    /// Scan an OCI image for risky files — from a local tarball or pulled by
+    /// reference from a registry.
     Image {
-        /// Path to the image tarball (docker save output or OCI layout).
-        file: String,
+        /// Path to a `docker save` / OCI-layout image tarball.
+        file: Option<String>,
+        /// Pull and scan a registry image by reference (e.g. `alpine:latest`,
+        /// `ghcr.io/owner/repo:1.2`) instead of reading a local file.
+        #[arg(long = "ref")]
+        reference: Option<String>,
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -190,7 +195,11 @@ fn main() -> ExitCode {
             out,
             baseline,
         } => run_snapshot(&dir, &ecosystem, out.as_deref(), baseline.as_deref()),
-        Command::Image { file, json } => run_image(&file, json),
+        Command::Image {
+            file,
+            reference,
+            json,
+        } => run_image(file.as_deref(), reference.as_deref(), json),
         Command::Fix {
             file,
             offline,

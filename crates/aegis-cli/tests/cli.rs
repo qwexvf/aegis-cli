@@ -627,6 +627,23 @@ fn snapshot_detects_behavioral_drift() {
 }
 
 #[test]
+fn image_requires_file_or_ref() {
+    // Neither a tarball path nor --ref → usage error, exit 2. Network-free.
+    let out = run(&["image"]);
+    assert_eq!(out.code, 2);
+}
+
+#[test]
+#[ignore = "live network: pulls alpine:latest from registry-1.docker.io"]
+fn image_pull_from_registry_scans_clean_alpine() {
+    // End-to-end registry pull: anonymous token → manifest → layer blobs →
+    // overlay → scan. alpine is clean, so exit 0 with no findings.
+    let out = run(&["image", "--ref", "alpine:latest"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("no risky files"), "{}", out.stdout);
+}
+
+#[test]
 fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);
