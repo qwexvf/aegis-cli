@@ -80,14 +80,16 @@ Status @ this snapshot:
                                        by design (require/gem bind no local — needs
                                        project-wide constant resolution). CALL-GRAPH
                                        (additive, no dead-code pruning → no FN risk):
-                                       js/ts + python intra-file caller→callee edges
-                                       (CallNode/call_graph) + used-symbol→enclosing-
-                                       function attribution (SymbolSite). WIRED LIVE:
-                                       functions_reaching + `reach --function` now
-                                       reports which project functions reach the
-                                       vulnerable symbol (↳ file:line fn / json
-                                       callers[]). FOLLOW-UP: go/php call-graph +
-                                       cross-file call resolution.
+                                       js/ts + python + go + php intra-file caller→
+                                       callee edges (CallNode/call_graph*) + used-
+                                       symbol→enclosing-function attribution
+                                       (SymbolSite/used_symbol_sites*). WIRED LIVE:
+                                       functions_reaching (routes all 4 langs) +
+                                       `reach --function` now reports which project
+                                       functions reach the vulnerable symbol (↳
+                                       file:line fn / json callers[]). Call-graph
+                                       language parity w/ used-symbols complete.
+                                       FOLLOW-UP: cross-file call resolution.
   P6  image (OCI) .................... DONE (slice)  aegis-image crate: docker-save +
                                        OCI-layout tarball extract (layer overlay,
                                        whiteout/opaque-dir handling) + shallow risk
