@@ -21,6 +21,8 @@ pub mod github;
 pub mod license;
 #[cfg(feature = "npm")]
 pub mod npm;
+#[cfg(feature = "npm")]
+pub mod pkgsource;
 
 #[cfg(feature = "attestations")]
 pub use attestations::{fetch_provenance, ProvenanceStatus};
@@ -29,3 +31,5 @@ pub use depsdotdev::{DepsDevClient, PackageHealth};
 pub use license::LicenseFetcher;
 #[cfg(feature = "npm")]
 pub use npm::{fetch_maintainer_signal, MaintainerSignal};
+#[cfg(feature = "npm")]
+pub use pkgsource::fetch_npm_source;

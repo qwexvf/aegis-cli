@@ -117,8 +117,10 @@ version = "0.1.0"
 dependencies = [
  "aegis-domain",
  "aegis-net",
+ "flate2",
  "serde",
  "serde_json",
+ "tar",
 ]
 
 [[package]]
