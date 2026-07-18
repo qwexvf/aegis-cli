@@ -270,8 +270,10 @@ fn incident_pypi_exfil_stealer() {
 
 #[test]
 fn clean_popular_package_is_safe() {
-    // A legitimate package: registry dep, node-gyp rebuild hook, plain code.
-    // Must NOT be flagged — false positives erode trust.
+    // A genuinely clean package: registry dep, no install hooks, plain code.
+    // Must NOT be flagged — false positives erode trust. (A declared install
+    // hook, even a benign `node-gyp rebuild`, scores `install-hook`/review by
+    // design — matching Go — so a true-negative fixture carries no hook.)
     let d = tmp("cleanpkg");
     write(
         &d,
@@ -281,7 +283,7 @@ fn clean_popular_package_is_safe() {
     write(
         &d,
         "package.json",
-        r#"{"name":"tiny-adder","version":"1.0.0","scripts":{"postinstall":"node-gyp rebuild"},"dependencies":{"lodash":"^4.17.21"}}"#,
+        r#"{"name":"tiny-adder","version":"1.0.0","dependencies":{"lodash":"^4.17.21"}}"#,
     );
     let out = analyze(&d, "npm");
     assert_verdict(&out, "safe");

@@ -203,9 +203,12 @@ fn analyze_unlisted_large_file_flagged() {
 }
 
 #[test]
-fn analyze_clean_npm_package_is_safe() {
-    // A legit manifest (node-gyp rebuild hook, registry dep) must NOT trip the
-    // metadata detectors — guards against false positives from the wiring.
+fn analyze_benign_install_hook_scores_review_not_block() {
+    // A legit build hook (node-gyp rebuild) still declares an install hook, so
+    // it scores the base `install-hook` (weight 30 → "review") — matching the
+    // Go analyzer exactly (verified: verdict=review, score=30). It must NOT
+    // escalate to "block": the malicious `install-hook-suspicious` pattern
+    // (curl|sh etc.) does not fire for a plain build command.
     let d = tmp("cleannpm");
     write(&d, "index.js", "module.exports = 1;\n");
     write(
@@ -222,7 +225,13 @@ fn analyze_clean_npm_package_is_safe() {
     ]);
     assert_eq!(out.code, 0);
     assert!(
-        out.stdout.contains("\"verdict\": \"safe\""),
+        out.stdout.contains("\"verdict\": \"review\""),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("install-hook"), "{}", out.stdout);
+    assert!(
+        !out.stdout.contains("install-hook-suspicious"),
         "{}",
         out.stdout
     );
