@@ -37,3 +37,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: analyze-parity (Rust vs Go-captured goldens)
         run: cargo run -q -p xtask -- analyze-parity
+      - name: sbom-parity (Rust vs Go-captured goldens)
+        run: cargo run -q -p xtask -- sbom-parity

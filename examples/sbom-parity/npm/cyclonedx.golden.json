@@ -1,0 +1,37 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:npm/lodash@4.17.21",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "bf690311ee7b95e713ba568322e3533f2dd1cb880b189e99d4edef13592b81764daec43e2c54c61d5c558dc5cfb35ecb85b65519e74026ff17675b6f8f916f2a"
+        }
+      ],
+      "name": "lodash",
+      "purl": "pkg:npm/lodash@4.17.21",
+      "scope": "optional",
+      "type": "library",
+      "version": "4.17.21"
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "aegis:root:sbomparity"
+    },
+    {
+      "ref": "pkg:npm/lodash@4.17.21"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "aegis:root:sbomparity",
+      "name": "sbomparity",
+      "type": "application"
+    }
+  },
+  "specVersion": "1.5",
+  "version": 1
+}
