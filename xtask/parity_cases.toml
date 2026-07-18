@@ -1,0 +1,14 @@
+# Golden-output parity cases. Each case runs the `aegis` binary with `args`
+# and structurally diffs its --json against `golden`.
+#
+# Goldens under examples/ are Rust-candidate baselines until replaced with
+# output captured from the reference Go binary (aegis v0.29). Add cases as
+# each command's corpus lands; a phase is "parity-done" when its cases are
+# green against Go-captured goldens.
+
+# parse: fully offline + deterministic (no network), so it's the first
+# real parity case.
+[[case]]
+name = "parse-npm-lock"
+args = ["parse", "examples/parse/package-lock.json", "--json"]
+golden = "examples/parse/package-lock.golden.json"
