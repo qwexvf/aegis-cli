@@ -1,0 +1,117 @@
+[
+  {
+    "capability": "known-malware-ioc",
+    "description": "tarball contains a confirmed-malware filename IOC (router_init.js / router_runtime.js / tanstack_runner.js)",
+    "weight": 100
+  },
+  {
+    "capability": "hardcoded-secret",
+    "description": "source contains a hardcoded credential (AWS key, GitHub token, PEM private key, Stripe key, etc.)",
+    "weight": 80
+  },
+  {
+    "capability": "version-unpublished",
+    "description": "version was published then yanked — lockfile pins a package from an active incident window",
+    "weight": 75
+  },
+  {
+    "capability": "install-hook-suspicious",
+    "description": "install hook downloads-and-executes (curl|sh / wget|bash / node -e / base64|sh)",
+    "weight": 70
+  },
+  {
+    "capability": "git-dep-in-optional",
+    "description": "optionalDependency resolves to a git SHA commit — worm-propagation injection vector (Mini Shai-Hulud shape)",
+    "weight": 65
+  },
+  {
+    "capability": "obfuscated-payload",
+    "description": "decodes-then-executes (eval(atob(...)) / Function(decode(...))) — packed-malware idiom",
+    "weight": 60
+  },
+  {
+    "capability": "tarball-source-drift",
+    "description": "published tarball contains source files not present in the upstream git tag (payload smuggled past github review)",
+    "weight": 60
+  },
+  {
+    "capability": "maintainer-changed",
+    "description": "publisher of this version differs from publisher of previous version (maintainer-handover compromise shape)",
+    "weight": 55
+  },
+  {
+    "capability": "unlisted-large-file",
+    "description": "tarball contains a ≥512 KB code file not in package.json files field — smuggled payload shape",
+    "weight": 55
+  },
+  {
+    "capability": "maintainer-hijack-risk",
+    "description": "fresh publish + long gap from previous version + low downloads — classic maintainer-handover pattern",
+    "weight": 50
+  },
+  {
+    "capability": "suspicious-url",
+    "description": "string literal points at a paste / chat-relay / tunnel host or IDN homoglyph",
+    "weight": 50
+  },
+  {
+    "capability": "vcs-dependency",
+    "description": "manifest pins a dep to a git/VCS URL — bypasses registry immutability; invisible to security scans",
+    "weight": 45
+  },
+  {
+    "capability": "typosquat-risk",
+    "description": "name is within edit distance 2 of a top-1000 package — possible typosquat",
+    "weight": 40
+  },
+  {
+    "capability": "binary-dropper",
+    "description": "package ships an executable file (.exe/.dll/.so/.scpt) — unusual for a JS dep",
+    "weight": 35
+  },
+  {
+    "capability": "patch-version-drift",
+    "description": "this patch version gained capabilities the previous one didn't — semver violation",
+    "weight": 35
+  },
+  {
+    "capability": "dynamic-eval",
+    "description": "constructs and executes code at runtime (eval, new Function, exec)",
+    "weight": 25
+  },
+  {
+    "capability": "base64-decode",
+    "description": "decodes base64 — common obfuscation step when paired with eval/spawn",
+    "weight": 20
+  },
+  {
+    "capability": "shell-spawn",
+    "description": "spawns subprocesses (e.g. child_process.exec, subprocess.run, system())",
+    "weight": 20
+  },
+  {
+    "capability": "fs-write-outside-root",
+    "description": "writes files outside its own install dir (touches user config / system)",
+    "weight": 15
+  },
+  {
+    "capability": "raw-ip-literal",
+    "description": "contains a hard-coded IP literal (legitimate code uses hostnames)",
+    "weight": 15
+  },
+  {
+    "capability": "net-egress",
+    "description": "makes outbound network connections (http, fetch, sockets)",
+    "weight": 10
+  },
+  {
+    "capability": "env-read",
+    "description": "reads process environment variables (often secrets / credentials)",
+    "weight": 0
+  },
+  {
+    "capability": "install-hook-exec",
+    "description": "declares an install-time script the package manager runs automatically",
+    "weight": 0
+  }
+]

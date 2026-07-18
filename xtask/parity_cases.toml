@@ -6,9 +6,26 @@
 # each command's corpus lands; a phase is "parity-done" when its cases are
 # green against Go-captured goldens.
 
-# parse: fully offline + deterministic (no network), so it's the first
-# real parity case.
+# parse: fully offline + deterministic (no network), so these are the first
+# real parity cases.
 [[case]]
 name = "parse-npm-lock"
 args = ["parse", "examples/parse/package-lock.json", "--json"]
 golden = "examples/parse/package-lock.golden.json"
+
+[[case]]
+name = "parse-cargo-lock"
+args = ["parse", "examples/parse/Cargo.lock", "--json"]
+golden = "examples/parse/Cargo.golden.json"
+
+# allowlist / explain emit static, deterministic tables — good regression
+# guards for the built-in capability rules and risk model.
+[[case]]
+name = "allowlist"
+args = ["allowlist", "--json"]
+golden = "examples/static/allowlist.golden.json"
+
+[[case]]
+name = "explain"
+args = ["explain", "--json"]
+golden = "examples/static/explain.golden.json"

@@ -53,12 +53,13 @@ Status @ this snapshot:
                                        Go/Rust arg divergence via the GOLDEN model:
                                        per-case args drive Rust, golden is captured
                                        once from the reference — the args→golden
-                                       pairing IS the schema-mapping layer. First
-                                       case LIVE: parse examples/parse/package-
-                                       lock.json → green. REMAINING (data task, not
-                                       a blocker): replace Rust-candidate goldens
-                                       with Go v0.29-captured output + grow the
-                                       corpus (needs the Go binary).
+                                       pairing IS the schema-mapping layer. 4 cases
+                                       LIVE + green (parse npm + cargo, allowlist,
+                                       explain — all offline/deterministic); doubles
+                                       as a Rust-CLI regression suite now. REMAINING
+                                       (data task, not a blocker): replace Rust-
+                                       candidate goldens with Go v0.29-captured
+                                       output + grow the corpus (needs the Go binary).
   P1  domain ......................... DONE
   P2  lockfile (24 parsers) .......... DONE
   P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,
