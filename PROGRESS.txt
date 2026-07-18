@@ -368,25 +368,41 @@ RULE: every feature ships WITH its test in the same commit (CLI too - network-
 free integration tests in crates/aegis-cli/tests/cli.rs). Verify against the Go
 binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
 
-1. OTHER-ECOSYSTEM ENRICH FETCHERS  <- main gap for full `ci` parity
-   `ci` enrich fetches npm source only (registry::fetch_npm_source). Non-npm
-   lockfiles (requirements.txt / Cargo.lock / Gemfile.lock / go.sum) get
-   advisory-only verdicts - no capability scan. The SCANNERS already match Go
-   (analyze 36/36 across all 13 ecosystems proves it); only the per-registry
-   fetch layer is missing. Add fetch_<eco>_source mirroring the npm one:
-     - pypi     PyPI JSON API -> sdist/wheel (files.pythonhosted). START HERE
-                (7 incident fixtures - biggest non-npm corpus).
-     - crates   crates.io/api/v1/crates/<n>/<v>/download -> .crate (gzip-tar)
-     - rubygems rubygems.org/downloads/<n>-<v>.gem (tar-of-tars: data.tar.gz)
-     - go       module zip from proxy.golang.org
-   Wire each into scan::enrich_dep's ecosystem match. Verify each vs Go `ci`.
+1. [DONE-with-caveat] OTHER-ECOSYSTEM ENRICH FETCHERS
+   RE-EXAMINED against Go: this would DIVERGE from Go, not converge. Go v0.29
+   wires ONLY the npm source fetcher (cmd/aegis/risk_engine.go →
+   jspkgsource.New). jspkgsource.Fetch hard-errors on any non-npm ecosystem
+   ("cannot fetch ecosystem"); snapshot.go:539 enrich calls it for every dep,
+   so non-npm deps degrade to advisory-only verdicts IN GO TOO. Rust already
+   matches (scan::enrich_dep returns default for non-npm). Adding fetch_<eco>_
+   source to Rust = a feature BEYOND Go = a new divergence the parity gate
+   flags. Deferred until post-cutover as a deliberate enhancement, not parity.
 
-2. `ci` PARITY GATE  (after enrich is multi-eco)
-   Committed gate like `xtask analyze-parity`, but ci enrich hits the network
-   (tarballs + OSV) -> nondeterministic. Options: pin fixtures + record goldens
-   (network at --record only), or a small live smoke set. Lower ROI than #1.
+2. [DONE] `ci` PARITY GATE  →  `xtask ci-parity [--record]`
+   Mirrors analyze-parity: pinned lockfile corpus under examples/ci-parity/
+   <fixture>/ (lockfile + consuming source + ci.golden.json), Rust `ci --json`
+   normalized vs a Go-captured golden. Network-dependent (enrich fetches
+   tarballs + OSV), so it is OPT-IN, NOT in the offline fmt/clippy/test CI job.
+   Normalized subset drops drift-prone fields (project name, advisory epss/
+   summary/url); keeps verdict/score/flags/advisory-ids+severities+fixed_in.
+   FOUND + FIXED via this gate:
+     - ci `--json` omitted advisory fixed_in + in_kev (CiAdvisory lacked the
+       fields). Now mirrors Go's ciFindingAdvisoryJSON (field order + omitempty).
+     - The old "ci block matches Go on lodash 4.17.4" claim was captured with a
+       POLLUTED ~/.aegis/cache (stale parses). Clean Go re-fetch confirms Rust.
+   REACHABILITY GAP surfaced (real, not yet ported): Go ci runs a usage
+   analysis over the project dir. A dep with NO consuming source is marked
+   ReachabilityUnused → advisory verdict downgraded one level (Block→Prompt)
+   + capability flags suppressed (ci.go scoreSnapshot + downgradeVerdict). A
+   dep imported by project source is Used → full verdict. Rust ci has no
+   reachability step → always scores as Used. The fixtures pin the Used path
+   (each carries an index.js importing the dep) so Go+Rust agree today; porting
+   the Unused-downgrade to Rust ci is the follow-up (aegis-reach already does
+   the import/used-symbol analysis; wire it into scan::enrich).
 
 3. SMALLER COMMAND TAILS
+   - PORT REACHABILITY-UNUSED DOWNGRADE into Rust ci (see #2 gap) — biggest
+     remaining ci behavioral difference vs Go.
    - snapshot / explain (per-package) parity vs Go.
    - other-ecosystem used-symbols in aegis-reach (js/py/go/php done; ruby N/A).
 
