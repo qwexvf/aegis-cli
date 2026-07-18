@@ -274,25 +274,51 @@ fn eco_for_reach_lang(lang: aegis_reach::Language) -> Option<Ecosystem> {
     })
 }
 
+/// Ecosystems whose published source `enrich_dep` can fetch + capability-scan.
+/// The reachability layer keys off this set (only enriched ecosystems get a
+/// Used/Unused classification). npm/pypi/crates today.
+pub(crate) fn is_enriched_ecosystem(eco: Ecosystem) -> bool {
+    matches!(eco, Ecosystem::Npm | Ecosystem::PyPI | Ecosystem::Crates)
+}
+
+/// Fetch a dependency's published source from its registry. Returns the file
+/// map (relative path, bytes) or an `Err` for ecosystems without a fetcher /
+/// on any transport failure.
+fn fetch_source(
+    http: &dyn aegis_net::HttpClient,
+    dep: &Dependency,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
+    match dep.ecosystem {
+        Ecosystem::Npm => aegis_registry::fetch_npm_source(
+            http,
+            "https://registry.npmjs.org",
+            &dep.name,
+            &dep.version,
+        ),
+        Ecosystem::PyPI => {
+            aegis_registry::fetch_pypi_source(http, "https://pypi.org", &dep.name, &dep.version)
+        }
+        Ecosystem::Crates => {
+            aegis_registry::fetch_crates_source(http, "https://crates.io", &dep.name, &dep.version)
+        }
+        _ => Err("pkgsource: no fetcher for ecosystem".to_string()),
+    }
+}
+
 /// Enrich one dependency for `ci`: fetch its published source, AST + heuristics
 /// scan it, apply the allowlist, and return the capability risk assessment
-/// (flags + score). Mirrors Go's per-dep snapshot enrich.
+/// (flags + score). Mirrors Go's per-dep snapshot enrich, extended past Go to
+/// npm + pypi + crates (Go v0.29 fetches npm only).
 ///
-/// Only npm has a source fetcher today; other ecosystems return an empty
-/// assessment (no capability signal — they still score via advisories in the
-/// caller). Any fetch/scan failure degrades to an empty assessment so one bad
-/// dep never fails the whole run.
+/// Ecosystems without a fetcher — or any fetch/scan failure — return an empty
+/// assessment (no capability signal; they still score via advisories in the
+/// caller) so one bad dep never fails the whole run.
 pub(crate) fn enrich_dep(dep: &Dependency, allow: &aegis_domain::AllowSet) -> RiskAssessment {
-    if dep.ecosystem != Ecosystem::Npm || dep.name.is_empty() || dep.version.is_empty() {
+    if !is_enriched_ecosystem(dep.ecosystem) || dep.name.is_empty() || dep.version.is_empty() {
         return RiskAssessment::default();
     }
     let http = UreqClient::new();
-    let files = match aegis_registry::fetch_npm_source(
-        &http,
-        "https://registry.npmjs.org",
-        &dep.name,
-        &dep.version,
-    ) {
+    let files = match fetch_source(&http, dep) {
         Ok(f) => f,
         Err(_) => return RiskAssessment::default(),
     };
