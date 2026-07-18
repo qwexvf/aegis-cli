@@ -10,37 +10,45 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  12 workspace members (11 crates + xtask parity harness) · 497 tests (all green)
-  · clippy + rustfmt clean · 129 commits.
+  12 workspace members (11 crates + xtask parity harness) · 507 tests (all green)
+  · clippy + rustfmt clean · 137 commits.
   13 CLI commands: parse / analyze / ci / run / sbom / fix / allowlist / image /
   explain / reach / hook / actions / snapshot.
 
-  *** PARITY IS NOW LIVE (was blocked) ***
+  *** PARITY IS LIVE + MEASURED (was blocked) ***
   The Go aegis-cli source is local (../aegis-cli) + Go 1.26 installed, so real
-  Go-vs-Rust diffs run. Bridge: Go `analyze <spec> --local <dir>` == Rust
-  `analyze <dir>` (both AST-scan a local tree). Full analyze sweep over
-  examples/incidents (13 ecosystems, 36 fixtures): 36/36 match Go exactly on
-  verdict + score + capabilities. ALL 13 ecosystems green (Java grammar added,
-  closing the last maven gap). Three real parity
-  bugs found + fixed by diffing against Go: install-hook base flag; R + Perl
-  obfuscated-payload regexes; .ex/.exs analyzable-source (Elixir).
+  Go-vs-Rust diffs run.
+  - analyze: 36/36 incident fixtures across ALL 13 ecosystems match Go exactly
+    (verdict+score+capabilities). Committed, CI-enforced gate: `xtask
+    analyze-parity` (vendored corpus + Go-captured goldens, no Go needed at
+    check time) — .github/workflows/ci.yml.
+  - ci: ENRICH MODEL PORTED (the plan's big-risk item). Rust ci fetches each
+    dep's tarball, AST+heuristics scans it → per-dep verdict, folds in advisory
+    severity, emits the Go-shaped report; --fail-on is a verdict threshold
+    (default block). LIVE-matches Go on lodash 4.17.4 (verdict/score/flags/
+    summary + all 10 advisories). npm enrich only; other-eco fetchers pending.
+  - sbom: content-parity (CDX components + SPDX packages match Go).
+  Parity bugs found + fixed by diffing against Go: install-hook base flag;
+  R + Perl obfuscated-payload regexes; .ex/.exs analyzable-source (Elixir);
+  Java tree-sitter grammar (maven); advisory alias-over-dedup (ci 10 vs 8);
+  install-hook fingerprint population.
 
   Feature surface (all CLI-wired + LIVE-verified):
   - reachability (aegis-reach): imports + used-symbols (js/ts/py/go/php; ruby
     excluded by design) + intra-file call graph + cross-file transitive callers
     (`reach --function [--transitive]`).
-  - allowlist: builtin + config/`--allowlist` rules now APPLIED in analyze/run
-    (apply_allowlist suppresses flags + subtracts weight; suppressed flags stay
-    visible). Was previously listed-only.
+  - allowlist: builtin + config/`--allowlist` rules APPLIED in analyze/run/ci
+    (apply_allowlist suppresses flags + subtracts weight).
   - sbom: PURL + hashes + dep graph + license fields (`sbom --online` →
     CycloneDX licenses[] / SPDX concluded-declared) + advisory/vuln fields
-    (CycloneDX vulnerabilities[] / SPDX SECURITY refs). LIVE: lodash → MIT + 8
-    vulns.
+    (CycloneDX vulnerabilities[] / SPDX SECURITY refs).
   - image: local tarball OR registry pull; generic /v2 Bearer-challenge auth
     (`--username/--password` or AEGIS_REGISTRY_USER/PASS) for private images.
-  - ci/fix/run/sarif: OSV + GHSA (rate-limit-aware) + EPSS + KEV; `fix` uses the
-    shared crate::semver engine (prerelease-correct ordering).
-  - image auth added response headers to aegis-net HttpResponse.
+  - ci: per-dep enrich (registry::fetch_npm_source → scan → verdict) + OSV +
+    GHSA (rate-limit-aware) + EPSS + KEV; Go-shaped report, verdict fail-on.
+  - fix: shared crate::semver engine (prerelease-correct ordering).
+  - 13 AST grammars (js/py/ruby/rust/go/php/csharp/java/haskell/lua/gleam/
+    dart/cocoapods, native — no CGO).
 
   SECURITY E2E SUITE: crates/aegis-cli/tests/incidents.rs — reconstructs real
   supply-chain attacks + true-negatives + fleet scan; drives the real binary.
