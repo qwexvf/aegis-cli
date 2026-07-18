@@ -453,102 +453,11 @@ pub fn builtin_allow_rules() -> Vec<AllowRule> {
 }
 
 // ---------------------------------------------------------------------------
-// Minimal semver engine (stands in for Masterminds/semver).
+// Range engine (npm/node dialect). Version parsing + precedence live in
+// `crate::semver`; the caret/tilde/x-range/`||` constraint layer is here.
 // ---------------------------------------------------------------------------
 
-/// A pre-release identifier: numeric or alphanumeric, ordered per semver §11.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PreId {
-    Num(u64),
-    Text(String),
-}
-
-impl Ord for PreId {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (PreId::Num(a), PreId::Num(b)) => a.cmp(b),
-            (PreId::Text(a), PreId::Text(b)) => a.cmp(b),
-            // numeric identifiers always compare lower than alphanumeric ones.
-            (PreId::Num(_), PreId::Text(_)) => Ordering::Less,
-            (PreId::Text(_), PreId::Num(_)) => Ordering::Greater,
-        }
-    }
-}
-
-impl PartialOrd for PreId {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-/// A parsed semantic version. Build metadata is discarded (ignored in
-/// precedence, per semver §10).
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Version {
-    major: u64,
-    minor: u64,
-    patch: u64,
-    pre: Vec<PreId>,
-}
-
-impl Version {
-    fn new(major: u64, minor: u64, patch: u64) -> Version {
-        Version {
-            major,
-            minor,
-            patch,
-            pre: Vec::new(),
-        }
-    }
-
-    /// Parse a concrete version string ("v1.2.3", "4.17.21", "0.0.1-rc.1").
-    /// Missing minor/patch default to 0. Returns `None` on malformed input —
-    /// callers treat that as "no match", never an error.
-    fn parse(s: &str) -> Option<Version> {
-        let (comps, pre) = parse_components(s).ok()?;
-        Some(Version {
-            major: comps.first().copied().flatten().unwrap_or(0),
-            minor: comps.get(1).copied().flatten().unwrap_or(0),
-            patch: comps.get(2).copied().flatten().unwrap_or(0),
-            pre,
-        })
-    }
-}
-
-impl Ord for Version {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.major
-            .cmp(&other.major)
-            .then(self.minor.cmp(&other.minor))
-            .then(self.patch.cmp(&other.patch))
-            .then_with(|| cmp_pre(&self.pre, &other.pre))
-    }
-}
-
-impl PartialOrd for Version {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-/// Pre-release ordering: a version with a pre-release is *lower* than the same
-/// core version without one; two pre-releases compare identifier-by-identifier.
-fn cmp_pre(a: &[PreId], b: &[PreId]) -> Ordering {
-    match (a.is_empty(), b.is_empty()) {
-        (true, true) => Ordering::Equal,
-        (true, false) => Ordering::Greater,
-        (false, true) => Ordering::Less,
-        (false, false) => {
-            for (x, y) in a.iter().zip(b.iter()) {
-                let o = x.cmp(y);
-                if o != Ordering::Equal {
-                    return o;
-                }
-            }
-            a.len().cmp(&b.len())
-        }
-    }
-}
+use crate::semver::{parse_components, Version};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Op {
@@ -828,57 +737,6 @@ fn expand_bare(rest: &str, out: &mut Vec<Comparator>) -> Result<(), String> {
         ver: upper,
     });
     Ok(())
-}
-
-/// Split a version core into up to three segments (`Some(n)` numeric, `None`
-/// wildcard) plus its pre-release identifiers. Strips a leading `v`/`V` and any
-/// `+build` metadata. Errors on non-numeric segments or the wrong shape.
-type Components = (Vec<Option<u64>>, Vec<PreId>);
-
-fn parse_components(s: &str) -> Result<Components, String> {
-    let s = s.trim();
-    let s = s.strip_prefix(['v', 'V']).unwrap_or(s);
-    // drop +build metadata.
-    let s = s.split('+').next().unwrap_or(s);
-    let (core, pre) = match s.split_once('-') {
-        Some((c, p)) => (c, parse_pre(p)),
-        None => (s, Vec::new()),
-    };
-    if core.is_empty() {
-        return Err("empty version".to_string());
-    }
-    let mut comps = Vec::new();
-    for part in core.split('.') {
-        if part == "*" || part == "x" || part == "X" {
-            comps.push(None);
-        } else if !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()) {
-            let n = part
-                .parse::<u64>()
-                .map_err(|_| format!("version segment out of range: {part:?}"))?;
-            comps.push(Some(n));
-        } else {
-            return Err(format!("invalid version segment: {part:?}"));
-        }
-    }
-    if comps.is_empty() || comps.len() > 3 {
-        return Err(format!("version has {} segments (want 1-3)", comps.len()));
-    }
-    Ok((comps, pre))
-}
-
-fn parse_pre(p: &str) -> Vec<PreId> {
-    p.split('.')
-        .map(|id| {
-            if !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()) {
-                match id.parse::<u64>() {
-                    Ok(n) => PreId::Num(n),
-                    Err(_) => PreId::Text(id.to_string()),
-                }
-            } else {
-                PreId::Text(id.to_string())
-            }
-        })
-        .collect()
 }
 
 #[cfg(test)]

@@ -11,6 +11,7 @@ pub mod capability;
 pub mod fix;
 pub mod reachability;
 pub mod risk;
+mod semver;
 pub mod types;
 
 pub use advisory::{max_severity, Advisory, AdvisoryQuery, Severity};

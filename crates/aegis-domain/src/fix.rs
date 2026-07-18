@@ -62,10 +62,19 @@ pub fn build_fix_plan(deps: &[(Dependency, Vec<Advisory>)]) -> Vec<FixItem> {
     out
 }
 
-/// Compare two version strings numerically-aware per dotted segment, with a
-/// byte-compare fallback for non-numeric shapes. Handles "1.2.10" > "1.2.9"
-/// and a leading `v`. Mirrors `compareFixVersion`.
+/// Compare two version strings. When both parse as semver, uses full semver
+/// precedence — including pre-release ordering, so `1.2.3-rc.1 < 1.2.3` (the
+/// naive per-segment compare got this backwards). Falls back to a
+/// numerically-aware per-dotted-segment compare for non-semver shapes
+/// (date tags, `latest`, calendar versions). Handles a leading `v`.
 pub fn compare_fix_version(a: &str, b: &str) -> Ordering {
+    // Prefer real semver precedence when both sides parse.
+    if let (Some(va), Some(vb)) = (
+        crate::semver::Version::parse(a),
+        crate::semver::Version::parse(b),
+    ) {
+        return va.cmp(&vb);
+    }
     let a = a.strip_prefix('v').unwrap_or(a);
     let b = b.strip_prefix('v').unwrap_or(b);
     let (as_, bs): (Vec<&str>, Vec<&str>) = (a.split('.').collect(), b.split('.').collect());
@@ -266,6 +275,36 @@ mod tests {
         assert_eq!(compare_fix_version("v1.0.0", "1.0.0"), Ordering::Equal);
         assert_eq!(compare_fix_version("1.0", "1.0.1"), Ordering::Less);
         assert_eq!(compare_fix_version("2.0.0", "1.9.9"), Ordering::Greater);
+    }
+
+    #[test]
+    fn compare_orders_prerelease_below_release() {
+        // The naive per-segment compare got this backwards (treated the extra
+        // `-rc.1` segment as "greater"); semver precedence puts it lower.
+        assert_eq!(compare_fix_version("1.2.3-rc.1", "1.2.3"), Ordering::Less);
+        assert_eq!(
+            compare_fix_version("1.2.3", "1.2.3-rc.1"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            compare_fix_version("1.0.0-alpha", "1.0.0-beta"),
+            Ordering::Less
+        );
+        // Non-semver shapes still fall back to the byte/segment compare.
+        assert_eq!(compare_fix_version("latest", "latest"), Ordering::Equal);
+    }
+
+    #[test]
+    fn plan_does_not_treat_prerelease_as_forward_fix() {
+        // Installed 1.2.3; a `fixed_in` of a *prerelease* of the same release
+        // is not a forward upgrade → stays unresolved (was wrongly "resolved"
+        // before the semver fix).
+        let d = dep(Ecosystem::Npm, "pkg", "1.2.3");
+        let plan = build_fix_plan(&[(d, vec![adv("GHSA-x", "1.2.3-rc.1")])]);
+        assert_eq!(plan.len(), 1);
+        assert!(plan[0].target_version.is_empty());
+        assert_eq!(plan[0].unresolved.len(), 1);
+        assert!(plan[0].resolved.is_empty());
     }
 
     #[test]
