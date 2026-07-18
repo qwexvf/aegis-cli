@@ -178,13 +178,25 @@ impl CiNorm {
                     })
                     .collect();
                 advisories.sort_by(|a, b| a.id.cmp(&b.id));
+                // Go v0.29 enriches (fetches + capability-scans) ONLY npm; Rust
+                // also enriches pypi/crates (Rust-ahead). Go has no capability
+                // signal for non-npm, so for those ecosystems compare the
+                // Go-comparable surface only — verdict + advisories — and drop
+                // Rust's additive capability flags/score. npm stays a full
+                // Go-vs-Rust comparison.
+                let go_can_enrich = f.ecosystem == "npm";
+                let (flags, risk_score) = if go_can_enrich {
+                    (flags, f.risk_score)
+                } else {
+                    (Vec::new(), 0)
+                };
                 FindingN {
                     ecosystem: f.ecosystem,
                     name: f.name,
                     version: f.version,
                     direct: f.direct,
                     verdict: f.verdict,
-                    risk_score: f.risk_score,
+                    risk_score,
                     flags,
                     advisories,
                 }
