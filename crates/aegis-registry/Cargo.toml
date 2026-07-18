@@ -11,6 +11,8 @@ description = "Package-registry adapters (license + deprecation health) for the 
 aegis-domain = { path = "../aegis-domain" }
 aegis-net = { path = "../aegis-net", default-features = false }
 serde = { version = "1", features = ["derive"] }
+tar = "0.4"
+flate2 = "1"
 serde_json = "1"
 
 # Per-ecosystem license fetchers behind features, matching the lean-build
