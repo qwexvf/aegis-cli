@@ -106,14 +106,14 @@ Status @ this snapshot:
                                        advisories}]}. --fail-on is now a VERDICT
                                        threshold (safe|review|prompt|block, default
                                        block), not severity; hook/actions updated.
-                                       LIVE vs Go on lodash 4.17.4: verdict=block,
-                                       score=55, flags=[unlisted-large-file], summary
-                                       match. CI PARITY COMPLETE (was: advisory SET 8 vs 10)
-                                       — over-aggressive alias-dedup in
-                                       advisories_by_key drops distinct GHSAs sharing
-                                       a CVE alias (vuln-layer, affects fix/sarif
-                                       too); next fix. npm enrich only; other-eco
-                                       source fetchers = follow-up.
+                                       CI PARITY COMPLETE — LIVE vs Go on lodash
+                                       4.17.4: verdict=block, score=55,
+                                       flags=[unlisted-large-file], summary, AND all
+                                       10 advisories match. (Fixed the last diff:
+                                       advisories_by_key was alias-deduping OSV's
+                                       mutual alias-pairs 10→8; now id-only dedup,
+                                       also corrects fix/sarif.) npm enrich only;
+                                       other-ecosystem source fetchers = follow-up.
   P1  domain ......................... DONE
   P2  lockfile (24 parsers) .......... DONE
   P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,
