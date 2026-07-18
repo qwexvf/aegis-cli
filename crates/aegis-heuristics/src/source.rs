@@ -27,5 +27,7 @@ pub(crate) fn is_analyzable_source(filename: &str) -> bool {
         | "pl" | "pm"
         // Dart / Swift
         | "dart" | "swift"
+        // Elixir / Gleam (hex.pm)
+        | "ex" | "exs"
     )
 }
