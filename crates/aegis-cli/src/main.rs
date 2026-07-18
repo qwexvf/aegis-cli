@@ -33,14 +33,15 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// CI gate: parse a lockfile, look up CVEs (OSV), fail on findings.
+    /// CI gate: enrich each dep (fetch + scan → verdict) + advisories, fail on
+    /// any dep whose verdict meets the threshold.
     Ci {
         /// Path to the lockfile.
         file: String,
-        /// Severity threshold to fail on: critical, high, medium, low.
-        #[arg(long, default_value = "high")]
+        /// Verdict threshold to fail on: safe, review, prompt, block.
+        #[arg(long, default_value = "block")]
         fail_on: String,
-        /// Skip the network CVE lookup (offline / air-gapped).
+        /// Skip all network (no enrich, no advisory lookup) — offline gate.
         #[arg(long)]
         offline: bool,
         /// Emit machine-readable JSON.

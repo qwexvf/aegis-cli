@@ -24,8 +24,8 @@ pub use fix::{build_fix_plan, compare_fix_version, upgrade_command, FixItem};
 pub use reachability::{downgrade_unused, Reachability, UNREACHABLE_SUPPRESS_REASON};
 pub use risk::{
     drift_score, patch_version_drift_flag, provenance_risk_flag, risk_score, verdict,
-    RiskAssessment, RiskFlag, VerdictKind, VERDICT_THRESHOLD_BLOCK, VERDICT_THRESHOLD_PROMPT,
-    VERDICT_THRESHOLD_REVIEW,
+    verdict_for_advisories, RiskAssessment, RiskFlag, VerdictKind, VERDICT_THRESHOLD_BLOCK,
+    VERDICT_THRESHOLD_PROMPT, VERDICT_THRESHOLD_REVIEW,
 };
 pub use types::{Dependency, Ecosystem, Fingerprint, HookPhase, InstallHook};
 

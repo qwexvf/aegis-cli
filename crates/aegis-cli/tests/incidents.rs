@@ -342,10 +342,11 @@ checks = ["ast", "heuristics"]
 // against real vulnerable/compromised package versions on the live registry.
 
 #[test]
-#[ignore = "live network: hits api.osv.dev"]
+#[ignore = "live network: hits api.osv.dev + registry.npmjs.org"]
 fn live_ci_gate_blocks_real_vulnerable_lodash() {
     // lodash 4.17.4 has multiple real published advisories (prototype pollution,
-    // ReDoS). The CI gate must fail at --fail-on high against the live OSV feed.
+    // ReDoS) — a high-severity CVE forces a `block` verdict. The CI gate must
+    // fail at --fail-on block (the enrich model: verdict-based, matching Go).
     let d = tmp("live-ci");
     write(
         &d,
@@ -356,7 +357,7 @@ fn live_ci_gate_blocks_real_vulnerable_lodash() {
         "ci",
         d.join("package-lock.json").to_str().unwrap(),
         "--fail-on",
-        "high",
+        "block",
     ]);
     assert_eq!(
         out.code, 1,

@@ -297,6 +297,30 @@ checks = ["ast", "heuristics"]
 }
 
 #[test]
+fn ci_offline_json_reports_go_shape() {
+    // --offline (no enrich, no advisories) → every dep is safe → passed=true,
+    // and the report carries the Go-shaped project/summary fields. Network-free.
+    let d = tmp("cijson");
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21"}}}"#,
+    );
+    let out = run(&[
+        "ci",
+        d.join("package-lock.json").to_str().unwrap(),
+        "--offline",
+        "--json",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("\"passed\": true"), "{}", out.stdout);
+    assert!(out.stdout.contains("\"summary\""), "{}", out.stdout);
+    assert!(out.stdout.contains("\"enriched\": false"), "{}", out.stdout);
+    assert!(out.stdout.contains("\"fail_on\": \"block\""), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn ci_offline_sarif_emits_valid_log() {
     // --offline skips the OSV lookup → no findings, but --sarif must still emit
     // a well-formed SARIF 2.1.0 log (exit 0). Network-free.
