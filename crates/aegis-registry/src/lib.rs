@@ -32,4 +32,7 @@ pub use license::LicenseFetcher;
 #[cfg(feature = "npm")]
 pub use npm::{fetch_maintainer_signal, MaintainerSignal};
 #[cfg(feature = "npm")]
-pub use pkgsource::{fetch_crates_source, fetch_npm_source, fetch_pypi_source};
+pub use pkgsource::{
+    fetch_crates_source, fetch_go_source, fetch_npm_source, fetch_pypi_source,
+    fetch_rubygems_source,
+};

@@ -241,13 +241,163 @@ pub fn fetch_crates_source(
     extract_tgz_first_dir(&tb.body)
 }
 
+/// Fetch and extract a RubyGems gem's source. `api_base` is e.g.
+/// `https://rubygems.org` (injectable for tests). Downloads
+/// `{api_base}/downloads/{name}-{version}.gem` — a gem is an *uncompressed*
+/// tar wrapping `data.tar.gz` (the real source, files at root) plus metadata;
+/// this unwraps `data.tar.gz` and extracts it. Never panics.
+pub fn fetch_rubygems_source(
+    http: &dyn HttpClient,
+    api_base: &str,
+    name: &str,
+    version: &str,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
+    if name.is_empty() || version.is_empty() {
+        return Err("pkgsource: empty name/version".to_string());
+    }
+    let url = format!(
+        "{}/downloads/{}-{}.gem",
+        api_base.trim_end_matches('/'),
+        name,
+        version
+    );
+    let gem = http
+        .get(&url, &[])
+        .map_err(|e| format!("pkgsource: gem GET: {e}"))?;
+    if !gem.is_ok() {
+        return Err(format!("pkgsource: gem HTTP {}", gem.status));
+    }
+    if gem.body.len() as u64 > MAX_TARBALL_BYTES {
+        return Err("pkgsource: gem exceeds size cap".to_string());
+    }
+    extract_gem(&gem.body)
+}
+
+/// Fetch and extract a Go module's source zip from the module proxy.
+/// `proxy_base` is e.g. `https://proxy.golang.org` (injectable for tests).
+/// Downloads `{proxy_base}/{escaped-module}/@v/{escaped-version}.zip` and
+/// extracts it, stripping the `<module>@<version>/` prefix every entry carries.
+/// Uppercase letters in the module path / version are `!`-escaped per the
+/// proxy protocol. Never panics.
+pub fn fetch_go_source(
+    http: &dyn HttpClient,
+    proxy_base: &str,
+    name: &str,
+    version: &str,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
+    if name.is_empty() || version.is_empty() {
+        return Err("pkgsource: empty name/version".to_string());
+    }
+    let url = format!(
+        "{}/{}/@v/{}.zip",
+        proxy_base.trim_end_matches('/'),
+        escape_go(name),
+        escape_go(version)
+    );
+    let z = http
+        .get(&url, &[])
+        .map_err(|e| format!("pkgsource: go zip GET: {e}"))?;
+    if !z.is_ok() {
+        return Err(format!("pkgsource: go zip HTTP {}", z.status));
+    }
+    if z.body.len() as u64 > MAX_TARBALL_BYTES {
+        return Err("pkgsource: go zip exceeds size cap".to_string());
+    }
+    let prefix = format!("{name}@{version}/");
+    extract_zip(&z.body, &prefix)
+}
+
+/// Escape a Go module path / version for the proxy: each uppercase letter
+/// becomes `!` + its lowercase form (the proxy is case-insensitive on disk).
+/// Mirrors `golang.org/x/mod/module.EscapePath`.
+fn escape_go(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c.is_ascii_uppercase() {
+            out.push('!');
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Unzip `raw` (deflate), stripping `prefix` from each entry. Regular files
+/// only; bounded by [`MAX_FILE_BYTES`] and [`MAX_ENTRIES`].
+fn extract_zip(raw: &[u8], prefix: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let reader = std::io::Cursor::new(raw);
+    let mut zip = zip::ZipArchive::new(reader).map_err(|e| format!("pkgsource: open zip: {e}"))?;
+    let mut out = Vec::new();
+    for i in 0..zip.len() {
+        if out.len() >= MAX_ENTRIES {
+            break;
+        }
+        let mut f = match zip.by_index(i) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        if !f.is_file() {
+            continue;
+        }
+        let path = f.name().replace('\\', "/");
+        if !is_safe_rel(&path) {
+            continue;
+        }
+        let rel = path.strip_prefix(prefix).unwrap_or(&path).to_string();
+        if rel.is_empty() {
+            continue;
+        }
+        let mut buf = Vec::new();
+        if f.by_ref()
+            .take(MAX_FILE_BYTES)
+            .read_to_end(&mut buf)
+            .is_err()
+        {
+            continue;
+        }
+        out.push((rel, buf));
+    }
+    if out.is_empty() {
+        return Err("pkgsource: go zip had no extractable files".to_string());
+    }
+    Ok(out)
+}
+
+/// Unwrap a `.gem` (uncompressed tar) → its inner `data.tar.gz` → the source
+/// file map. Gem data files sit at the root (`lib/…`, `ext/…`), so no prefix
+/// is stripped.
+fn extract_gem(raw: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let mut archive = tar::Archive::new(raw);
+    let entries = archive
+        .entries()
+        .map_err(|e| format!("pkgsource: read gem: {e}"))?;
+    for entry in entries {
+        let mut entry = entry.map_err(|e| format!("pkgsource: gem entry: {e}"))?;
+        let path = entry
+            .path()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        if path == "data.tar.gz" {
+            let mut data = Vec::new();
+            entry
+                .by_ref()
+                .take(MAX_TARBALL_BYTES)
+                .read_to_end(&mut data)
+                .map_err(|e| format!("pkgsource: read gem data: {e}"))?;
+            return extract_tgz_map(&data, |p| Some(p.to_string()));
+        }
+    }
+    Err("pkgsource: gem has no data.tar.gz".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use aegis_net::MockHttpClient;
     use std::io::Write;
 
-    fn make_tgz(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    fn make_tar(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut builder = tar::Builder::new(Vec::new());
         for (name, body) in entries {
             let mut h = tar::Header::new_gnu();
@@ -257,10 +407,25 @@ mod tests {
             h.set_cksum();
             builder.append_data(&mut h, name, *body).unwrap();
         }
-        let tar_bytes = builder.into_inner().unwrap();
+        builder.into_inner().unwrap()
+    }
+
+    fn make_tgz(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let tar_bytes = make_tar(entries);
         let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         enc.write_all(&tar_bytes).unwrap();
         enc.finish().unwrap()
+    }
+
+    fn make_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let opts: zip::write::FileOptions<()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for (name, body) in entries {
+            w.start_file(*name, opts).unwrap();
+            w.write_all(body).unwrap();
+        }
+        w.finish().unwrap().into_inner()
     }
 
     #[test]
@@ -358,6 +523,56 @@ mod tests {
         );
         // bare top-level file → skipped
         assert_eq!(strip_first_component("README"), None);
+    }
+
+    #[test]
+    fn rubygems_unwraps_data_tar_gz() {
+        let base = "https://gems.test";
+        // A .gem is an uncompressed tar containing data.tar.gz (source at root).
+        let data = make_tgz(&[("lib/rack.rb", b"module Rack; end"), ("README.md", b"rack")]);
+        let gem = make_tar(&[
+            ("metadata.gz", b"--- fake"),
+            ("data.tar.gz", &data),
+            ("checksums.yaml.gz", b"--- fake"),
+        ]);
+        let http =
+            MockHttpClient::new().with(&format!("{base}/downloads/rack-2.0.5.gem"), 200, gem);
+        let files = fetch_rubygems_source(&http, base, "rack", "2.0.5").expect("fetch");
+        let names: Vec<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
+        assert!(names.contains(&"lib/rack.rb"), "{names:?}");
+        assert!(names.contains(&"README.md"), "{names:?}");
+    }
+
+    #[test]
+    fn go_unzips_and_strips_module_version_prefix() {
+        let base = "https://proxy.test";
+        let zip = make_zip(&[
+            ("github.com/foo/bar@v1.2.3/bar.go", b"package bar"),
+            (
+                "github.com/foo/bar@v1.2.3/internal/x.go",
+                b"package internal",
+            ),
+        ]);
+        let http = MockHttpClient::new().with(
+            &format!("{base}/github.com/foo/bar/@v/v1.2.3.zip"),
+            200,
+            zip,
+        );
+        let files = fetch_go_source(&http, base, "github.com/foo/bar", "v1.2.3").expect("fetch");
+        let names: Vec<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
+        assert!(names.contains(&"bar.go"), "{names:?}");
+        assert!(names.contains(&"internal/x.go"), "{names:?}");
+        assert!(!names.iter().any(|n| n.contains("@v1.2.3")));
+    }
+
+    #[test]
+    fn go_module_path_uppercase_escaped() {
+        assert_eq!(
+            escape_go("github.com/BurntSushi/toml"),
+            "github.com/!burnt!sushi/toml"
+        );
+        assert_eq!(escape_go("github.com/foo/bar"), "github.com/foo/bar");
+        assert_eq!(escape_go("v1.2.3"), "v1.2.3");
     }
 
     #[test]

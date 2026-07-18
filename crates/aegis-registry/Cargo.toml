@@ -14,6 +14,8 @@ serde = { version = "1", features = ["derive"] }
 tar = "0.4"
 flate2 = "1"
 serde_json = "1"
+# Go module archives are zip (deflate) — only the go source fetcher needs it.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # Per-ecosystem license fetchers behind features, matching the lean-build
 # philosophy. `depsdev` (package-health / deprecation) is separate since it
