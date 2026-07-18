@@ -1,0 +1,162 @@
+[
+  {
+    "capability": "dynamic-eval",
+    "ecosystem": "npm",
+    "name": "lodash",
+    "reason": "lodash._.template compiles templates via Function()",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "dynamic-eval",
+    "ecosystem": "npm",
+    "name": "underscore",
+    "reason": "underscore.template uses Function() for template compilation",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "dynamic-eval",
+    "ecosystem": "npm",
+    "name": "handlebars",
+    "reason": "handlebars compiles templates via Function()",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "dynamic-eval",
+    "ecosystem": "npm",
+    "name": "ejs",
+    "reason": "ejs uses Function() for template compilation",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "shell-spawn",
+    "ecosystem": "npm",
+    "name": "webpack",
+    "reason": "webpack spawns worker processes and loaders",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "shell-spawn",
+    "ecosystem": "npm",
+    "name": "@babel/core",
+    "reason": "babel spawns worker processes for parallel transforms",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "shell-spawn",
+    "ecosystem": "npm",
+    "name": "esbuild",
+    "reason": "esbuild spawns its native Go binary as a child process",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "shell-spawn",
+    "ecosystem": "npm",
+    "name": "rollup",
+    "reason": "rollup uses workers for parallel bundling",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "shell-spawn",
+    "ecosystem": "npm",
+    "name": "vite",
+    "reason": "vite spawns dev-server child processes",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "shell-spawn",
+    "ecosystem": "npm",
+    "name": "parcel",
+    "reason": "parcel uses worker processes",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "shell-spawn",
+    "ecosystem": "npm",
+    "name": "nodemon",
+    "reason": "nodemon spawns the user's node process",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "net-egress",
+    "ecosystem": "npm",
+    "name": "node-fetch",
+    "reason": "package's stated purpose is HTTP fetch",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "net-egress",
+    "ecosystem": "npm",
+    "name": "axios",
+    "reason": "package's stated purpose is HTTP",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "net-egress",
+    "ecosystem": "npm",
+    "name": "got",
+    "reason": "package's stated purpose is HTTP",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "net-egress",
+    "ecosystem": "npm",
+    "name": "undici",
+    "reason": "package's stated purpose is HTTP (Node's reference HTTP client)",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "install-hook-exec",
+    "ecosystem": "npm",
+    "name": "fsevents",
+    "reason": "macOS native fs watcher compiled at install time",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "install-hook-exec",
+    "ecosystem": "npm",
+    "name": "node-sass",
+    "reason": "compiles libsass binary at install time",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "install-hook-exec",
+    "ecosystem": "npm",
+    "name": "sharp",
+    "reason": "downloads libvips binary at install time",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "install-hook-exec",
+    "ecosystem": "npm",
+    "name": "better-sqlite3",
+    "reason": "compiles native sqlite3 at install time",
+    "source": "builtin",
+    "version_range": ""
+  },
+  {
+    "capability": "install-hook-exec",
+    "ecosystem": "npm",
+    "name": "bcrypt",
+    "reason": "compiles native bcrypt at install time",
+    "source": "builtin",
+    "version_range": ""
+  }
+]
