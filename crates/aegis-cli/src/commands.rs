@@ -98,15 +98,28 @@ struct CiFlag {
     weight: i32,
 }
 
+/// Mirrors Go's `ciFindingAdvisoryJSON` — same field order and `omitempty`
+/// rules so the `ci --json` report is byte-parity with the reference.
 #[derive(Serialize)]
 struct CiAdvisory {
     id: String,
     severity: String,
     summary: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     url: String,
     source: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    fixed_in: String,
+    #[serde(skip_serializing_if = "is_zero_f64")]
     epss: f64,
+    #[serde(skip_serializing_if = "is_zero_f64")]
     epss_percentile: f64,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    in_kev: bool,
+}
+
+fn is_zero_f64(v: &f64) -> bool {
+    *v == 0.0
 }
 
 pub(crate) fn run_ci(
@@ -303,8 +316,10 @@ impl From<&Advisory> for CiAdvisory {
             summary: a.summary.clone(),
             url: a.url.clone(),
             source: a.source.clone(),
+            fixed_in: a.fixed_in.clone(),
             epss: a.epss,
             epss_percentile: a.epss_percentile,
+            in_kev: a.in_kev,
         }
     }
 }
