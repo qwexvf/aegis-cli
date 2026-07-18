@@ -351,8 +351,12 @@ CUTOVER (P11): 100% corpus parity, reproduce cosign + SLSA release pipeline, fli
   GHSA lookup — DONE (aegis-vuln::ghsa, github GraphQL + token; needs CLI wiring
   into cve_findings alongside OSV). npm SLSA provenance/attestations — DONE
   (aegis-registry::fetch_provenance; needs wiring to set Dependency.provenance_
-  status → provenance_risk_flag). Capability allowlist — DONE (aegis-domain::
-  AllowSet; needs a config source + wiring into analyze/run suppression).
+  status → provenance_risk_flag). Capability allowlist — DONE + WIRED:
+  aegis-domain::apply_allowlist (+ Capability::from_name) suppresses matching
+  flags & subtracts weight; builtin rules now apply by default in analyze/run,
+  user rules via `analyze --allowlist <file>` + aegis.toml [[allow]] (run).
+  Suppressed flags stay visible (suppressed=true + suppress_by reason). LIVE:
+  demo-pkg shell-spawn 20→0.
   per-ecosystem version resolvers (npm needs a node-semver crate, NOT Cargo semver
   — different range syntax). DiskCache DONE: KEV feed (24h TTL) + OSV advisory
   docs (7d TTL, immutable) both cached under $XDG_CACHE_HOME/aegis, wired into
