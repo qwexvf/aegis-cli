@@ -1,0 +1,91 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "dataLicense": "CC0-1.0",
+  "name": "sbomparity",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-sbomparity",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "sbomparity",
+      "versionInfo": "NOASSERTION"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-crates-itoa-1.0.11",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:cargo/itoa@1.0.11",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "itoa",
+      "versionInfo": "1.0.11"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-crates-parity-fixture-0.1.0",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:cargo/parity-fixture@0.1.0",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "parity-fixture",
+      "versionInfo": "0.1.0"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-crates-serde-1.0.203",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:cargo/serde@1.0.203",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "serde",
+      "versionInfo": "1.0.203"
+    }
+  ],
+  "relationships": [
+    {
+      "relatedSpdxElement": "SPDXRef-Package-sbomparity",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Package-crates-itoa-1.0.11",
+      "relationshipType": "DYNAMIC_LINK",
+      "spdxElementId": "SPDXRef-Package-sbomparity"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Package-crates-parity-fixture-0.1.0",
+      "relationshipType": "DYNAMIC_LINK",
+      "spdxElementId": "SPDXRef-Package-sbomparity"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-Package-crates-serde-1.0.203",
+      "relationshipType": "DYNAMIC_LINK",
+      "spdxElementId": "SPDXRef-Package-sbomparity"
+    }
+  ],
+  "spdxVersion": "SPDX-2.3"
+}

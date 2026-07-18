@@ -1,0 +1,53 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:cargo/itoa@1.0.11",
+      "name": "itoa",
+      "purl": "pkg:cargo/itoa@1.0.11",
+      "scope": "optional",
+      "type": "library",
+      "version": "1.0.11"
+    },
+    {
+      "bom-ref": "pkg:cargo/parity-fixture@0.1.0",
+      "name": "parity-fixture",
+      "purl": "pkg:cargo/parity-fixture@0.1.0",
+      "scope": "optional",
+      "type": "library",
+      "version": "0.1.0"
+    },
+    {
+      "bom-ref": "pkg:cargo/serde@1.0.203",
+      "name": "serde",
+      "purl": "pkg:cargo/serde@1.0.203",
+      "scope": "optional",
+      "type": "library",
+      "version": "1.0.203"
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "aegis:root:sbomparity"
+    },
+    {
+      "ref": "pkg:cargo/itoa@1.0.11"
+    },
+    {
+      "ref": "pkg:cargo/parity-fixture@0.1.0"
+    },
+    {
+      "ref": "pkg:cargo/serde@1.0.203"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "aegis:root:sbomparity",
+      "name": "sbomparity",
+      "type": "application"
+    }
+  },
+  "specVersion": "1.5",
+  "version": 1
+}
