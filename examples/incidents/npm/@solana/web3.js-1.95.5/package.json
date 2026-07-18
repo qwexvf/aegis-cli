@@ -1,0 +1,9 @@
+{
+  "name": "@solana/web3.js",
+  "version": "1.95.5",
+  "description": "Solana Javascript API",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "echo no-op"
+  }
+}

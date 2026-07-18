@@ -1,0 +1,11 @@
+{
+  "verdict": "block",
+  "score": 150,
+  "capabilities": [
+    "env-read",
+    "install-hook-suspicious",
+    "net-egress",
+    "shell-spawn",
+    "suspicious-url"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "verdict": "prompt",
+  "score": 75,
+  "capabilities": [
+    "binary-dropper",
+    "typosquat-risk"
+  ]
+}

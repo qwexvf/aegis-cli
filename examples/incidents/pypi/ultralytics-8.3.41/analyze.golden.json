@@ -1,0 +1,7 @@
+{
+  "verdict": "review",
+  "score": 35,
+  "capabilities": [
+    "binary-dropper"
+  ]
+}

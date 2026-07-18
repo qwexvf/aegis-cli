@@ -1,0 +1,11 @@
+{
+  "verdict": "block",
+  "score": 120,
+  "capabilities": [
+    "base64-decode",
+    "dynamic-eval",
+    "fs-write-outside-root",
+    "net-egress",
+    "suspicious-url"
+  ]
+}

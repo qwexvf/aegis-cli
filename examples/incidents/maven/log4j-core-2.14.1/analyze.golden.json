@@ -1,0 +1,8 @@
+{
+  "verdict": "review",
+  "score": 35,
+  "capabilities": [
+    "dynamic-eval",
+    "net-egress"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "verdict": "prompt",
+  "score": 75,
+  "capabilities": [
+    "fs-write-outside-root",
+    "net-egress",
+    "suspicious-url"
+  ]
+}

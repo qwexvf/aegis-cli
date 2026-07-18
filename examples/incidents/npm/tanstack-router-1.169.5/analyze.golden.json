@@ -1,0 +1,13 @@
+{
+  "verdict": "block",
+  "score": 340,
+  "capabilities": [
+    "base64-decode",
+    "git-dep-in-optional",
+    "install-hook-exec",
+    "install-hook-suspicious",
+    "known-malware-ioc",
+    "net-egress",
+    "vcs-dependency"
+  ]
+}

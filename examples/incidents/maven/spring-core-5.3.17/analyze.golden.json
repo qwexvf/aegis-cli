@@ -1,0 +1,9 @@
+{
+  "verdict": "review",
+  "score": 50,
+  "capabilities": [
+    "dynamic-eval",
+    "fs-write-outside-root",
+    "net-egress"
+  ]
+}
