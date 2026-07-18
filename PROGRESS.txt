@@ -10,37 +10,42 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  11 crates · 384 tests + 3 live (all green) · clippy + rustfmt clean · 103 commits
+  12 workspace members (11 crates + xtask parity harness) · 497 tests (all green)
+  · clippy + rustfmt clean · 129 commits.
   13 CLI commands: parse / analyze / ci / run / sbom / fix / allowlist / image /
-  explain / reach / hook / actions / snapshot. `image` scans local tarball OR
-  pulls by ref from a registry (3 scan tiers). GHSA + provenance + allowlist all
-  CLI-wired. aegis-reach = 5 languages (js/ts/py/go/php/ruby).
-  SECURITY E2E SUITE: crates/aegis-cli/tests/incidents.rs — 11 scenarios
-  reconstruct real supply-chain attacks (event-stream, Shai-Hulud/TanStack
-  worm, obfuscated crypto-stealer, fromCharCode C2, hardcoded AWS key, binary
-  dropper, unlisted payload, typosquat, PyPI exfil) + true-negatives (clean →
-  safe) + fleet scan. Drives the real binary, asserts verdicts.
-  aegis-cli main.rs split 1385→148 lines (commands/scan/enrich/util modules).
-  Parallel-agent batch #2 (3 phases at once): reachability suppression
-  (aegis-domain, P5), deeper image scan — source-pattern heuristics per
-  extracted file (aegis-image, P6), + npm provenance wired into analyze
-  --online (P8, LIVE: lodash@4.17.10 → provenance-missing flag).
-  Parallel-agent batch (crate-level): GHSA lookup (aegis-vuln, github GraphQL —
-  WIRED into cli cve lookup, merges with OSV when GITHUB_TOKEN set), capability
-  allowlist (aegis-domain, pure semver match + builtin rules — `allowlist`
-  command lists them), npm provenance/attestations (aegis-registry, SLSA DSSE —
-  CLI wiring of provenance flag still pending).
-  Config runner (`run`) now has 5 check types: ast / heuristics / cve /
-  deprecated (deps.dev) / license (deny_licenses via LicenseFetcher).
-  `fix` = lockfile → OSV → version-bump plan + safe upgrade commands (verified
-  LIVE: lodash 4.17.4 → 4.18.0 resolves 10 advisories).
-  `ci --sarif` emits SARIF 2.1.0 (GitHub Code Scanning); verified LIVE:
-  lodash 4.17.4 → GHSA advisories → SARIF results w/ severity→level.
-  Concurrency = rayon (all cores), NOT tokio. AST parallel across cores.
-  analyze enriches the package from its manifest (npm package.json →
-  deps+hooks; go.mod → retract) so metadata heuristics fire. `analyze
-  --online` adds the npm packument maintainer checks (verified LIVE:
-  event-stream@3.3.6 → version-unpublished; lodash → safe).
+  explain / reach / hook / actions / snapshot.
+
+  *** PARITY IS NOW LIVE (was blocked) ***
+  The Go aegis-cli source is local (../aegis-cli) + Go 1.26 installed, so real
+  Go-vs-Rust diffs run. Bridge: Go `analyze <spec> --local <dir>` == Rust
+  `analyze <dir>` (both AST-scan a local tree). Full analyze sweep over
+  examples/incidents (13 ecosystems, 36 fixtures): 34/36 match Go exactly on
+  verdict + score + capabilities. 12 ecosystems fully green; the 2 misses are
+  maven (needs a Java tree-sitter grammar — documented gap). Three real parity
+  bugs found + fixed by diffing against Go: install-hook base flag; R + Perl
+  obfuscated-payload regexes; .ex/.exs analyzable-source (Elixir).
+
+  Feature surface (all CLI-wired + LIVE-verified):
+  - reachability (aegis-reach): imports + used-symbols (js/ts/py/go/php; ruby
+    excluded by design) + intra-file call graph + cross-file transitive callers
+    (`reach --function [--transitive]`).
+  - allowlist: builtin + config/`--allowlist` rules now APPLIED in analyze/run
+    (apply_allowlist suppresses flags + subtracts weight; suppressed flags stay
+    visible). Was previously listed-only.
+  - sbom: PURL + hashes + dep graph + license fields (`sbom --online` →
+    CycloneDX licenses[] / SPDX concluded-declared) + advisory/vuln fields
+    (CycloneDX vulnerabilities[] / SPDX SECURITY refs). LIVE: lodash → MIT + 8
+    vulns.
+  - image: local tarball OR registry pull; generic /v2 Bearer-challenge auth
+    (`--username/--password` or AEGIS_REGISTRY_USER/PASS) for private images.
+  - ci/fix/run/sarif: OSV + GHSA (rate-limit-aware) + EPSS + KEV; `fix` uses the
+    shared crate::semver engine (prerelease-correct ordering).
+  - image auth added response headers to aegis-net HttpResponse.
+
+  SECURITY E2E SUITE: crates/aegis-cli/tests/incidents.rs — reconstructs real
+  supply-chain attacks + true-negatives + fleet scan; drives the real binary.
+  Concurrency = rayon (all cores), NOT tokio.
+  aegis-cli main.rs modularized (commands/scan/enrich/util).
 
 -------------------------------------------------------------------------------
  PHASE STATUS  (plan has 12 phases, 0-11)
