@@ -278,7 +278,10 @@ fn eco_for_reach_lang(lang: aegis_reach::Language) -> Option<Ecosystem> {
 /// The reachability layer keys off this set (only enriched ecosystems get a
 /// Used/Unused classification). npm/pypi/crates today.
 pub(crate) fn is_enriched_ecosystem(eco: Ecosystem) -> bool {
-    matches!(eco, Ecosystem::Npm | Ecosystem::PyPI | Ecosystem::Crates)
+    matches!(
+        eco,
+        Ecosystem::Npm | Ecosystem::PyPI | Ecosystem::Crates | Ecosystem::RubyGems | Ecosystem::Go
+    )
 }
 
 /// Fetch a dependency's published source from its registry. Returns the file
@@ -301,6 +304,18 @@ fn fetch_source(
         Ecosystem::Crates => {
             aegis_registry::fetch_crates_source(http, "https://crates.io", &dep.name, &dep.version)
         }
+        Ecosystem::RubyGems => aegis_registry::fetch_rubygems_source(
+            http,
+            "https://rubygems.org",
+            &dep.name,
+            &dep.version,
+        ),
+        Ecosystem::Go => aegis_registry::fetch_go_source(
+            http,
+            "https://proxy.golang.org",
+            &dep.name,
+            &dep.version,
+        ),
         _ => Err("pkgsource: no fetcher for ecosystem".to_string()),
     }
 }
