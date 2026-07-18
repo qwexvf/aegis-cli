@@ -380,11 +380,16 @@ binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
 
 2. [DONE] `ci` PARITY GATE  →  `xtask ci-parity [--record]`
    Mirrors analyze-parity: pinned lockfile corpus under examples/ci-parity/
-   <fixture>/ (lockfile + consuming source + ci.golden.json), Rust `ci --json`
-   normalized vs a Go-captured golden. Network-dependent (enrich fetches
-   tarballs + OSV), so it is OPT-IN, NOT in the offline fmt/clippy/test CI job.
-   Normalized subset drops drift-prone fields (project name, advisory epss/
-   summary/url); keeps verdict/score/flags/advisory-ids+severities+fixed_in.
+   <fixture>/ (lockfile + optional consuming source + ci.golden.json), Rust
+   `ci --json` normalized vs a Go-captured golden. Network-dependent (enrich
+   fetches tarballs + OSV), so it is OPT-IN, NOT in the offline fmt/clippy/test
+   CI job. Normalized subset drops drift-prone fields (project name, advisory
+   epss/summary/url); keeps verdict/score/flags/advisory-ids+severities+fixed_in.
+   6 fixtures across 5 ecosystems, 6/6 match Go: npm-lodash (block, enrich caps
+   + 10 advisories + fixed_in), npm-clean (safe), pypi-jinja2 (block, 12 adv),
+   go-jwt (block, dgrijalva/jwt-go), rubygems-rack (block), crates-time (prompt,
+   GHSA+RUSTSEC). Non-npm = advisory-only (no fetcher in Go or Rust) → proves
+   OSV/GHSA lookup + verdict parity across ecosystems.
    FOUND + FIXED via this gate:
      - ci `--json` omitted advisory fixed_in + in_kev (CiAdvisory lacked the
        fields). Now mirrors Go's ciFindingAdvisoryJSON (field order + omitempty).
@@ -400,6 +405,11 @@ binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
    downgrade_verdict + downgrade_unused applied per dep. VERIFIED vs Go on
    lodash 4.17.4: bare lockfile → prompt (flag kept); +AEGIS_UNUSED_SUPPRESS →
    prompt (flag suppressed); index.js importing lodash → block. All 3 match Go.
+   GATED TO THE ENRICHED ECOSYSTEM (npm): Go only classifies deps of the
+   ecosystem it fetches+scans — a pypi/crates/go/gem dep stays Unknown (no
+   downgrade, full advisory verdict) even with consuming .py/.rs/etc source
+   present (verified: jinja2 bare AND +app.py → block both; jwt-go bare →
+   block). Rust run_ci now gates reachability on Ecosystem::Npm to match.
    (Empirical Go contract: a scored lockfile dep is Used iff imported else
    Unused — never Unknown; the source-`.json`/scannedEcos code path reads
    otherwise but the built binary behaves as Used-iff-imported.) The ci-parity
