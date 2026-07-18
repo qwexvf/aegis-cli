@@ -87,6 +87,15 @@ fn component_from_dep(d: &Dependency) -> Component {
         purl: (!p.is_empty()).then_some(p),
         scope: if d.direct { "required" } else { "optional" },
         hashes: hash_from_integrity(&d.integrity).map(|h| vec![h]),
+        // A resolved SPDX license → `licenses: [{license: {id}}]`; omitted
+        // when unknown (CycloneDX has no NOASSERTION requirement).
+        licenses: (!d.license.is_empty()).then(|| {
+            vec![LicenseChoice {
+                license: LicenseId {
+                    id: d.license.clone(),
+                },
+            }]
+        }),
     }
 }
 
@@ -248,12 +257,25 @@ struct Component {
     scope: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     hashes: Option<Vec<Hash>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    licenses: Option<Vec<LicenseChoice>>,
 }
 
 #[derive(Serialize)]
 struct Hash {
     alg: &'static str,
     content: String,
+}
+
+/// CycloneDX `licenses[]` entry: `{ "license": { "id": "MIT" } }`.
+#[derive(Serialize)]
+struct LicenseChoice {
+    license: LicenseId,
+}
+
+#[derive(Serialize)]
+struct LicenseId {
+    id: String,
 }
 
 #[derive(Serialize)]
@@ -312,6 +334,24 @@ mod tests {
         for bad in ["", "notalgo", "md5-aGk=", "sha512-!!!!"] {
             assert!(hash_from_integrity(bad).is_none(), "{bad}");
         }
+    }
+
+    #[test]
+    fn license_renders_as_spdx_id_choice() {
+        let mut d = dep("lodash", "4.17.21", true);
+        d.license = "MIT".into();
+        let json = build_json(&[d], &opts());
+        let v: Value = serde_json::from_str(&json).unwrap();
+        let comp = &v["components"][0];
+        assert_eq!(comp["licenses"][0]["license"]["id"], "MIT");
+    }
+
+    #[test]
+    fn absent_license_omits_field() {
+        // No license → the `licenses` key is skipped entirely (valid CycloneDX).
+        let json = build_json(&[dep("x", "1.0.0", true)], &opts());
+        let v: Value = serde_json::from_str(&json).unwrap();
+        assert!(v["components"][0].get("licenses").is_none());
     }
 
     #[test]

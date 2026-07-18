@@ -2,8 +2,9 @@
 //!
 //! Pure transform from a dependency list to an SPDX document. Deterministic:
 //! the caller supplies the timestamp + serial (used as the namespace UUID).
-//! License/advisory fields aren't on the Rust `Dependency` yet, so those emit
-//! `NOASSERTION` — the document stays spec-valid.
+//! A dep's `license` (resolved by `sbom --online`) fills `licenseConcluded`
+//! / `licenseDeclared`; an empty license emits `NOASSERTION` so the document
+//! stays spec-valid. Advisory fields aren't on `Dependency` yet.
 
 use aegis_domain::Dependency;
 use serde::Serialize;
@@ -83,6 +84,13 @@ pub fn build(deps: &[Dependency], opts: &Options) -> Document {
                 reference_locator: p,
             });
         }
+        // A resolved license populates both concluded and declared; empty
+        // stays NOASSERTION so the document remains spec-valid.
+        let license = if d.license.is_empty() {
+            "NOASSERTION".to_string()
+        } else {
+            d.license.clone()
+        };
         packages.push(Package {
             spdxid: pkg_id,
             name: d.name.clone(),
@@ -90,8 +98,8 @@ pub fn build(deps: &[Dependency], opts: &Options) -> Document {
             download_location: "NOASSERTION".into(),
             files_analyzed: false,
             external_refs,
-            license_concluded: "NOASSERTION".into(),
-            license_declared: "NOASSERTION".into(),
+            license_concluded: license.clone(),
+            license_declared: license,
             copyright_text: "NOASSERTION".into(),
         });
     }
@@ -279,5 +287,34 @@ mod tests {
         // scoped name has chars that must be replaced in the SPDXID
         let d = dep("@scope/pkg", "1.0.0", true);
         assert_eq!(package_id(&d), "Package-npm--scope-pkg-1.0.0");
+    }
+
+    #[test]
+    fn license_populates_concluded_and_declared() {
+        let mut d = dep("lodash", "4.17.21", true);
+        d.license = "MIT".into();
+        let v: Value = serde_json::from_str(&build_json(&[d], &opts())).unwrap();
+        let lodash = v["packages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == "lodash")
+            .unwrap();
+        assert_eq!(lodash["licenseConcluded"], "MIT");
+        assert_eq!(lodash["licenseDeclared"], "MIT");
+    }
+
+    #[test]
+    fn absent_license_stays_noassertion() {
+        let v: Value =
+            serde_json::from_str(&build_json(&[dep("x", "1.0.0", true)], &opts())).unwrap();
+        let x = v["packages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == "x")
+            .unwrap();
+        assert_eq!(x["licenseConcluded"], "NOASSERTION");
+        assert_eq!(x["licenseDeclared"], "NOASSERTION");
     }
 }

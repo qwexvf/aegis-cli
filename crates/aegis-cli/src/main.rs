@@ -161,6 +161,11 @@ enum Command {
         /// urn:uuid serial number for the BOM (omitted when absent).
         #[arg(long)]
         serial: Option<String>,
+        /// Resolve each dependency's SPDX license from its registry and
+        /// populate the SBOM license fields (network). Off by default so
+        /// `sbom` stays offline (licenses render as NOASSERTION / omitted).
+        #[arg(long)]
+        online: bool,
     },
     /// Scan a package source directory (AST + heuristics) and score it.
     Analyze {
@@ -235,7 +240,14 @@ fn main() -> ExitCode {
             format,
             project,
             serial,
-        } => run_sbom(&file, &format, project.as_deref(), serial.as_deref()),
+            online,
+        } => run_sbom(
+            &file,
+            &format,
+            project.as_deref(),
+            serial.as_deref(),
+            online,
+        ),
         Command::Analyze {
             dir,
             name,

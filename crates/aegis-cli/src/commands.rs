@@ -811,6 +811,7 @@ pub(crate) fn run_sbom(
     format: &str,
     project: Option<&str>,
     serial: Option<&str>,
+    online: bool,
 ) -> ExitCode {
     let fmt = format.to_ascii_lowercase();
     if fmt != "cyclonedx" && fmt != "spdx" {
@@ -828,7 +829,7 @@ pub(crate) fn run_sbom(
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(file);
-    let deps = match parse_file(basename, &bytes, &DirectMap::new()) {
+    let mut deps = match parse_file(basename, &bytes, &DirectMap::new()) {
         Ok(Some(d)) => d,
         Ok(None) => {
             eprintln!("aegis: no parser for lockfile '{basename}'");
@@ -839,6 +840,18 @@ pub(crate) fn run_sbom(
             return ExitCode::from(2);
         }
     };
+
+    // --online: resolve each dep's SPDX license from its registry (rayon
+    // over deps) and populate the license field the emitters read.
+    if online {
+        let fetcher = aegis_registry::LicenseFetcher::default();
+        deps.par_iter_mut().for_each(|d| {
+            let http = UreqClient::new();
+            if let Some(lic) = fetcher.fetch_license(&http, d.ecosystem, &d.name, &d.version) {
+                d.license = lic;
+            }
+        });
+    }
 
     let timestamp = time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
