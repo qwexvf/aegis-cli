@@ -113,9 +113,14 @@ Status @ this snapshot:
                                        deterministic, hand-rolled base64 → no deps
                                        beyond serde). `sbom` command (--format
                                        cyclonedx|spdx) + `ci --sarif`. All
-                                       LIVE-verified + integration-tested. Tail:
-                                       license/advisory SBOM fields await
-                                       Dependency schema growth (now NOASSERTION).
+                                       LIVE-verified + integration-tested. LICENSE
+                                       FIELDS DONE: Dependency.license added;
+                                       `sbom --online` resolves SPDX license via
+                                       LicenseFetcher (rayon over deps) → CycloneDX
+                                       licenses[] + SPDX licenseConcluded/Declared
+                                       (LIVE: lodash → MIT; offline stays
+                                       NOASSERTION/omitted). Tail: advisory SBOM
+                                       fields await Dependency advisory growth.
   P8  usecase ....................... DONE (functional)  analyze wires npm/go
                                        manifest parsers → NormalizedPackage +
                                        `--online` npm-packument maintainer x3 +

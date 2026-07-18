@@ -125,6 +125,10 @@ pub struct Dependency {
     /// "missing" when the npm provenance lookup found no attestation;
     /// empty when unqueried.
     pub provenance_status: String,
+    /// SPDX license expression from the registry, when resolved (e.g.
+    /// "MIT", "Apache-2.0"). Empty when unqueried or unknown — SBOM
+    /// emitters render empty as the spec's `NOASSERTION`.
+    pub license: String,
 }
 
 impl Dependency {
@@ -145,6 +149,7 @@ impl Default for Dependency {
             direct: false,
             depends_on: Vec::new(),
             provenance_status: String::new(),
+            license: String::new(),
         }
     }
 }
