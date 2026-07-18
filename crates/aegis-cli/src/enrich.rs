@@ -135,14 +135,14 @@ pub(crate) fn advisories_by_key(
         let key = q.key();
         let osv = results.get(&key).map(|v| v.as_slice()).unwrap_or(&[]);
         let ghsa = ghsa_results.get(&key).map(|v| v.as_slice()).unwrap_or(&[]);
+        // Dedup by primary id only (matches Go). Aliases are NOT used to
+        // suppress: OSV cross-lists some vulns as mutual alias-pairs (each
+        // GHSA names the other), and an alias-based dedup would wrongly drop
+        // one half of every such pair.
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for adv in osv.iter().chain(ghsa.iter()).cloned() {
-            if seen.contains(&adv.id) || adv.aliases.iter().any(|a| seen.contains(a)) {
+            if !seen.insert(adv.id.clone()) {
                 continue;
-            }
-            seen.insert(adv.id.clone());
-            for a in &adv.aliases {
-                seen.insert(a.clone());
             }
             flat.push(adv);
             owners.push(key.clone());
