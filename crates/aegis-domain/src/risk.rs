@@ -400,6 +400,18 @@ pub fn verdict_for_advisories(advisories: &[crate::Advisory]) -> VerdictKind {
     }
 }
 
+/// Lower a verdict by one level: Block→Prompt, Prompt→Review, Review→Safe,
+/// Safe→Safe. Mirrors Go's `downgradeVerdict` — used by `ci` to dampen the
+/// advisory verdict of a dependency confirmed unused by the project source.
+pub fn downgrade_verdict(v: VerdictKind) -> VerdictKind {
+    match v {
+        VerdictKind::Block => VerdictKind::Prompt,
+        VerdictKind::Prompt => VerdictKind::Review,
+        VerdictKind::Review => VerdictKind::Safe,
+        VerdictKind::Safe => VerdictKind::Safe,
+    }
+}
+
 pub const VERDICT_THRESHOLD_REVIEW: i32 = 21;
 pub const VERDICT_THRESHOLD_PROMPT: i32 = 61;
 pub const VERDICT_THRESHOLD_BLOCK: i32 = 100;
@@ -568,5 +580,14 @@ mod verdict_tests {
             verdict_for_advisories(&[adv(Severity::Low), adv(Severity::High)]),
             VerdictKind::Block
         );
+    }
+
+    #[test]
+    fn downgrade_verdict_drops_one_level() {
+        assert_eq!(downgrade_verdict(VerdictKind::Block), VerdictKind::Prompt);
+        assert_eq!(downgrade_verdict(VerdictKind::Prompt), VerdictKind::Review);
+        assert_eq!(downgrade_verdict(VerdictKind::Review), VerdictKind::Safe);
+        // Safe is the floor.
+        assert_eq!(downgrade_verdict(VerdictKind::Safe), VerdictKind::Safe);
     }
 }

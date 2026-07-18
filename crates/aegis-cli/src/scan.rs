@@ -137,6 +137,143 @@ pub(crate) fn scan_source(
     (fp.capabilities, assessment)
 }
 
+/// Directories that hold dependency installs or build output, not user
+/// source. Walking into them would mark transitive deps as "used" via *their*
+/// imports, defeating the reachability layer. Mirrors Go's `SkipDirs`.
+const REACH_SKIP_DIRS: &[&str] = &[
+    "node_modules",
+    "bower_components",
+    "vendor",
+    "target",
+    "dist",
+    "build",
+    "out",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".turbo",
+    ".cache",
+    ".git",
+    ".hg",
+    ".svn",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "site-packages",
+    ".bundle",
+    ".gradle",
+    ".idea",
+    ".vscode",
+];
+
+/// Per-ecosystem set of dependency keys imported by the project's own source,
+/// used to classify each dep as reachable (Used) or not (Unused) for the `ci`
+/// reachability downgrade. Built by [`project_reachability`].
+pub(crate) struct ProjectReach {
+    imported: HashMap<Ecosystem, std::collections::HashSet<String>>,
+}
+
+impl ProjectReach {
+    /// Classify a dependency. `Used` when the project source imports it,
+    /// otherwise `Unused` — matching Go's observed `ci` contract (a dep in a
+    /// scanned lockfile that no source imports is Unused, never Unknown). Go
+    /// import paths sit under a module root, so match by prefix there.
+    pub(crate) fn classify(&self, dep: &Dependency) -> aegis_domain::Reachability {
+        use aegis_domain::Reachability;
+        let Some(keys) = self.imported.get(&dep.ecosystem) else {
+            return Reachability::Unused;
+        };
+        if keys.contains(&dep.name) {
+            return Reachability::Used;
+        }
+        if dep.ecosystem == Ecosystem::Go {
+            let prefix = format!("{}/", dep.name);
+            if keys.iter().any(|k| k.starts_with(&prefix)) {
+                return Reachability::Used;
+            }
+        }
+        Reachability::Unused
+    }
+}
+
+/// Walk the project directory (skipping dependency/build dirs) and build a
+/// per-ecosystem import index from its source files. Mirrors Go's
+/// `AnalyzeUsage` + `WalkProject`. Bounded like [`collect_files`].
+pub(crate) fn project_reachability(project_dir: &Path) -> ProjectReach {
+    const MAX_FILES: usize = 20_000;
+    const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
+    let mut imported: HashMap<Ecosystem, std::collections::HashSet<String>> = HashMap::new();
+    let mut count = 0usize;
+    let mut stack = vec![project_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if count >= MAX_FILES {
+                return ProjectReach { imported };
+            }
+            let path = entry.path();
+            let Ok(ft) = entry.file_type() else { continue };
+            if ft.is_dir() {
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default();
+                if !REACH_SKIP_DIRS.contains(&name) {
+                    stack.push(path);
+                }
+                continue;
+            }
+            if !ft.is_file() {
+                continue;
+            }
+            let name = path.to_string_lossy();
+            let Some(lang) = aegis_reach::language_for_path(&name) else {
+                continue;
+            };
+            let Some(eco) = eco_for_reach_lang(lang) else {
+                continue;
+            };
+            let too_big = entry
+                .metadata()
+                .map(|m| m.len() > MAX_FILE_BYTES)
+                .unwrap_or(true);
+            if too_big {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
+            count += 1;
+            let bucket = imported.entry(eco).or_default();
+            for imp in aegis_reach::extract_with(lang, &bytes) {
+                if !imp.dep_key.is_empty() {
+                    bucket.insert(imp.dep_key);
+                }
+            }
+        }
+    }
+    ProjectReach { imported }
+}
+
+/// Map a reach grammar to its lockfile ecosystem. Mirrors Go's
+/// `EcosystemForLanguage` for the languages the reach crate supports.
+fn eco_for_reach_lang(lang: aegis_reach::Language) -> Option<Ecosystem> {
+    use aegis_reach::Language;
+    Some(match lang {
+        Language::JavaScript => Ecosystem::Npm,
+        Language::Python => Ecosystem::PyPI,
+        Language::Go => Ecosystem::Go,
+        Language::Php => Ecosystem::Packagist,
+        Language::Ruby => Ecosystem::RubyGems,
+    })
+}
+
 /// Enrich one dependency for `ci`: fetch its published source, AST + heuristics
 /// scan it, apply the allowlist, and return the capability risk assessment
 /// (flags + score). Mirrors Go's per-dep snapshot enrich.
@@ -377,4 +514,84 @@ pub(crate) fn lockfile_deps(files: &[(String, Vec<u8>)]) -> Vec<Dependency> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aegis_domain::Reachability;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn dep(name: &str, eco: Ecosystem) -> Dependency {
+        Dependency {
+            ecosystem: eco,
+            name: name.to_string(),
+            version: String::new(),
+            integrity: String::new(),
+            direct: false,
+            depends_on: Vec::new(),
+            provenance_status: String::new(),
+            license: String::new(),
+        }
+    }
+
+    fn scratch() -> std::path::PathBuf {
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let d = std::env::temp_dir().join(format!(
+            "aegis-reach-ut-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn imported_dep_is_used_others_unused() {
+        let dir = scratch();
+        std::fs::write(
+            dir.join("index.js"),
+            b"const _ = require('lodash');\n_.merge({}, {});\n",
+        )
+        .unwrap();
+        let reach = project_reachability(&dir);
+        assert_eq!(
+            reach.classify(&dep("lodash", Ecosystem::Npm)),
+            Reachability::Used
+        );
+        // A dep the source never imports is Unused (not Unknown) — matches Go's
+        // ci contract for a scanned lockfile.
+        assert_eq!(
+            reach.classify(&dep("left-pad", Ecosystem::Npm)),
+            Reachability::Unused
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bare_project_marks_all_unused() {
+        // No source files at all → nothing imported → every dep Unused.
+        let dir = scratch();
+        let reach = project_reachability(&dir);
+        assert_eq!(
+            reach.classify(&dep("lodash", Ecosystem::Npm)),
+            Reachability::Unused
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn node_modules_is_skipped() {
+        // An import living under node_modules must not count as project usage.
+        let dir = scratch();
+        let nm = dir.join("node_modules").join("foo");
+        std::fs::create_dir_all(&nm).unwrap();
+        std::fs::write(nm.join("index.js"), b"require('lodash');\n").unwrap();
+        let reach = project_reachability(&dir);
+        assert_eq!(
+            reach.classify(&dep("lodash", Ecosystem::Npm)),
+            Reachability::Unused
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
