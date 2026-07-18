@@ -28,6 +28,7 @@ use std::process::Command;
 use serde::Deserialize;
 
 mod analyze_parity;
+mod ci_parity;
 mod jsondiff;
 
 #[derive(Deserialize)]
@@ -50,8 +51,9 @@ fn main() -> std::process::ExitCode {
     match args.first().map(String::as_str) {
         Some("parity") => run_parity(record),
         Some("analyze-parity") => analyze_parity::run(record),
+        Some("ci-parity") => ci_parity::run(record),
         _ => {
-            eprintln!("usage: xtask <parity|analyze-parity> [--record]");
+            eprintln!("usage: xtask <parity|analyze-parity|ci-parity> [--record]");
             std::process::ExitCode::from(2)
         }
     }

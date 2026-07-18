@@ -1,0 +1,90 @@
+{
+  "fail_on": "block",
+  "enriched": true,
+  "passed": false,
+  "summary": {
+    "total": 1,
+    "safe": 0,
+    "review": 0,
+    "prompt": 0,
+    "blocked": 1
+  },
+  "findings": [
+    {
+      "ecosystem": "npm",
+      "name": "lodash",
+      "version": "4.17.4",
+      "direct": false,
+      "verdict": "block",
+      "risk_score": 55,
+      "flags": [
+        {
+          "code": "unlisted-large-file",
+          "weight": 55
+        }
+      ],
+      "advisories": [
+        {
+          "id": "GHSA-29mw-wpgm-hmr9",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "4.17.21"
+        },
+        {
+          "id": "GHSA-35jh-r3h4-6jhm",
+          "severity": "high",
+          "source": "osv",
+          "fixed_in": "4.17.21"
+        },
+        {
+          "id": "GHSA-4xc9-xhrj-v574",
+          "severity": "high",
+          "source": "osv",
+          "fixed_in": "4.17.11"
+        },
+        {
+          "id": "GHSA-f23m-r3pf-42rh",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "4.18.0"
+        },
+        {
+          "id": "GHSA-fvqr-27wr-82fm",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "4.17.5"
+        },
+        {
+          "id": "GHSA-jf85-cpcp-j695",
+          "severity": "critical",
+          "source": "osv",
+          "fixed_in": "4.17.12"
+        },
+        {
+          "id": "GHSA-p6mc-m468-83gw",
+          "severity": "high",
+          "source": "osv",
+          "fixed_in": "4.17.19"
+        },
+        {
+          "id": "GHSA-r5fr-rjxr-66jc",
+          "severity": "high",
+          "source": "osv",
+          "fixed_in": "4.18.0"
+        },
+        {
+          "id": "GHSA-x5rq-j2xg-h7qm",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "4.17.11"
+        },
+        {
+          "id": "GHSA-xxjr-mmjv-4gpg",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "4.17.23"
+        }
+      ]
+    }
+  ]
+}

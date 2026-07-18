@@ -269,7 +269,7 @@ fn stdout_or_err(out: std::process::Output, what: &str) -> Result<String, String
 
 /// Find the Go `aegis` binary: `$AEGIS_GO_BIN` if set, else build it from the
 /// sibling `../aegis-cli` module into `target/aegis-go`.
-fn locate_go_binary() -> Result<PathBuf, String> {
+pub(crate) fn locate_go_binary() -> Result<PathBuf, String> {
     if let Ok(p) = std::env::var("AEGIS_GO_BIN") {
         let p = PathBuf::from(p);
         if p.is_file() {
