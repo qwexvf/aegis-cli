@@ -108,7 +108,7 @@ Status @ this snapshot:
                                        block), not severity; hook/actions updated.
                                        LIVE vs Go on lodash 4.17.4: verdict=block,
                                        score=55, flags=[unlisted-large-file], summary
-                                       match. REMAINING diff: advisory SET (8 vs 10)
+                                       match. CI PARITY COMPLETE (was: advisory SET 8 vs 10)
                                        — over-aggressive alias-dedup in
                                        advisories_by_key drops distinct GHSAs sharing
                                        a CVE alias (vuln-layer, affects fix/sarif
