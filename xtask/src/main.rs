@@ -27,6 +27,7 @@ use std::process::Command;
 
 use serde::Deserialize;
 
+mod analyze_parity;
 mod jsondiff;
 
 #[derive(Deserialize)]
@@ -45,13 +46,12 @@ struct Case {
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let record = args.iter().any(|a| a == "--record");
     match args.first().map(String::as_str) {
-        Some("parity") => {
-            let record = args.iter().any(|a| a == "--record");
-            run_parity(record)
-        }
+        Some("parity") => run_parity(record),
+        Some("analyze-parity") => analyze_parity::run(record),
         _ => {
-            eprintln!("usage: xtask parity [--record]");
+            eprintln!("usage: xtask <parity|analyze-parity> [--record]");
             std::process::ExitCode::from(2)
         }
     }

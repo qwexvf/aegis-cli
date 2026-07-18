@@ -1,0 +1,9 @@
+{
+  "verdict": "block",
+  "score": 135,
+  "capabilities": [
+    "binary-dropper",
+    "install-hook-exec",
+    "install-hook-suspicious"
+  ]
+}

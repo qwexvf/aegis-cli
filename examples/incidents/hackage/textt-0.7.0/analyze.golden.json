@@ -1,0 +1,11 @@
+{
+  "verdict": "block",
+  "score": 180,
+  "capabilities": [
+    "env-read",
+    "install-hook-suspicious",
+    "shell-spawn",
+    "suspicious-url",
+    "typosquat-risk"
+  ]
+}

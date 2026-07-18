@@ -1,0 +1,13 @@
+{
+  "verdict": "block",
+  "score": 265,
+  "capabilities": [
+    "base64-decode",
+    "dynamic-eval",
+    "install-hook-exec",
+    "install-hook-suspicious",
+    "net-egress",
+    "obfuscated-payload",
+    "suspicious-url"
+  ]
+}

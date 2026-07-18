@@ -1,0 +1,8 @@
+{
+  "verdict": "review",
+  "score": 45,
+  "capabilities": [
+    "base64-decode",
+    "dynamic-eval"
+  ]
+}

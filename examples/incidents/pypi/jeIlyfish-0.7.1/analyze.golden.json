@@ -1,0 +1,10 @@
+{
+  "verdict": "prompt",
+  "score": 95,
+  "capabilities": [
+    "base64-decode",
+    "dynamic-eval",
+    "net-egress",
+    "typosquat-risk"
+  ]
+}

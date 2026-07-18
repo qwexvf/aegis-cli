@@ -1,0 +1,8 @@
+{
+  "verdict": "block",
+  "score": 120,
+  "capabilities": [
+    "install-hook-suspicious",
+    "suspicious-url"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "verdict": "block",
+  "score": 105,
+  "capabilities": [
+    "base64-decode",
+    "dynamic-eval",
+    "net-egress",
+    "suspicious-url"
+  ]
+}

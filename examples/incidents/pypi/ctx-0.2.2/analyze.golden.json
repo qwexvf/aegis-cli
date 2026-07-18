@@ -1,0 +1,9 @@
+{
+  "verdict": "block",
+  "score": 100,
+  "capabilities": [
+    "net-egress",
+    "suspicious-url",
+    "typosquat-risk"
+  ]
+}

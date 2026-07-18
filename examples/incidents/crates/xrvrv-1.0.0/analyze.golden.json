@@ -1,0 +1,9 @@
+{
+  "verdict": "block",
+  "score": 140,
+  "capabilities": [
+    "install-hook-suspicious",
+    "shell-spawn",
+    "suspicious-url"
+  ]
+}

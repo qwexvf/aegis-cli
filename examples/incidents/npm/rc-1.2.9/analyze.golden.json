@@ -1,0 +1,9 @@
+{
+  "verdict": "block",
+  "score": 140,
+  "capabilities": [
+    "install-hook-exec",
+    "install-hook-suspicious",
+    "typosquat-risk"
+  ]
+}

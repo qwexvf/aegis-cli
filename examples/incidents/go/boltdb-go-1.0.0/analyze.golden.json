@@ -1,0 +1,9 @@
+{
+  "verdict": "prompt",
+  "score": 80,
+  "capabilities": [
+    "net-egress",
+    "shell-spawn",
+    "suspicious-url"
+  ]
+}

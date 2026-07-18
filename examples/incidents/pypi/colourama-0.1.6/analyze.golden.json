@@ -1,0 +1,9 @@
+{
+  "verdict": "prompt",
+  "score": 70,
+  "capabilities": [
+    "net-egress",
+    "shell-spawn",
+    "typosquat-risk"
+  ]
+}
