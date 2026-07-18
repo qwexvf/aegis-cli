@@ -56,6 +56,7 @@ pub fn build(deps: &[Dependency], advisories: &AdvisoryMap, opts: &Options) -> B
     let vulnerabilities = vulnerabilities_from(deps, advisories);
 
     Bom {
+        schema: "http://cyclonedx.org/schema/bom-1.5.schema.json",
         bom_format: "CycloneDX",
         spec_version: "1.5",
         serial_number: opts.serial_number.clone(),
@@ -246,6 +247,8 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
 
 #[derive(Serialize)]
 pub struct Bom {
+    #[serde(rename = "$schema")]
+    schema: &'static str,
     #[serde(rename = "bomFormat")]
     bom_format: &'static str,
     #[serde(rename = "specVersion")]
@@ -362,7 +365,7 @@ struct LicenseId {
 struct DependencyNode {
     #[serde(rename = "ref")]
     reference: String,
-    #[serde(rename = "dependsOn")]
+    #[serde(rename = "dependsOn", skip_serializing_if = "Vec::is_empty")]
     depends_on: Vec<String>,
 }
 
