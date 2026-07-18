@@ -7,8 +7,8 @@ use std::process::ExitCode;
 use aegis_domain::{
     build_fix_plan, builtin_allow_rules, downgrade_unused, downgrade_verdict, risk_score,
     upgrade_command, verdict, verdict_for_advisories, Advisory, AdvisoryQuery, Capability,
-    CapabilitySet, Dependency, Fingerprint, Reachability, RiskAssessment, Severity, VerdictKind,
-    ALL_CAPABILITIES,
+    CapabilitySet, Dependency, Ecosystem, Fingerprint, Reachability, RiskAssessment, Severity,
+    VerdictKind, ALL_CAPABILITIES,
 };
 use aegis_lockfile::{parse_file, DirectMap};
 use aegis_net::UreqClient;
@@ -204,6 +204,11 @@ pub(crate) fn run_ci(
     // Used / Unused. A dep no project file imports has its advisory verdict
     // dampened one level (Go's ci.go downgrade), and — only when opted in via
     // AEGIS_UNUSED_SUPPRESS — its non-install capability flags suppressed.
+    //
+    // Gated to the enriched ecosystem (npm): Go only classifies deps of the
+    // ecosystem it actually fetches+scans; a pypi/crates/go/gem dep stays
+    // ReachabilityUnknown (no downgrade, full advisory verdict) even with
+    // consuming source present — verified against Go on jinja2 / jwt-go.
     let project_dir = path.parent().unwrap_or_else(|| Path::new("."));
     let reach = project_reachability(project_dir);
     let unused_suppress = std::env::var_os("AEGIS_UNUSED_SUPPRESS").is_some();
@@ -217,7 +222,11 @@ pub(crate) fn run_ci(
             } else {
                 RiskAssessment::default()
             };
-            let reachability = reach.classify(d);
+            let reachability = if d.ecosystem == Ecosystem::Npm {
+                reach.classify(d)
+            } else {
+                Reachability::Unknown
+            };
             let assessment = downgrade_unused(&raw, reachability, unused_suppress);
             let advs = adv_map.get(&d.versioned_key()).cloned().unwrap_or_default();
             let cap_v = verdict(&assessment, &RiskAssessment::default());
