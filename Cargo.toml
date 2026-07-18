@@ -12,6 +12,7 @@ members = [
     "crates/aegis-reach",
     "crates/aegis-image",
     "crates/aegis-cli",
+    "xtask",
 ]
 
 [workspace.package]

@@ -45,12 +45,20 @@ Status @ this snapshot:
 -------------------------------------------------------------------------------
  PHASE STATUS  (plan has 12 phases, 0-11)
 -------------------------------------------------------------------------------
-  P0  scaffold + parity harness ...... BLOCKED  scaffold done. Parity harness
-                                       architecturally blocked: Go CLI is
-                                       snapshot/registry-model, Rust port is
-                                       lockfile-direct — no same-args diff. Needs a
-                                       schema-mapping layer first (documented,
-                                       deferred with rationale, not a code gap).
+  P0  scaffold + parity harness ...... HARNESS BUILT  xtask/ crate: `xtask parity
+                                       [--record]` runs the Rust binary per case
+                                       (xtask/parity_cases.toml), structurally diffs
+                                       --json against a golden (order-independent
+                                       jsondiff engine, 10 tests). Unblocked the
+                                       Go/Rust arg divergence via the GOLDEN model:
+                                       per-case args drive Rust, golden is captured
+                                       once from the reference — the args→golden
+                                       pairing IS the schema-mapping layer. First
+                                       case LIVE: parse examples/parse/package-
+                                       lock.json → green. REMAINING (data task, not
+                                       a blocker): replace Rust-candidate goldens
+                                       with Go v0.29-captured output + grow the
+                                       corpus (needs the Go binary).
   P1  domain ......................... DONE
   P2  lockfile (24 parsers) .......... DONE
   P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,
