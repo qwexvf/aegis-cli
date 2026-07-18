@@ -25,6 +25,8 @@ pub mod gleam;
 pub mod go;
 #[cfg(feature = "haskell")]
 pub mod haskell;
+#[cfg(feature = "java")]
+pub mod java;
 #[cfg(feature = "js")]
 pub mod js;
 #[cfg(feature = "js")]
@@ -164,6 +166,10 @@ pub fn scanner_for(filename: &str) -> Option<Box<dyn LanguageScanner>> {
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         #[cfg(feature = "csharp")]
         "cs" | "csx" => csharp::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "java")]
+        "java" => java::scanner()
             .ok()
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         #[cfg(feature = "haskell")]
