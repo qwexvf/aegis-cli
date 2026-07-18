@@ -95,34 +95,46 @@ impl GhsaClient {
         };
 
         // Group by (GitHub ecosystem, package name); drop ecosystems GHSA
-        // doesn't cover.
+        // doesn't cover. Sorted for deterministic order — matters because an
+        // exhausted rate limit stops the batch mid-way (below).
         let mut by_pkg: HashMap<(&str, &str), Vec<&AdvisoryQuery>> = HashMap::new();
         for q in queries {
             if let Some(eco) = ghsa_ecosystem(q.ecosystem) {
                 by_pkg.entry((eco, q.name.as_str())).or_default().push(q);
             }
         }
+        let mut pkgs: Vec<((&str, &str), Vec<&AdvisoryQuery>)> = by_pkg.into_iter().collect();
+        pkgs.sort_by(|a, b| a.0.cmp(&b.0));
 
-        for ((eco, name), qs) in by_pkg {
+        for ((eco, name), qs) in pkgs {
             // Non-fatal: a failed package fetch leaves those queries empty.
-            if let Some(advs) = self.fetch_for_package(http, token, eco, name) {
-                for q in qs {
-                    out.insert(q.key(), advs.clone());
-                }
+            let Some(fetch) = self.fetch_for_package(http, token, eco, name) else {
+                continue;
+            };
+            for q in qs {
+                out.insert(q.key(), fetch.advisories.clone());
+            }
+            // Rate budget spent: further calls in this batch would just 403.
+            // Stop early — remaining packages stay empty (OSV still covers
+            // them in the merge). Deterministic thanks to the sort above.
+            if fetch.rate_remaining == Some(0) {
+                break;
             }
         }
         out
     }
 
-    /// One GraphQL call for a single package. `None` on any transport,
-    /// status, or decode failure. Mirrors `fetchForPackage`.
+    /// One GraphQL call for a single package. `None` only on a transport
+    /// failure; a non-2xx status yields an empty advisory list (so the batch
+    /// can still read the rate-limit header and decide whether to stop).
+    /// Mirrors `fetchForPackage` plus rate-limit awareness.
     fn fetch_for_package(
         &self,
         http: &dyn HttpClient,
         token: &str,
         eco: &str,
         name: &str,
-    ) -> Option<Vec<Advisory>> {
+    ) -> Option<PackageFetch> {
         let body = serde_json::to_vec(&serde_json::json!({
             "query": GHSA_QUERY,
             "variables": { "ecosystem": eco, "package": name },
@@ -142,11 +154,27 @@ impl GhsaClient {
                 ],
             )
             .ok()?;
-        if !resp.is_ok() {
-            return None;
-        }
-        parse_ghsa_response(&resp.body).ok()
+        // GitHub reports the remaining GraphQL budget on every response.
+        let rate_remaining = resp
+            .header("x-ratelimit-remaining")
+            .and_then(|v| v.trim().parse::<u64>().ok());
+        let advisories = if resp.is_ok() {
+            parse_ghsa_response(&resp.body).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        Some(PackageFetch {
+            advisories,
+            rate_remaining,
+        })
     }
+}
+
+/// Outcome of one package fetch: the advisories (empty on a non-2xx status)
+/// and GitHub's remaining rate-limit budget, when the header was present.
+struct PackageFetch {
+    advisories: Vec<Advisory>,
+    rate_remaining: Option<u64>,
 }
 
 // --- wire types ------------------------------------------------------
@@ -398,6 +426,31 @@ mod tests {
         let client = GhsaClient::new("https://gh.test").with_token("t");
         let queries = vec![npm_query("lodash", "4.17.4")];
         let result = client.lookup(&http, &queries);
+        assert!(result["npm/lodash@4.17.4"].is_empty());
+    }
+
+    #[test]
+    fn exhausted_rate_limit_stops_the_batch_early() {
+        let base = "https://gh.test";
+        // X-RateLimit-Remaining: 0 on the (single) GraphQL URL → after the
+        // first package the batch must stop rather than fire more doomed
+        // requests. Packages are visited sorted, so "express" (< "lodash")
+        // is fetched and "lodash" is skipped.
+        let http = MockHttpClient::new().with_headers(
+            &format!("{base}/graphql"),
+            200,
+            OK_BODY.as_bytes().to_vec(),
+            &[("X-RateLimit-Remaining", "0")],
+        );
+        let client = GhsaClient::new(base).with_token("t");
+
+        let queries = vec![npm_query("lodash", "4.17.4"), npm_query("express", "4.0.0")];
+        let result = client.lookup(&http, &queries);
+
+        // Exactly one call made (broke after the first sorted package).
+        assert_eq!(http.calls.lock().unwrap().len(), 1);
+        // express fetched (OK_BODY advisory), lodash left empty by the stop.
+        assert_eq!(result["npm/express@4.0.0"].len(), 1);
         assert!(result["npm/lodash@4.17.4"].is_empty());
     }
 

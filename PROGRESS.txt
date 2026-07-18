@@ -358,8 +358,9 @@ CUTOVER (P11): 100% corpus parity, reproduce cosign + SLSA release pipeline, fli
   docs (7d TTL, immutable) both cached under $XDG_CACHE_HOME/aegis, wired into
   the cli cve lookup. (OSV batch query stays uncached — new advisories daily.)
   GitHub git-tree fetch — DONE (aegis-registry::github). tarball-drift fires.
-  Remaining GH tail: X-RateLimit-Remaining header not inspected (HttpResponse
-  drops headers) — 403 is treated as skip; fine for best-effort.
+  GH rate-limit: DONE — HttpResponse now carries headers, so GhsaClient reads
+  X-RateLimit-Remaining and stops the batch early when it hits 0 (deterministic:
+  packages visited sorted). No more hammering doomed requests once exhausted.
 
 -------------------------------------------------------------------------------
  QUICK START TOMORROW
