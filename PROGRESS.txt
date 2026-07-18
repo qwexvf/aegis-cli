@@ -134,8 +134,12 @@ Status @ this snapshot:
                                        LicenseFetcher (rayon over deps) → CycloneDX
                                        licenses[] + SPDX licenseConcluded/Declared
                                        (LIVE: lodash → MIT; offline stays
-                                       NOASSERTION/omitted). Tail: advisory SBOM
-                                       fields await Dependency advisory growth.
+                                       NOASSERTION/omitted). ADVISORY FIELDS DONE:
+                                       `sbom --online` resolves advisories (OSV+GHSA,
+                                       EPSS/KEV) via advisories_by_key → CycloneDX
+                                       vulnerabilities[] (id/source/rating/affects)
+                                       + SPDX SECURITY externalRefs (LIVE: lodash
+                                       4.17.4 → 8 vulns both formats). P7 tail clear.
   P8  usecase ....................... DONE (functional)  analyze wires npm/go
                                        manifest parsers → NormalizedPackage +
                                        `--online` npm-packument maintainer x3 +

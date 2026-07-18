@@ -6,10 +6,16 @@
 //! scope, and (when present) an integrity hash; the `dependencies` graph is
 //! built from each dep's `depends_on`.
 
-use aegis_domain::Dependency;
+use std::collections::BTreeMap;
+
+use aegis_domain::{Advisory, Dependency};
 use serde::Serialize;
 
 use crate::purl::purl;
+
+/// Advisories keyed by [`Dependency::versioned_key`] — the shape the SBOM
+/// emitters accept for the `vulnerabilities` section. Empty = none known.
+pub type AdvisoryMap = BTreeMap<String, Vec<Advisory>>;
 
 /// Controls one BOM build. `timestamp` and `serial_number` are explicit for
 /// determinism — the crate never reads the clock or generates randomness.
@@ -25,13 +31,19 @@ pub struct Options {
     pub serial_number: String,
 }
 
-/// Build a CycloneDX 1.5 BOM as a pretty-printed JSON string.
+/// Build a CycloneDX 1.5 BOM as a pretty-printed JSON string (no advisories).
 pub fn build_json(deps: &[Dependency], opts: &Options) -> String {
-    serde_json::to_string_pretty(&build(deps, opts)).unwrap_or_default()
+    build_json_adv(deps, &AdvisoryMap::new(), opts)
+}
+
+/// Build a CycloneDX 1.5 BOM as JSON, including a `vulnerabilities` section
+/// for any advisories keyed to a dependency's [`Dependency::versioned_key`].
+pub fn build_json_adv(deps: &[Dependency], advisories: &AdvisoryMap, opts: &Options) -> String {
+    serde_json::to_string_pretty(&build(deps, advisories, opts)).unwrap_or_default()
 }
 
 /// Build the typed BOM document.
-pub fn build(deps: &[Dependency], opts: &Options) -> Bom {
+pub fn build(deps: &[Dependency], advisories: &AdvisoryMap, opts: &Options) -> Bom {
     let root_name = if opts.project.is_empty() {
         "project".to_string()
     } else {
@@ -41,6 +53,7 @@ pub fn build(deps: &[Dependency], opts: &Options) -> Bom {
 
     let components: Vec<Component> = deps.iter().map(component_from_dep).collect();
     let dependencies = dependencies_from_deps(deps, &root_ref);
+    let vulnerabilities = vulnerabilities_from(deps, advisories);
 
     Bom {
         bom_format: "CycloneDX",
@@ -64,7 +77,40 @@ pub fn build(deps: &[Dependency], opts: &Options) -> Bom {
         },
         components,
         dependencies,
+        vulnerabilities,
     }
+}
+
+/// Build the `vulnerabilities` array: one entry per (dependency, advisory),
+/// `affects` pointing at the component's bom-ref. Deps are visited in order
+/// and each dep's advisories sorted by id for deterministic output.
+fn vulnerabilities_from(deps: &[Dependency], advisories: &AdvisoryMap) -> Vec<Vulnerability> {
+    let mut out = Vec::new();
+    for d in deps {
+        let Some(advs) = advisories.get(&d.versioned_key()) else {
+            continue;
+        };
+        let mut advs: Vec<&Advisory> = advs.iter().collect();
+        advs.sort_by(|a, b| a.id.cmp(&b.id));
+        let bom_ref = bom_ref_for(d);
+        for adv in advs {
+            out.push(Vulnerability {
+                id: adv.id.clone(),
+                source: (!adv.source.is_empty() || !adv.url.is_empty()).then(|| VulnSource {
+                    name: adv.source.clone(),
+                    url: adv.url.clone(),
+                }),
+                ratings: vec![Rating {
+                    severity: adv.severity.as_str().to_ascii_lowercase(),
+                }],
+                description: adv.summary.clone(),
+                affects: vec![Affects {
+                    reference: bom_ref.clone(),
+                }],
+            });
+        }
+    }
+    out
 }
 
 /// Stable bom-ref for a dep: PURL preferred, `eco:name@version` fallback.
@@ -210,6 +256,40 @@ pub struct Bom {
     metadata: Metadata,
     components: Vec<Component>,
     dependencies: Vec<DependencyNode>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    vulnerabilities: Vec<Vulnerability>,
+}
+
+/// A CycloneDX 1.5 `vulnerabilities[]` entry.
+#[derive(Serialize)]
+struct Vulnerability {
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<VulnSource>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    ratings: Vec<Rating>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    description: String,
+    affects: Vec<Affects>,
+}
+
+#[derive(Serialize)]
+struct VulnSource {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    url: String,
+}
+
+#[derive(Serialize)]
+struct Rating {
+    severity: String,
+}
+
+#[derive(Serialize)]
+struct Affects {
+    #[serde(rename = "ref")]
+    reference: String,
 }
 
 #[derive(Serialize)]
@@ -352,6 +432,37 @@ mod tests {
         let json = build_json(&[dep("x", "1.0.0", true)], &opts());
         let v: Value = serde_json::from_str(&json).unwrap();
         assert!(v["components"][0].get("licenses").is_none());
+    }
+
+    #[test]
+    fn no_advisories_omits_vulnerabilities() {
+        let json = build_json(&[dep("lodash", "4.17.21", true)], &opts());
+        let v: Value = serde_json::from_str(&json).unwrap();
+        assert!(v.get("vulnerabilities").is_none());
+    }
+
+    #[test]
+    fn advisories_emit_vulnerabilities_with_affects() {
+        let d = dep("lodash", "4.17.4", true);
+        let adv = aegis_domain::Advisory {
+            id: "CVE-2019-10744".into(),
+            severity: aegis_domain::Severity::Critical,
+            summary: "prototype pollution".into(),
+            url: "https://osv.dev/CVE-2019-10744".into(),
+            source: "osv".into(),
+            ..Default::default()
+        };
+        let mut map = AdvisoryMap::new();
+        map.insert(d.versioned_key(), vec![adv]);
+
+        let json = build_json_adv(std::slice::from_ref(&d), &map, &opts());
+        let v: Value = serde_json::from_str(&json).unwrap();
+        let vuln = &v["vulnerabilities"][0];
+        assert_eq!(vuln["id"], "CVE-2019-10744");
+        assert_eq!(vuln["ratings"][0]["severity"], "critical");
+        assert_eq!(vuln["source"]["name"], "osv");
+        // affects points at the component's bom-ref (its purl).
+        assert_eq!(vuln["affects"][0]["ref"], bom_ref_for(&d));
     }
 
     #[test]

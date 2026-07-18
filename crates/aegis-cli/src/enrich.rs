@@ -1,7 +1,9 @@
 //! Network CVE-enrichment path: OSV/GHSA lookup with EPSS + KEV enrichment,
 //! SARIF conversion, and the on-disk advisory caches.
 
-use aegis_domain::{AdvisoryQuery, Severity};
+use std::collections::BTreeMap;
+
+use aegis_domain::{Advisory, AdvisoryQuery, Severity};
 use aegis_net::{DiskCache, UreqClient};
 use aegis_vuln::{EpssClient, KevCatalog, OsvClient};
 
@@ -105,6 +107,57 @@ pub(crate) fn cve_findings(queries: &[AdvisoryQuery]) -> Result<Vec<FindingView>
             in_kev: adv.in_kev,
         })
         .collect())
+}
+
+/// Fetch known advisories for `queries`, keyed by `AdvisoryQuery::key()`
+/// (= `Dependency::versioned_key`), with full [`Advisory`] records (OSV +
+/// GHSA merged, then EPSS + KEV enriched). This is the SBOM-side counterpart
+/// to [`cve_findings`], which flattens to `FindingView`; here callers need the
+/// whole advisory (id, url, source, severity) for the SBOM vuln section.
+pub(crate) fn advisories_by_key(
+    queries: &[AdvisoryQuery],
+) -> Result<BTreeMap<String, Vec<Advisory>>, String> {
+    let client = UreqClient::new();
+    let results = OsvClient::default()
+        .with_cache(osv_disk_cache())
+        .lookup(&client, queries)?;
+    let ghsa_results = match std::env::var("GITHUB_TOKEN") {
+        Ok(tok) if !tok.is_empty() => aegis_vuln::GhsaClient::default()
+            .with_token(&tok)
+            .lookup(&client, queries),
+        _ => std::collections::HashMap::new(),
+    };
+
+    // Merge OSV + GHSA per key, deduping by id/alias, then flat-enrich.
+    let mut flat: Vec<Advisory> = Vec::new();
+    let mut owners: Vec<String> = Vec::new();
+    for q in queries {
+        let key = q.key();
+        let osv = results.get(&key).map(|v| v.as_slice()).unwrap_or(&[]);
+        let ghsa = ghsa_results.get(&key).map(|v| v.as_slice()).unwrap_or(&[]);
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for adv in osv.iter().chain(ghsa.iter()).cloned() {
+            if seen.contains(&adv.id) || adv.aliases.iter().any(|a| seen.contains(a)) {
+                continue;
+            }
+            seen.insert(adv.id.clone());
+            for a in &adv.aliases {
+                seen.insert(a.clone());
+            }
+            flat.push(adv);
+            owners.push(key.clone());
+        }
+    }
+    flat = EpssClient::default().enrich_advisories(&client, flat);
+    flat = KevCatalog::default()
+        .with_cache(kev_disk_cache())
+        .enrich_advisories(&client, flat);
+
+    let mut out: BTreeMap<String, Vec<Advisory>> = BTreeMap::new();
+    for (adv, key) in flat.into_iter().zip(owners) {
+        out.entry(key).or_default().push(adv);
+    }
+    Ok(out)
 }
 
 /// Map a domain severity string to a SARIF result level.

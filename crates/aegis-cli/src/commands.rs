@@ -14,7 +14,7 @@ use aegis_vuln::OsvClient;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::enrich::{ci_findings_to_sarif, cve_findings, osv_disk_cache};
+use crate::enrich::{advisories_by_key, ci_findings_to_sarif, cve_findings, osv_disk_cache};
 use crate::scan::{collect_files, fetch_online_caps, lockfile_deps, scan_source};
 use crate::util::{parse_ecosystem, parse_severity, severity_rank};
 
@@ -860,9 +860,27 @@ pub(crate) fn run_sbom(
     let project = project.unwrap_or_default().to_string();
     let serial_number = serial.unwrap_or_default().to_string();
 
+    // --online also resolves known advisories (OSV+GHSA, EPSS/KEV enriched)
+    // into the SBOM vuln section. Offline → an empty map (no vuln section).
+    let advisories = if online {
+        let queries: Vec<AdvisoryQuery> = deps
+            .iter()
+            .filter(|d| !d.version.is_empty())
+            .map(|d| AdvisoryQuery {
+                ecosystem: d.ecosystem,
+                name: d.name.clone(),
+                version: d.version.clone(),
+            })
+            .collect();
+        advisories_by_key(&queries).unwrap_or_default()
+    } else {
+        aegis_sbom::cyclonedx::AdvisoryMap::new()
+    };
+
     let out = if fmt == "spdx" {
-        aegis_sbom::spdx::build_json(
+        aegis_sbom::spdx::build_json_adv(
             &deps,
+            &advisories,
             &aegis_sbom::spdx::Options {
                 aegis_version: version,
                 project,
@@ -871,8 +889,9 @@ pub(crate) fn run_sbom(
             },
         )
     } else {
-        aegis_sbom::cyclonedx::build_json(
+        aegis_sbom::cyclonedx::build_json_adv(
             &deps,
+            &advisories,
             &aegis_sbom::cyclonedx::Options {
                 aegis_version: version,
                 project,

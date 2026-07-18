@@ -9,6 +9,7 @@
 use aegis_domain::Dependency;
 use serde::Serialize;
 
+use crate::cyclonedx::AdvisoryMap;
 use crate::purl::purl;
 
 /// Options for one SPDX build (timestamp + serial passed for determinism).
@@ -22,13 +23,19 @@ pub struct Options {
     pub serial_number: String,
 }
 
-/// Build an SPDX 2.3 document as a pretty-printed JSON string.
+/// Build an SPDX 2.3 document as a pretty-printed JSON string (no advisories).
 pub fn build_json(deps: &[Dependency], opts: &Options) -> String {
-    serde_json::to_string_pretty(&build(deps, opts)).unwrap_or_default()
+    build_json_adv(deps, &AdvisoryMap::new(), opts)
+}
+
+/// Build an SPDX 2.3 document as JSON, attaching known advisories as
+/// `SECURITY` external references on each affected package.
+pub fn build_json_adv(deps: &[Dependency], advisories: &AdvisoryMap, opts: &Options) -> String {
+    serde_json::to_string_pretty(&build(deps, advisories, opts)).unwrap_or_default()
 }
 
 /// Build the typed SPDX document.
-pub fn build(deps: &[Dependency], opts: &Options) -> Document {
+pub fn build(deps: &[Dependency], advisories: &AdvisoryMap, opts: &Options) -> Document {
     let root_name = if opts.project.is_empty() {
         "project".to_string()
     } else {
@@ -83,6 +90,24 @@ pub fn build(deps: &[Dependency], opts: &Options) -> Document {
                 reference_type: "purl",
                 reference_locator: p,
             });
+        }
+        // Known advisories → SECURITY external refs (locator = advisory URL,
+        // falling back to its id). Sorted by id for deterministic output.
+        if let Some(advs) = advisories.get(&d.versioned_key()) {
+            let mut advs: Vec<&aegis_domain::Advisory> = advs.iter().collect();
+            advs.sort_by(|a, b| a.id.cmp(&b.id));
+            for adv in advs {
+                let locator = if adv.url.is_empty() {
+                    adv.id.clone()
+                } else {
+                    adv.url.clone()
+                };
+                external_refs.push(ExternalRef {
+                    reference_category: "SECURITY",
+                    reference_type: "advisory",
+                    reference_locator: locator,
+                });
+            }
         }
         // A resolved license populates both concluded and declared; empty
         // stays NOASSERTION so the document remains spec-valid.
@@ -316,5 +341,34 @@ mod tests {
             .unwrap();
         assert_eq!(x["licenseConcluded"], "NOASSERTION");
         assert_eq!(x["licenseDeclared"], "NOASSERTION");
+    }
+
+    #[test]
+    fn advisory_becomes_security_external_ref() {
+        let d = dep("lodash", "4.17.4", true);
+        let adv = aegis_domain::Advisory {
+            id: "CVE-2019-10744".into(),
+            url: "https://osv.dev/CVE-2019-10744".into(),
+            source: "osv".into(),
+            ..Default::default()
+        };
+        let mut map = AdvisoryMap::new();
+        map.insert(d.versioned_key(), vec![adv]);
+
+        let v: Value = serde_json::from_str(&build_json_adv(&[d], &map, &opts())).unwrap();
+        let lodash = v["packages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == "lodash")
+            .unwrap();
+        let sec = lodash["externalRefs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["referenceCategory"] == "SECURITY")
+            .expect("SECURITY external ref");
+        assert_eq!(sec["referenceType"], "advisory");
+        assert_eq!(sec["referenceLocator"], "https://osv.dev/CVE-2019-10744");
     }
 }
