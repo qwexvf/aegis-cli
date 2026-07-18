@@ -415,15 +415,33 @@ binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
    otherwise but the built binary behaves as Used-iff-imported.) The ci-parity
    fixtures carry an index.js (Used path) so the gate exercises the common case.
 
-3. SMALLER COMMAND TAILS
+3. [DONE] `sbom` PARITY GATE  →  `xtask sbom-parity [--record]`
+   Offline + deterministic (no network, no clock — timestamp/serial scrubbed),
+   so it IS wired into the blocking CI job (.github/workflows/ci.yml, next to
+   analyze-parity). Fixtures under examples/sbom-parity/<fixture>/ (lockfile +
+   cyclonedx.golden.json + spdx.golden.json); both tools invoked with a fixed
+   --project so the BOM self-identity lines up; Go reads aegis.lock so the
+   harness runs `snapshot save` in a scratch copy first. Scrubs provenance
+   (CDX serialNumber/metadata.timestamp/metadata.tools; SPDX documentNamespace/
+   creationInfo), structural-diffs the rest (components/packages/purls/hashes/
+   licenses/graph) order-independently. 2 fixtures × 2 formats = 4/4 match Go.
+   FOUND + FIXED via this gate: Rust CDX omitted the `$schema` field and emitted
+   `dependsOn: []` where Go omits it — now matches Go byte-shape.
+   RUST-AHEAD (documented, not gated): Rust extracts npm lockfileVersion-3
+   transitive edges (packages[].dependencies → CDX dependsOn); Go v0.29 does
+   not populate them. The npm fixture is kept flat so the gate stays green; the
+   cargo fixture (3 deps, real edges both agree on) exercises the graph.
+
+4. SMALLER COMMAND TAILS
    - snapshot / explain (per-package) parity vs Go.
    - other-ecosystem used-symbols in aegis-reach (js/py/go/php done; ruby N/A).
 
-4. P11 CUTOVER
-   Broad parity confidence exists for the 3 core commands (analyze/ci/sbom).
-   Remaining is release infra, not library parity: reproduce cosign keyless +
-   SLSA provenance release pipeline (sigstore-rs, CI secrets), then flip the
-   default. Separate track from the parity work above.
+5. P11 CUTOVER
+   Broad parity confidence exists for the 3 core commands (analyze/ci/sbom) —
+   all THREE now have committed gates (analyze-parity + sbom-parity in CI;
+   ci-parity opt-in/network). Remaining is release infra, not library parity:
+   reproduce cosign keyless + SLSA provenance release pipeline (sigstore-rs, CI
+   secrets), then flip the default. Separate track from the parity work above.
 
 -------------------------------------------------------------------------------
  NETWORK TAIL (Phase 3 leftovers, not blocking)
