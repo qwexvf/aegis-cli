@@ -6,7 +6,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use aegis_ast::{scanner_for, Findings, LanguageScanner};
-use aegis_domain::{risk_score, CapabilitySet, Dependency, Ecosystem, Fingerprint, RiskAssessment};
+use aegis_domain::{
+    risk_score, Capability, CapabilitySet, Dependency, Ecosystem, Fingerprint, HookPhase,
+    InstallHook, RiskAssessment,
+};
 use aegis_heuristics::go_retract::parse_go_retract;
 use aegis_heuristics::manifest::parse_npm_manifest;
 use aegis_heuristics::{run_heuristics, NormalizedPackage};
@@ -114,15 +117,47 @@ pub(crate) fn scan_source(
     caps.extend(run_heuristics(&normalized));
     caps.extend(extra_caps);
 
+    // Carry declared install hooks into the fingerprint so risk_score adds the
+    // base `install-hook` flag (weight 30) and surfaces `install-hook-exec` —
+    // the heuristics only flag a *suspicious* hook, not the declaration itself.
+    // (Matches the Go analyzer, which scores both.)
+    let hooks = to_install_hooks(&normalized.hooks);
+    if !hooks.is_empty() {
+        caps.push(Capability::InstallHookExec);
+    }
+
     let fp = Fingerprint {
         analyzed: true,
         capabilities: CapabilitySet::new(caps),
         env_reads: findings.env_reads().to_vec(),
         source_size_bytes: source_bytes,
-        ..Default::default()
+        hooks,
     };
     let assessment = risk_score(Some(&fp));
     (fp.capabilities, assessment)
+}
+
+/// Map the heuristics' manifest hooks onto domain [`InstallHook`]s. Phase
+/// strings mirror the Go npm parser (preinstall → PreInstall; install /
+/// postinstall / prepare → PostInstall; build → Build). `source` is
+/// `scripts.<phase>`. `sha256` is left empty — it's only consumed by snapshot
+/// hook-drift, which `analyze` doesn't exercise.
+fn to_install_hooks(hooks: &[aegis_heuristics::Hook]) -> Vec<InstallHook> {
+    hooks
+        .iter()
+        .map(|h| {
+            let phase = match h.phase.as_str() {
+                "preinstall" => HookPhase::PreInstall,
+                "build" => HookPhase::Build,
+                _ => HookPhase::PostInstall,
+            };
+            InstallHook {
+                phase,
+                source: format!("scripts.{}", h.phase),
+                sha256: String::new(),
+            }
+        })
+        .collect()
 }
 
 /// Build the heuristics view of a package: always the raw file set, plus

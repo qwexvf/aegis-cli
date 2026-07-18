@@ -45,7 +45,17 @@ Status @ this snapshot:
 -------------------------------------------------------------------------------
  PHASE STATUS  (plan has 12 phases, 0-11)
 -------------------------------------------------------------------------------
-  P0  scaffold + parity harness ...... HARNESS BUILT  xtask/ crate: `xtask parity
+  P0  scaffold + parity harness ...... PARITY LIVE (Go binary available!)  the Go
+                                       aegis-cli source is local (../aegis-cli) +
+                                       Go 1.26 installed → real Go-vs-Rust diffs.
+                                       Bridge: Go `analyze <spec> --local <dir>` ==
+                                       Rust `analyze <dir>`; both AST-scan a local
+                                       tree. Swept examples/incidents/npm (6 fixtures)
+                                       → after the install-hook fix (below) Rust
+                                       matches Go 6/6 on verdict+score+capabilities
+                                       (coa 140, event-stream 265, node-ipc 75, rc
+                                       140, tanstack 340, ua-parser 135). FIRST REAL
+                                       PARITY BUG FOUND + FIXED. Harness (xtask parity)
                                        [--record]` runs the Rust binary per case
                                        (xtask/parity_cases.toml), structurally diffs
                                        --json against a golden (order-independent
