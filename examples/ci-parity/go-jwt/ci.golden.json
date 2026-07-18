@@ -1,0 +1,37 @@
+{
+  "fail_on": "block",
+  "enriched": true,
+  "passed": false,
+  "summary": {
+    "total": 1,
+    "safe": 0,
+    "review": 0,
+    "prompt": 0,
+    "blocked": 1
+  },
+  "findings": [
+    {
+      "ecosystem": "go",
+      "name": "github.com/dgrijalva/jwt-go",
+      "version": "v3.2.0+incompatible",
+      "direct": false,
+      "verdict": "block",
+      "risk_score": 0,
+      "flags": [],
+      "advisories": [
+        {
+          "id": "GHSA-w73w-5m7g-f7qc",
+          "severity": "high",
+          "source": "osv",
+          "fixed_in": "4.0.0-preview1"
+        },
+        {
+          "id": "GO-2020-0017",
+          "severity": "info",
+          "source": "osv",
+          "fixed_in": "4.0.0-preview1"
+        }
+      ]
+    }
+  ]
+}

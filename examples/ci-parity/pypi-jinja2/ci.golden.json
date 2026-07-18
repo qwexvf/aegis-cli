@@ -1,0 +1,97 @@
+{
+  "fail_on": "block",
+  "enriched": true,
+  "passed": false,
+  "summary": {
+    "total": 1,
+    "safe": 0,
+    "review": 0,
+    "prompt": 0,
+    "blocked": 1
+  },
+  "findings": [
+    {
+      "ecosystem": "pypi",
+      "name": "jinja2",
+      "version": "2.10",
+      "direct": true,
+      "verdict": "block",
+      "risk_score": 0,
+      "flags": [],
+      "advisories": [
+        {
+          "id": "GHSA-462w-v97r-4m45",
+          "severity": "high",
+          "source": "osv",
+          "fixed_in": "2.10.1"
+        },
+        {
+          "id": "GHSA-cpwx-vrp4-4pq7",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "3.1.6"
+        },
+        {
+          "id": "GHSA-g3rq-g295-4j3m",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "2.11.3"
+        },
+        {
+          "id": "GHSA-h5c8-rqwp-cp95",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "3.1.3"
+        },
+        {
+          "id": "GHSA-h75v-3vvj-5mfj",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "3.1.4"
+        },
+        {
+          "id": "GHSA-q2x7-8rv6-6q7h",
+          "severity": "high",
+          "source": "osv",
+          "fixed_in": "3.1.5"
+        },
+        {
+          "id": "PYSEC-2019-217",
+          "severity": "info",
+          "source": "osv",
+          "fixed_in": "2.10.1"
+        },
+        {
+          "id": "PYSEC-2021-66",
+          "severity": "info",
+          "source": "osv",
+          "fixed_in": "2.11.3"
+        },
+        {
+          "id": "PYSEC-2026-1471",
+          "severity": "info",
+          "source": "osv",
+          "fixed_in": "3.1.6"
+        },
+        {
+          "id": "PYSEC-2026-1473",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "3.1.3"
+        },
+        {
+          "id": "PYSEC-2026-1474",
+          "severity": "medium",
+          "source": "osv",
+          "fixed_in": "3.1.4"
+        },
+        {
+          "id": "PYSEC-2026-1475",
+          "severity": "high",
+          "source": "osv",
+          "fixed_in": "3.1.5"
+        }
+      ]
+    }
+  ]
+}

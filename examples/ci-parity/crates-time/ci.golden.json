@@ -1,0 +1,13 @@
+{
+  "fail_on": "block",
+  "enriched": true,
+  "passed": true,
+  "summary": {
+    "total": 1,
+    "safe": 0,
+    "review": 0,
+    "prompt": 1,
+    "blocked": 0
+  },
+  "findings": []
+}
