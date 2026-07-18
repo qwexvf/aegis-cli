@@ -316,7 +316,11 @@ fn ci_offline_json_reports_go_shape() {
     assert!(out.stdout.contains("\"passed\": true"), "{}", out.stdout);
     assert!(out.stdout.contains("\"summary\""), "{}", out.stdout);
     assert!(out.stdout.contains("\"enriched\": false"), "{}", out.stdout);
-    assert!(out.stdout.contains("\"fail_on\": \"block\""), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\"fail_on\": \"block\""),
+        "{}",
+        out.stdout
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
