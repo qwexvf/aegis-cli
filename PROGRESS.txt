@@ -19,9 +19,9 @@ Status @ this snapshot:
   The Go aegis-cli source is local (../aegis-cli) + Go 1.26 installed, so real
   Go-vs-Rust diffs run. Bridge: Go `analyze <spec> --local <dir>` == Rust
   `analyze <dir>` (both AST-scan a local tree). Full analyze sweep over
-  examples/incidents (13 ecosystems, 36 fixtures): 34/36 match Go exactly on
-  verdict + score + capabilities. 12 ecosystems fully green; the 2 misses are
-  maven (needs a Java tree-sitter grammar — documented gap). Three real parity
+  examples/incidents (13 ecosystems, 36 fixtures): 36/36 match Go exactly on
+  verdict + score + capabilities. ALL 13 ecosystems green (Java grammar added,
+  closing the last maven gap). Three real parity
   bugs found + fixed by diffing against Go: install-hook base flag; R + Perl
   obfuscated-payload regexes; .ex/.exs analyzable-source (Elixir).
 
@@ -62,15 +62,15 @@ Status @ this snapshot:
                                        140, tanstack 340, ua-parser 135). FIRST REAL
                                        PARITY BUG FOUND + FIXED. FULL-CORPUS SWEEP
                                        (analyze, all 13 ecosystems, 36 incident
-                                       fixtures): 34/36 match Go on verdict+score+
+                                       fixtures): 36/36 match Go on verdict+score+
                                        caps. Fixed along the way: install-hook base
                                        flag; R + Perl obfuscated-payload regexes;
                                        .ex/.exs added to analyzable-source (hex/
-                                       Elixir). REMAINING 2 (maven log4j+spring):
-                                       Rust has no Java tree-sitter grammar → misses
-                                       dynamic-eval/net-egress from .java. Documented
-                                       gap; needs tree-sitter-java + capability
-                                       queries (large). Harness (xtask parity)
+                                       Elixir); Java tree-sitter grammar added
+                                       (tree-sitter-java + queries/java.scm ported
+                                       from Go) → maven log4j+spring now match →
+                                       36/36, ALL 13 ecosystems green. Harness
+                                       (xtask parity)
                                        [--record]` runs the Rust binary per case
                                        (xtask/parity_cases.toml), structurally diffs
                                        --json against a golden (order-independent
@@ -101,9 +101,9 @@ Status @ this snapshot:
                                        wired into `analyze --online` (verified LIVE:
                                        local tree w/ extra file vs lodash@4.17.21
                                        upstream tag → tarball-source-drift).
-  P5  AST + reach .................... DONE (slice)  ALL 12 grammars (js/py/ruby/
-                                       rust/go/php/csharp/haskell/lua/gleam/dart/
-                                       cocoapods, native — no CGO). FULL JS taint
+  P5  AST + reach .................... DONE (slice)  ALL 13 grammars (js/py/ruby/
+                                       rust/go/php/csharp/java/haskell/lua/gleam/
+                                       dart/cocoapods, native — no CGO). FULL JS taint
                                        (symtab + numeric-array + spread fold +
                                        tainted-sink). aegis-reach crate: import
                                        extraction + reachability_of for all 5 langs
