@@ -357,8 +357,13 @@ CUTOVER (P11): 100% corpus parity, reproduce cosign + SLSA release pipeline, fli
   user rules via `analyze --allowlist <file>` + aegis.toml [[allow]] (run).
   Suppressed flags stay visible (suppressed=true + suppress_by reason). LIVE:
   demo-pkg shell-spawn 20→0.
-  per-ecosystem version resolvers (npm needs a node-semver crate, NOT Cargo semver
-  — different range syntax). DiskCache DONE: KEV feed (24h TTL) + OSV advisory
+  version resolver: the npm/node semver dialect (^/~/x-ranges/||) was already
+  hand-rolled in allowlist; extracted the Version type + precedence into a
+  shared crate::semver module and adopted it in fix's compare_fix_version —
+  fixes a real pre-release ordering bug (1.2.3-rc.1 was ranked ABOVE 1.2.3, so
+  a prerelease fixed_in could look like a valid forward upgrade). OSV does
+  affected-range matching server-side, so no standalone range *resolver* is
+  needed on the query path. DiskCache DONE: KEV feed (24h TTL) + OSV advisory
   docs (7d TTL, immutable) both cached under $XDG_CACHE_HOME/aegis, wired into
   the cli cve lookup. (OSV batch query stays uncached — new advisories daily.)
   GitHub git-tree fetch — DONE (aegis-registry::github). tarball-drift fires.
