@@ -19,13 +19,13 @@
 //!     picked by extension) and maps the emitted capabilities to findings.
 //!     Far fewer false positives than the pattern pass on code-shaped strings.
 //!
-//! Registry pull ([`pull_image`]) fetches an image by `repo:tag` reference
-//! over the OCI distribution API and feeds the layer blobs into the same
-//! overlay assembly — anonymous (unauthenticated) pull from public registries
-//! only for this slice (see [`registry`] for the auth caveat).
+//! Registry pull fetches an image by `repo:tag` reference over the OCI
+//! distribution API and feeds the layer blobs into the same overlay assembly.
+//! [`pull_image`] pulls anonymously; [`registry::pull_image_auth`] takes
+//! [`registry::Credentials`] for private images. Both use one generic
+//! `/v2/` → Bearer-challenge → token flow (see [`registry`]).
 //!
 //! Deliberately out of scope for this slice (follow-ups):
-//!   - Authenticated registry pull (private images / non-docker.io tokens).
 //!   - OS package databases (apk / dpkg / rpm), per-layer attribution.
 //!   - Streaming: the whole outer tarball is read into memory. Fine for the
 //!     first slice; a streaming layout reader is a later optimisation.
@@ -39,7 +39,7 @@ pub mod registry;
 mod scan;
 
 pub use overlay::ImageFiles;
-pub use registry::{parse_reference, pull_image, ImageRef};
+pub use registry::{parse_reference, pull_image, pull_image_auth, Credentials, ImageRef};
 pub use scan::{ast_scan_image_files, deep_scan_image_files, scan_image_files, Finding};
 
 use std::path::Path;

@@ -13,16 +13,31 @@ use std::sync::Mutex;
 pub mod cache;
 pub use cache::{atomic_write, DiskCache};
 
-/// A completed HTTP response: status code + raw body bytes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A completed HTTP response: status code, raw body bytes, and response
+/// headers (name lowercased for case-insensitive lookup via [`header`]).
+///
+/// [`header`]: HttpResponse::header
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HttpResponse {
     pub status: u16,
     pub body: Vec<u8>,
+    /// (lowercased-name, value) pairs. Empty unless the transport
+    /// populated them (the mock and ureq backend both do).
+    pub headers: Vec<(String, String)>,
 }
 
 impl HttpResponse {
     pub fn is_ok(&self) -> bool {
         (200..300).contains(&self.status)
+    }
+
+    /// Case-insensitive header lookup (first match wins).
+    pub fn header(&self, name: &str) -> Option<&str> {
+        let lname = name.to_ascii_lowercase();
+        self.headers
+            .iter()
+            .find(|(k, _)| *k == lname)
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -64,6 +79,8 @@ pub struct MockHttpClient {
     responses: HashMap<String, HttpResponse>,
     /// (method, url, body) of each call, in order.
     pub calls: Mutex<Vec<(String, String, Vec<u8>)>>,
+    /// Request headers captured per call, in the same order as `calls`.
+    pub sent_headers: Mutex<Vec<Vec<(String, String)>>>,
 }
 
 impl MockHttpClient {
@@ -71,41 +88,78 @@ impl MockHttpClient {
         Self::default()
     }
 
-    /// Register a canned response for `url`.
+    /// Register a canned response for `url` (no response headers).
     pub fn with(mut self, url: &str, status: u16, body: impl Into<Vec<u8>>) -> Self {
         self.responses.insert(
             url.to_string(),
             HttpResponse {
                 status,
                 body: body.into(),
+                headers: Vec::new(),
             },
         );
         self
     }
 
-    fn respond(&self, method: &str, url: &str, body: &[u8]) -> Result<HttpResponse, HttpError> {
+    /// Register a canned response for `url` with response headers (e.g. a
+    /// `Www-Authenticate` challenge on a 401).
+    pub fn with_headers(
+        mut self,
+        url: &str,
+        status: u16,
+        body: impl Into<Vec<u8>>,
+        headers: &[(&str, &str)],
+    ) -> Self {
+        self.responses.insert(
+            url.to_string(),
+            HttpResponse {
+                status,
+                body: body.into(),
+                headers: headers
+                    .iter()
+                    .map(|(k, v)| (k.to_ascii_lowercase(), v.to_string()))
+                    .collect(),
+            },
+        );
+        self
+    }
+
+    fn respond(
+        &self,
+        method: &str,
+        url: &str,
+        body: &[u8],
+        headers: &[Header<'_>],
+    ) -> Result<HttpResponse, HttpError> {
         self.calls
             .lock()
             .unwrap()
             .push((method.to_string(), url.to_string(), body.to_vec()));
+        self.sent_headers.lock().unwrap().push(
+            headers
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        );
         Ok(self.responses.get(url).cloned().unwrap_or(HttpResponse {
             status: 404,
             body: Vec::new(),
+            headers: Vec::new(),
         }))
     }
 }
 
 impl HttpClient for MockHttpClient {
-    fn get(&self, url: &str, _headers: &[Header<'_>]) -> Result<HttpResponse, HttpError> {
-        self.respond("GET", url, &[])
+    fn get(&self, url: &str, headers: &[Header<'_>]) -> Result<HttpResponse, HttpError> {
+        self.respond("GET", url, &[], headers)
     }
     fn post(
         &self,
         url: &str,
         body: &[u8],
-        _headers: &[Header<'_>],
+        headers: &[Header<'_>],
     ) -> Result<HttpResponse, HttpError> {
-        self.respond("POST", url, body)
+        self.respond("POST", url, body, headers)
     }
 }
 

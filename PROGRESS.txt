@@ -102,11 +102,17 @@ Status @ this snapshot:
                                        tar+flate2 pure-Rust, no registry pull.
                                        `image` CLI command: scans a local tarball
                                        OR pulls by ref (`--ref alpine:latest`,
-                                       ghcr.io/...) via anonymous OCI distribution
+                                       ghcr.io/...) via OCI distribution
                                        (token → manifest → blobs → overlay), LIVE-
                                        verified against Docker Hub. THREE scan tiers:
                                        shallow + source-pattern + tree-sitter AST.
-                                       FOLLOW-UP: authenticated/private-registry pull.
+                                       AUTH DONE: generic /v2/ ping → Www-Authenticate
+                                       Bearer challenge → token flow (one path for
+                                       docker.io/ghcr/GCR/private); `--username/
+                                       --password` or AEGIS_REGISTRY_USER/PASS →
+                                       Basic auth on token req (private images).
+                                       aegis-net HttpResponse now carries headers.
+                                       LIVE re-verified: alpine:latest via new flow.
   P7  sbom (CycloneDX/SPDX/SARIF) .... DONE  aegis-sbom crate: PURL builder
                                        (canonical, matches Go), CycloneDX 1.5 +
                                        SPDX 2.3 + SARIF 2.1.0 JSON emitters (pure,

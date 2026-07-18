@@ -1,24 +1,27 @@
-//! Anonymous OCI/Docker registry pull — fetch an image by `repo:tag`
-//! reference instead of from a local tarball.
+//! OCI/Docker registry pull — fetch an image by `repo:tag` reference instead
+//! of from a local tarball, anonymously or with credentials.
 //!
-//! Bounded first slice: **unauthenticated pull from a public registry only**.
-//! It walks the standard OCI distribution flow — parse the reference, fetch the
-//! manifest (following a multi-arch index to its linux/amd64 child), then fetch
-//! every layer blob — and feeds the ordered gzipped layer blobs into the exact
-//! same [`crate::overlay::overlay_layers`] assembly the tarball path uses, so
+//! Walks the standard OCI distribution flow — parse the reference, resolve a
+//! bearer token (see Auth below), fetch the manifest (following a multi-arch
+//! index to its linux/amd64 child), then fetch every layer blob — and feeds
+//! the ordered gzipped layer blobs into the exact same
+//! [`crate::overlay::overlay_layers`] assembly the tarball path uses, so
 //! whiteouts and later-layer-wins semantics are identical.
 //!
 //! ## Auth
 //!
-//! [`aegis_net::HttpResponse`] drops response headers, so we can't read a
-//! `Www-Authenticate` challenge off a 401. We therefore special-case by host:
-//!   - **docker.io** (`registry-1.docker.io`): fetch an anonymous bearer token
-//!     from `auth.docker.io` proactively and send it on every request.
-//!   - **other registries** (e.g. `ghcr.io`): try anonymously, no token. Public
-//!     images there serve manifests/blobs without a bearer for a pull scope.
+//! One generic OCI token flow handles every registry (docker.io, ghcr.io,
+//! GCR, private repos): ping `GET /v2/`, and if it answers `401` with a
+//! `Www-Authenticate: Bearer realm=…,service=…[,scope=…]` challenge, fetch a
+//! bearer token from the challenge's realm and send it on every subsequent
+//! request. A `2xx` ping means no auth is needed (fully public) and we pull
+//! anonymously.
 //!
-//! Authenticated pulls (private images, other registries needing a token) are a
-//! follow-up. Any HTTP/parse failure returns `Err(String)` — never panics.
+//! [`Credentials`] (from `--username/--password` or the `AEGIS_REGISTRY_USER`
+//! / `AEGIS_REGISTRY_PASS` env vars) are sent as HTTP Basic auth on the token
+//! request, so **private images** work. Without credentials the same flow
+//! fetches an anonymous token — the public-pull path. Any HTTP/parse failure
+//! returns `Err(String)` — never panics.
 
 use serde::Deserialize;
 
@@ -28,9 +31,6 @@ use crate::overlay::{overlay_layers, ImageFiles};
 
 /// Default registry for a bare reference (`alpine`, `library/nginx`).
 const DEFAULT_REGISTRY: &str = "registry-1.docker.io";
-/// Docker Hub's token-issuing service.
-const DOCKER_AUTH_URL: &str =
-    "https://auth.docker.io/token?service=registry.docker.io&scope=repository:";
 /// Media types we accept when asking for a manifest. Includes the multi-arch
 /// index types so the registry hands back an index for a multi-platform tag.
 const MANIFEST_ACCEPT: &str = "application/vnd.oci.image.manifest.v1+json, \
@@ -152,21 +152,41 @@ struct BlobDescriptor {
     digest: String,
 }
 
-/// Pull an image by reference and return its flattened root filesystem.
-///
-/// Anonymous pull only. Feeds the ordered layer blobs into the shared overlay
-/// assembly (identical whiteout / later-layer-wins semantics to the tarball
-/// path). Best-effort: any HTTP or parse failure returns `Err(String)`.
-pub fn pull_image(http: &dyn HttpClient, reference: &str) -> Result<ImageFiles, String> {
-    let r = parse_reference(reference)?;
+/// Registry credentials for a private pull (HTTP Basic on the token request).
+#[derive(Debug, Clone)]
+pub struct Credentials {
+    pub username: String,
+    pub password: String,
+}
 
-    // docker.io needs a bearer proactively (we can't read Www-Authenticate);
-    // other registries are tried anonymously.
-    let token = if r.registry == DEFAULT_REGISTRY {
-        Some(fetch_docker_token(http, &r.name)?)
-    } else {
-        None
-    };
+/// A parsed `Www-Authenticate: Bearer …` challenge.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct BearerChallenge {
+    realm: String,
+    service: String,
+    scope: String,
+}
+
+/// Pull an image by reference (anonymous) and return its flattened root
+/// filesystem. Convenience wrapper over [`pull_image_auth`] with no creds.
+pub fn pull_image(http: &dyn HttpClient, reference: &str) -> Result<ImageFiles, String> {
+    pull_image_auth(http, reference, None)
+}
+
+/// Pull an image by reference, optionally authenticated, and return its
+/// flattened root filesystem.
+///
+/// Resolves a bearer token via the generic `/v2/` challenge flow (sending
+/// `creds` as Basic auth when present), then feeds the ordered gzipped layer
+/// blobs into the shared [`crate::overlay::overlay_layers`] assembly —
+/// identical whiteout / later-layer-wins semantics to the tarball path.
+pub fn pull_image_auth(
+    http: &dyn HttpClient,
+    reference: &str,
+    creds: Option<&Credentials>,
+) -> Result<ImageFiles, String> {
+    let r = parse_reference(reference)?;
+    let token = acquire_token(http, &r, creds)?;
 
     let manifest_bytes = get_manifest(http, &r, token.as_deref(), &r.tag)?;
     let layer_digests = resolve_layers(http, &r, token.as_deref(), &manifest_bytes)?;
@@ -182,11 +202,125 @@ pub fn pull_image(http: &dyn HttpClient, reference: &str) -> Result<ImageFiles, 
     overlay_layers(&slices)
 }
 
-/// Fetch an anonymous pull token from Docker Hub for `name`.
-fn fetch_docker_token(http: &dyn HttpClient, name: &str) -> Result<String, String> {
-    let url = format!("{DOCKER_AUTH_URL}{name}:pull");
+/// Resolve a bearer token for `r` via the OCI `/v2/` ping. A `2xx` ping means
+/// no auth is needed (`Ok(None)`); a `401` with a Bearer challenge triggers a
+/// token fetch from its realm. Any other ping outcome falls back to an
+/// anonymous pull (`Ok(None)`) — the manifest GET then surfaces a clear error
+/// if a token was actually required.
+fn acquire_token(
+    http: &dyn HttpClient,
+    r: &ImageRef,
+    creds: Option<&Credentials>,
+) -> Result<Option<String>, String> {
+    let ping_url = format!("https://{}/v2/", r.registry);
     let resp = http
-        .get(&url, &[])
+        .get(&ping_url, &[])
+        .map_err(|e| format!("image: ping GET {ping_url}: {e}"))?;
+    if resp.is_ok() {
+        return Ok(None);
+    }
+    if resp.status != 401 {
+        return Ok(None);
+    }
+    let Some(challenge) = resp
+        .header("www-authenticate")
+        .and_then(parse_bearer_challenge)
+    else {
+        return Ok(None);
+    };
+    fetch_token(http, r, &challenge, creds).map(Some)
+}
+
+/// Parse a `Www-Authenticate` value into a [`BearerChallenge`]. Returns `None`
+/// unless it's a `Bearer` scheme with at least a `realm`.
+fn parse_bearer_challenge(header: &str) -> Option<BearerChallenge> {
+    let rest = header.trim().strip_prefix("Bearer ").or_else(|| {
+        // Case-insensitive scheme check for non-canonical casing.
+        header
+            .trim()
+            .get(..7)
+            .filter(|s| s.eq_ignore_ascii_case("Bearer "))
+            .map(|_| &header.trim()[7..])
+    })?;
+    let mut c = BearerChallenge::default();
+    for part in split_challenge_params(rest) {
+        let Some((key, value)) = part.split_once('=') else {
+            continue;
+        };
+        let value = value.trim().trim_matches('"');
+        match key.trim() {
+            "realm" => c.realm = value.to_string(),
+            "service" => c.service = value.to_string(),
+            "scope" => c.scope = value.to_string(),
+            _ => {}
+        }
+    }
+    (!c.realm.is_empty()).then_some(c)
+}
+
+/// Split `key="v,v",key2=v2` on commas that sit outside double quotes.
+fn split_challenge_params(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_quotes = false;
+    for ch in s.chars() {
+        match ch {
+            '"' => {
+                in_quotes = !in_quotes;
+                cur.push(ch);
+            }
+            ',' if !in_quotes => {
+                out.push(std::mem::take(&mut cur));
+            }
+            _ => cur.push(ch),
+        }
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// Fetch a bearer token from the challenge realm for a pull scope. Uses the
+/// challenge's own scope, else defaults to `repository:{name}:pull`. Sends
+/// Basic auth when `creds` are present (private pull).
+fn fetch_token(
+    http: &dyn HttpClient,
+    r: &ImageRef,
+    challenge: &BearerChallenge,
+    creds: Option<&Credentials>,
+) -> Result<String, String> {
+    let scope = if challenge.scope.is_empty() {
+        format!("repository:{}:pull", r.name)
+    } else {
+        challenge.scope.clone()
+    };
+    let sep = if challenge.realm.contains('?') {
+        '&'
+    } else {
+        '?'
+    };
+    let url = if challenge.service.is_empty() {
+        format!("{}{sep}scope={scope}", challenge.realm)
+    } else {
+        format!(
+            "{}{sep}service={}&scope={scope}",
+            challenge.realm, challenge.service
+        )
+    };
+
+    let basic = creds.map(|c| {
+        format!(
+            "Basic {}",
+            base64_encode(format!("{}:{}", c.username, c.password).as_bytes())
+        )
+    });
+    let headers: Vec<(&str, &str)> = match basic.as_deref() {
+        Some(a) => vec![("Authorization", a)],
+        None => Vec::new(),
+    };
+    let resp = http
+        .get(&url, &headers)
         .map_err(|e| format!("image: token GET {url}: {e}"))?;
     if !resp.is_ok() {
         return Err(format!("image: token GET {url}: status {}", resp.status));
@@ -202,6 +336,31 @@ fn fetch_docker_token(http: &dyn HttpClient, name: &str) -> Result<String, Strin
         return Err("image: registry returned an empty token".to_string());
     }
     Ok(token)
+}
+
+/// Standard-alphabet base64 encode (for the Basic-auth header). Hand-rolled to
+/// avoid a dependency, matching the crate's no-extra-deps convention.
+fn base64_encode(input: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        out.push(ALPHABET[(b0 >> 2) as usize] as char);
+        out.push(ALPHABET[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            ALPHABET[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            ALPHABET[(b2 & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
 }
 
 /// GET a manifest by tag or digest reference.
@@ -438,5 +597,111 @@ mod tests {
         // Manifest URL is unregistered → mock returns 404 → Err, no panic.
         let http = MockHttpClient::new().with(token_url, 200, br#"{"token":"t"}"#.to_vec());
         assert!(pull_image(&http, "alpine").is_err());
+    }
+
+    #[test]
+    fn parse_bearer_challenge_full() {
+        let c = parse_bearer_challenge(
+            r#"Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:o/r:pull""#,
+        )
+        .unwrap();
+        assert_eq!(c.realm, "https://ghcr.io/token");
+        assert_eq!(c.service, "ghcr.io");
+        assert_eq!(c.scope, "repository:o/r:pull");
+    }
+
+    #[test]
+    fn parse_bearer_challenge_no_scope_and_bad_scheme() {
+        // realm + service, no scope.
+        let c = parse_bearer_challenge(r#"Bearer realm="https://x/token",service="x""#).unwrap();
+        assert_eq!(c.realm, "https://x/token");
+        assert!(c.scope.is_empty());
+        // Basic scheme → not a bearer challenge.
+        assert!(parse_bearer_challenge(r#"Basic realm="x""#).is_none());
+        // No realm → rejected.
+        assert!(parse_bearer_challenge("Bearer service=\"x\"").is_none());
+    }
+
+    #[test]
+    fn base64_encode_known_vectors() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"u:p"), "dTpw");
+    }
+
+    #[test]
+    fn authenticated_pull_uses_challenge_and_sends_basic_auth() {
+        let ping = "https://ghcr.io/v2/";
+        let token_url = "https://ghcr.io/token?service=ghcr.io&scope=repository:o/r:pull";
+        let manifest_url = "https://ghcr.io/v2/o/r/manifests/1.2";
+        let blob = "https://ghcr.io/v2/o/r/blobs/sha256:xxx";
+
+        let layer = gzip(&make_tar(&[("app/f.txt", b"hi")]));
+        let manifest = r#"{"schemaVersion":2,"layers":[{"digest":"sha256:xxx"}]}"#;
+
+        let http = MockHttpClient::new()
+            .with_headers(
+                ping,
+                401,
+                Vec::new(),
+                &[(
+                    "WWW-Authenticate",
+                    r#"Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:o/r:pull""#,
+                )],
+            )
+            .with(token_url, 200, br#"{"token":"tok"}"#.to_vec())
+            .with(manifest_url, 200, manifest.as_bytes().to_vec())
+            .with(blob, 200, layer);
+
+        let creds = Credentials {
+            username: "u".into(),
+            password: "p".into(),
+        };
+        let files = pull_image_auth(&http, "ghcr.io/o/r:1.2", Some(&creds)).expect("pull");
+        assert_eq!(
+            files.files.get("app/f.txt").map(Vec::as_slice),
+            Some(&b"hi"[..])
+        );
+
+        // The token request must carry Basic auth for "u:p" → base64 "dTpw".
+        let calls = http.calls.lock().unwrap();
+        let sent = http.sent_headers.lock().unwrap();
+        let idx = calls
+            .iter()
+            .position(|(_, url, _)| url == token_url)
+            .expect("token call made");
+        assert!(
+            sent[idx]
+                .iter()
+                .any(|(k, v)| k == "Authorization" && v == "Basic dTpw"),
+            "token request should send Basic auth, got {:?}",
+            sent[idx]
+        );
+    }
+
+    #[test]
+    fn public_ping_ok_pulls_anonymously() {
+        // A 2xx /v2/ ping → no token fetched; manifest served without auth.
+        let ping = "https://ghcr.io/v2/";
+        let manifest_url = "https://ghcr.io/v2/o/r/manifests/1.2";
+        let blob = "https://ghcr.io/v2/o/r/blobs/sha256:yyy";
+        let layer = gzip(&make_tar(&[("app/g.txt", b"pub")]));
+        let manifest = r#"{"schemaVersion":2,"layers":[{"digest":"sha256:yyy"}]}"#;
+
+        let http = MockHttpClient::new()
+            .with(ping, 200, Vec::new())
+            .with(manifest_url, 200, manifest.as_bytes().to_vec())
+            .with(blob, 200, layer);
+
+        let files = pull_image(&http, "ghcr.io/o/r:1.2").expect("pull");
+        assert_eq!(
+            files.files.get("app/g.txt").map(Vec::as_slice),
+            Some(&b"pub"[..])
+        );
+        // No token endpoint was contacted.
+        let calls = http.calls.lock().unwrap();
+        assert!(calls.iter().all(|(_, url, _)| !url.contains("/token")));
     }
 }

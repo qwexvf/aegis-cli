@@ -946,7 +946,35 @@ struct ImageFindingView {
 /// Scan an OCI / `docker save` image tarball: extract the flattened root
 /// filesystem (layer overlay + whiteouts) and report risky files. Exit 1 when
 /// any finding is present, 0 when clean, 2 on a read/parse error.
-pub(crate) fn run_image(file: Option<&str>, reference: Option<&str>, json: bool) -> ExitCode {
+/// Resolve registry credentials: flags win, else the `AEGIS_REGISTRY_USER` /
+/// `AEGIS_REGISTRY_PASS` env vars. Returns `None` when no username is present
+/// (anonymous pull); a username with an empty password is still allowed
+/// (some registries take a token as the username).
+fn registry_credentials(
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Option<aegis_image::Credentials> {
+    let user = username
+        .map(str::to_string)
+        .or_else(|| std::env::var("AEGIS_REGISTRY_USER").ok())
+        .filter(|s| !s.is_empty())?;
+    let pass = password
+        .map(str::to_string)
+        .or_else(|| std::env::var("AEGIS_REGISTRY_PASS").ok())
+        .unwrap_or_default();
+    Some(aegis_image::Credentials {
+        username: user,
+        password: pass,
+    })
+}
+
+pub(crate) fn run_image(
+    file: Option<&str>,
+    reference: Option<&str>,
+    username: Option<&str>,
+    password: Option<&str>,
+    json: bool,
+) -> ExitCode {
     let img = match (file, reference) {
         (Some(path), None) => match aegis_image::extract_image_from_path(Path::new(path)) {
             Ok(i) => i,
@@ -957,7 +985,14 @@ pub(crate) fn run_image(file: Option<&str>, reference: Option<&str>, json: bool)
         },
         (None, Some(r)) => {
             let client = UreqClient::new();
-            match aegis_image::pull_image(&client, r) {
+            // Credentials from flags, falling back to env. When neither is
+            // set the pull stays anonymous (public images).
+            let creds = registry_credentials(username, password);
+            let result = match &creds {
+                Some(c) => aegis_image::pull_image_auth(&client, r, Some(c)),
+                None => aegis_image::pull_image(&client, r),
+            };
+            match result {
                 Ok(i) => i,
                 Err(e) => {
                     eprintln!("aegis: cannot pull image {r}: {e}");
