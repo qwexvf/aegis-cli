@@ -81,10 +81,26 @@ Status @ this snapshot:
                                        pairing IS the schema-mapping layer. 4 cases
                                        LIVE + green (parse npm + cargo, allowlist,
                                        explain — all offline/deterministic); doubles
-                                       as a Rust-CLI regression suite now. REMAINING
-                                       (data task, not a blocker): replace Rust-
-                                       candidate goldens with Go v0.29-captured
-                                       output + grow the corpus (needs the Go binary).
+                                       as a Rust-CLI regression suite now.
+                                       AUTOMATED GATE: `xtask analyze-parity`
+                                       vendors the incident corpus + Go-captured
+                                       goldens (examples/incidents/<eco>/<fix>/
+                                       analyze.golden.json) → Rust-vs-golden at
+                                       check time (no Go needed). 36/36 green.
+                                       Wired into .github/workflows/ci.yml
+                                       (fmt/clippy/test + parity). Refresh goldens
+                                       with `--record` when the Go binary is local.
+                                       COMMAND PARITY STATUS: analyze 36/36 ✓.
+                                       sbom = content-parity ✓ (CDX components +
+                                       SPDX packages match Go; only the root
+                                       component name differs by --project default).
+                                       ci = NOT at parity: Go ci enriches every dep
+                                       (tarball fetch + AST scan → per-dep verdict +
+                                       flags) then attaches advisories; Rust ci is
+                                       CVE-only (OSV). Full ci parity needs the
+                                       snapshot.Enrich port (per-dep fetch+scan) —
+                                       the documented big-risk item, next major
+                                       milestone.
   P1  domain ......................... DONE
   P2  lockfile (24 parsers) .......... DONE
   P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,

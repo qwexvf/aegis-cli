@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "port/**"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: format
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: test
+        run: cargo test --workspace
+
+  parity:
+    # Analyze-command parity gate. Diffs the Rust binary against goldens
+    # captured from the Go reference (aegis v0.29). Goldens are committed under
+    # examples/incidents, so no Go toolchain is needed here — refresh them with
+    # `cargo run -p xtask -- analyze-parity --record` when the Go binary is
+    # available locally.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: analyze-parity (Rust vs Go-captured goldens)
+        run: cargo run -q -p xtask -- analyze-parity
