@@ -390,19 +390,22 @@ binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
        fields). Now mirrors Go's ciFindingAdvisoryJSON (field order + omitempty).
      - The old "ci block matches Go on lodash 4.17.4" claim was captured with a
        POLLUTED ~/.aegis/cache (stale parses). Clean Go re-fetch confirms Rust.
-   REACHABILITY GAP surfaced (real, not yet ported): Go ci runs a usage
-   analysis over the project dir. A dep with NO consuming source is marked
-   ReachabilityUnused → advisory verdict downgraded one level (Block→Prompt)
-   + capability flags suppressed (ci.go scoreSnapshot + downgradeVerdict). A
-   dep imported by project source is Used → full verdict. Rust ci has no
-   reachability step → always scores as Used. The fixtures pin the Used path
-   (each carries an index.js importing the dep) so Go+Rust agree today; porting
-   the Unused-downgrade to Rust ci is the follow-up (aegis-reach already does
-   the import/used-symbol analysis; wire it into scan::enrich).
+   REACHABILITY DOWNGRADE — PORTED (was the biggest ci behavioral gap): Go ci
+   walks the project source (skip node_modules/vendor/… = REACH_SKIP_DIRS),
+   classifies each dep Used (imported) / Unused (not). Unused → advisory
+   verdict dropped one level (Block→Prompt via downgrade_verdict) always; +
+   capability flags suppressed only under AEGIS_UNUSED_SUPPRESS (default off).
+   Rust now mirrors this in run_ci: scan::project_reachability builds a per-eco
+   import index (aegis-reach), scan::ProjectReach::classify → Used/Unused,
+   downgrade_verdict + downgrade_unused applied per dep. VERIFIED vs Go on
+   lodash 4.17.4: bare lockfile → prompt (flag kept); +AEGIS_UNUSED_SUPPRESS →
+   prompt (flag suppressed); index.js importing lodash → block. All 3 match Go.
+   (Empirical Go contract: a scored lockfile dep is Used iff imported else
+   Unused — never Unknown; the source-`.json`/scannedEcos code path reads
+   otherwise but the built binary behaves as Used-iff-imported.) The ci-parity
+   fixtures carry an index.js (Used path) so the gate exercises the common case.
 
 3. SMALLER COMMAND TAILS
-   - PORT REACHABILITY-UNUSED DOWNGRADE into Rust ci (see #2 gap) — biggest
-     remaining ci behavioral difference vs Go.
    - snapshot / explain (per-package) parity vs Go.
    - other-ecosystem used-symbols in aegis-reach (js/py/go/php done; ruby N/A).
 
