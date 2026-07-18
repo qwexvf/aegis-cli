@@ -466,6 +466,58 @@ binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
    secrets), then flip the default. Separate track from the parity work above.
 
 -------------------------------------------------------------------------------
+ DELIBERATELY NOT PORTED  (intentional scope boundaries — NOT gaps)
+-------------------------------------------------------------------------------
+These are conscious decisions, each verified against Go or justified by the
+CLI-first design. Do NOT "fix" them without re-reading the reason — several
+would REGRESS parity (make Rust diverge from Go v0.29) or add cost for no gain.
+
+1. NON-NPM ENRICH SOURCE FETCHERS (pypi/crates/rubygems/go tarball fetch+scan)
+   NOT ported ON PURPOSE. Go v0.29 wires ONLY the npm fetcher
+   (cmd/aegis/risk_engine.go → jspkgsource.New); jspkgsource.Fetch hard-errors
+   on any non-npm ecosystem, so in Go too, non-npm deps get advisory-only
+   verdicts in ci. Adding fetch_<eco>_source to Rust = a feature BEYOND Go =
+   a NEW divergence the ci-parity gate would flag. Revisit only post-cutover as
+   a deliberate enhancement (would need matching work in Go, or an accepted
+   divergence). See NEXT #1.
+
+2. ci REACHABILITY beyond npm
+   Reachability Used/Unused classification (and its advisory-verdict downgrade)
+   applies ONLY to the enriched ecosystem (npm) — matches Go: a pypi/crates/go/
+   gem dep stays Unknown (full advisory verdict) even with consuming source
+   present (verified: jinja2 bare AND +app.py → block both). Gated on
+   Ecosystem::Npm in run_ci on purpose. See NEXT #2.
+
+3. Go snapshot ENRICH ACTOR-MODEL + full DiffReport/DriftScore verdict richness
+   NOT ported. Rust snapshot = fingerprint-a-dir + `--baseline` drift (new
+   capability → exit 1), driven by rayon. The Go actor-model concurrency and
+   the richer DiffReport verdict folding are superseded by the rayon design for
+   a one-shot CLI. Per-package caps still ≡ analyze (gated). See P8 + NEXT #4.
+
+4. INTERACTIVE TUI PRESENTER (P9 follow-up)
+   NOT built. JSON + SARIF + CycloneDX/SPDX already feed dashboards / GitHub
+   Code Scanning; a live-region TUI adds little for a CI-first scanner. Text +
+   JSON presenters are complete.
+
+5. ci-parity gate IN BLOCKING CI
+   NOT wired into the offline fmt/clippy/test job — ci enrich hits the network
+   (tarballs + OSV), nondeterministic. It is OPT-IN (`xtask ci-parity`), run
+   locally / in a network-enabled job. analyze-parity + sbom-parity ARE offline
+   + deterministic and DO run in CI. Inherent to ci's network dependency.
+
+6. explain COMMAND SHAPE
+   Rust `explain [capability]` is a static risk-MODEL doc (capability catalog +
+   weights) — a deliberate CLI reorganization. Go `explain <pkg-spec>` is
+   per-package analysis; that surface maps to Rust `analyze` (verified
+   identical caps+score; gated 36/36). Not a missing feature — a relocated one.
+
+RUST-AHEAD (Rust does MORE than Go v0.29 — kept, documented, not gated):
+ - sbom npm lockfileVersion-3 transitive graph: Rust extracts packages[].
+   dependencies → CDX dependsOn edges; Go v0.29 does not populate them. The
+   sbom-parity npm fixture is kept FLAT so the gate stays green; the cargo
+   fixture exercises a multi-dep graph both agree on.
+
+-------------------------------------------------------------------------------
  NETWORK TAIL (Phase 3 leftovers, not blocking)
 -------------------------------------------------------------------------------
   GHSA lookup — DONE (aegis-vuln::ghsa, github GraphQL + token; needs CLI wiring
