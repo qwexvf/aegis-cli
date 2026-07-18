@@ -10,28 +10,30 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  12 workspace members (11 crates + xtask parity harness) · 507 tests (all green)
-  · clippy + rustfmt clean · 137 commits.
+  12 workspace members (11 crates + xtask parity harness) · clippy + rustfmt
+  clean.
   13 CLI commands: parse / analyze / ci / run / sbom / fix / allowlist / image /
   explain / reach / hook / actions / snapshot.
 
-  *** PARITY IS LIVE + MEASURED (was blocked) ***
+  *** PARITY COMPLETE FOR ALL 3 CORE COMMANDS — 3 COMMITTED GATES ***
   The Go aegis-cli source is local (../aegis-cli) + Go 1.26 installed, so real
-  Go-vs-Rust diffs run.
-  - analyze: 36/36 incident fixtures across ALL 13 ecosystems match Go exactly
-    (verdict+score+capabilities). Committed, CI-enforced gate: `xtask
-    analyze-parity` (vendored corpus + Go-captured goldens, no Go needed at
-    check time) — .github/workflows/ci.yml.
-  - ci: ENRICH MODEL PORTED (the plan's big-risk item). Rust ci fetches each
-    dep's tarball, AST+heuristics scans it → per-dep verdict, folds in advisory
-    severity, emits the Go-shaped report; --fail-on is a verdict threshold
-    (default block). LIVE-matches Go on lodash 4.17.4 (verdict/score/flags/
-    summary + all 10 advisories). npm enrich only; other-eco fetchers pending.
-  - sbom: content-parity (CDX components + SPDX packages match Go).
+  Go-vs-Rust diffs run. Only P11 (release cutover) remains.
+  - analyze: `xtask analyze-parity` — 36/36 incident fixtures across ALL 13
+    ecosystems match Go (verdict+score+capabilities). Committed goldens, no Go
+    at check time. IN CI (.github/workflows/ci.yml).
+  - ci: `xtask ci-parity` — 6 fixtures / 5 ecosystems (npm/pypi/crates/go/gem)
+    match Go. Enrich model ported (per-dep tarball fetch+scan → verdict +
+    advisories, Go-shaped report), reachability downgrade ported (npm-gated),
+    advisory fixed_in+in_kev added. Network-dependent → OPT-IN, not in CI.
+  - sbom: `xtask sbom-parity` — CDX+SPDX vs Go goldens, 4/4. Offline +
+    deterministic → IN CI. Fixed CDX $schema + empty-dependsOn shape.
+  - explain / snapshot: CLI-model-divergent (see NEXT #4); per-package caps ≡
+    analyze (gated), unique logic (model-doc / drift) golden-/integration-tested.
   Parity bugs found + fixed by diffing against Go: install-hook base flag;
   R + Perl obfuscated-payload regexes; .ex/.exs analyzable-source (Elixir);
   Java tree-sitter grammar (maven); advisory alias-over-dedup (ci 10 vs 8);
-  install-hook fingerprint population.
+  install-hook fingerprint population; ci advisory fixed_in/in_kev; ci
+  reachability-unused downgrade; CDX $schema + empty dependsOn.
 
   Feature surface (all CLI-wired + LIVE-verified):
   - reachability (aegis-reach): imports + used-symbols (js/ts/py/go/php; ruby
@@ -224,9 +226,14 @@ Status @ this snapshot:
                                        installer; actions = GitHub Actions workflow;
                                        snapshot = drift detection; explain = risk
                                        model. main.rs modularized (148 lines).
-  P11 parity gate + cutover ......... BLOCKED  depends on P0 parity harness (see
-                                       P0 — Go/Rust CLI models diverge). Cutover
-                                       (cosign/SLSA release) is post-parity.
+  P11 parity gate + cutover ......... GATE DONE, CUTOVER PENDING. Parity gate
+                                       shipped: 3 committed harnesses (analyze-
+                                       parity + sbom-parity in CI, ci-parity
+                                       opt-in) prove Go==Rust for all 3 core
+                                       commands. Remaining = release infra only
+                                       (cosign keyless + SLSA provenance via
+                                       sigstore-rs, CI secrets), then flip the
+                                       default. Deferred by owner — do after.
 
   Rough count: P1/P2/P3/P4/P5/P6/P7/P8/P9/P10 done or done-to-a-strong-slice
   (with documented deep follow-ups); P0/P11 documented-blocked (architectural,
@@ -432,8 +439,23 @@ binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
    not populate them. The npm fixture is kept flat so the gate stays green; the
    cargo fixture (3 deps, real edges both agree on) exercises the graph.
 
-4. SMALLER COMMAND TAILS
-   - snapshot / explain (per-package) parity vs Go.
+4. [DONE — covered, no new gate needed] SMALLER COMMAND TAILS
+   - explain: the Rust CLI reorganized this command. Go `explain <pkg-spec>` is
+     PER-PACKAGE capability analysis (aegis.lock or fresh fetch); Rust `explain
+     [capability]` is a static RISK-MODEL doc (capability catalog + weights).
+     Go's per-package explain ≡ Rust `analyze` — SAME scanner, SAME result:
+     verified live, Go `explain lodash@4.17.4` → caps [dynamic-eval,
+     unlisted-large-file], verdict review, score 55 == Rust `analyze` on the
+     same source. That per-package surface is already gated by analyze-parity
+     (36/36). Rust's model-doc `explain --json` has a committed regression
+     golden (xtask parity: examples/static/explain.golden.json).
+   - snapshot: also model-divergent (Go save/enrich/diff over aegis.lock; Rust
+     fingerprints a dir + `--baseline` drift). The per-package fingerprint caps
+     == analyze (gated); the unique DRIFT logic (new capability between versions
+     → exit 1, the takeover signal) is integration-tested
+     (crates/aegis-cli/tests/cli.rs::snapshot_detects_behavioral_drift). Go's
+     full DiffReport/DriftScore verdict richness is intentionally not ported
+     (see P8) — the rayon slice supersedes the actor model for a CLI.
    - other-ecosystem used-symbols in aegis-reach (js/py/go/php done; ruby N/A).
 
 5. P11 CUTOVER
