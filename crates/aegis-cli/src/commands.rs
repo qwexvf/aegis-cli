@@ -5,9 +5,10 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use aegis_domain::{
-    build_fix_plan, builtin_allow_rules, risk_score, upgrade_command, verdict,
-    verdict_for_advisories, Advisory, AdvisoryQuery, Capability, CapabilitySet, Dependency,
-    Fingerprint, RiskAssessment, Severity, VerdictKind, ALL_CAPABILITIES,
+    build_fix_plan, builtin_allow_rules, downgrade_unused, downgrade_verdict, risk_score,
+    upgrade_command, verdict, verdict_for_advisories, Advisory, AdvisoryQuery, Capability,
+    CapabilitySet, Dependency, Fingerprint, Reachability, RiskAssessment, Severity, VerdictKind,
+    ALL_CAPABILITIES,
 };
 use aegis_lockfile::{parse_file, DirectMap};
 use aegis_net::UreqClient;
@@ -16,7 +17,9 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::enrich::{advisories_by_key, ci_findings_to_sarif, cve_findings, osv_disk_cache};
-use crate::scan::{collect_files, enrich_dep, fetch_online_caps, lockfile_deps, scan_source};
+use crate::scan::{
+    collect_files, enrich_dep, fetch_online_caps, lockfile_deps, project_reachability, scan_source,
+};
 use crate::util::{parse_ecosystem, parse_severity, severity_rank};
 
 /// JSON/serialization view of a dependency (domain `Dependency` stays
@@ -197,18 +200,32 @@ pub(crate) fn run_ci(
         }
     };
 
+    // Reachability: walk the project source once and classify each dep as
+    // Used / Unused. A dep no project file imports has its advisory verdict
+    // dampened one level (Go's ci.go downgrade), and — only when opted in via
+    // AEGIS_UNUSED_SUPPRESS — its non-install capability flags suppressed.
+    let project_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let reach = project_reachability(project_dir);
+    let unused_suppress = std::env::var_os("AEGIS_UNUSED_SUPPRESS").is_some();
+
     // Per-dep enrich in parallel (each does its own network fetch).
     let mut findings: Vec<CiFinding> = deps
         .par_iter()
         .map(|d| {
-            let assessment = if enriched {
+            let raw = if enriched {
                 enrich_dep(d, &allow)
             } else {
                 RiskAssessment::default()
             };
+            let reachability = reach.classify(d);
+            let assessment = downgrade_unused(&raw, reachability, unused_suppress);
             let advs = adv_map.get(&d.versioned_key()).cloned().unwrap_or_default();
             let cap_v = verdict(&assessment, &RiskAssessment::default());
-            let final_v = cap_v.max(verdict_for_advisories(&advs));
+            let mut adv_v = verdict_for_advisories(&advs);
+            if reachability == Reachability::Unused {
+                adv_v = downgrade_verdict(adv_v);
+            }
+            let final_v = cap_v.max(adv_v);
             CiFinding {
                 ecosystem: d.ecosystem.as_str().to_string(),
                 name: d.name.clone(),

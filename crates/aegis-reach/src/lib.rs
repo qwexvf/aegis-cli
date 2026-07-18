@@ -275,6 +275,14 @@ fn is_relative(raw: &str) -> bool {
         || raw.starts_with('/')
 }
 
+/// Pick the extractor [`Language`] for a file path by extension, or `None`
+/// if the extension isn't recognized. Public so callers building a
+/// per-ecosystem import index (e.g. the `ci` reachability pass) can route
+/// files the same way [`imported_dep_keys`] does.
+pub fn language_for_path(path: &str) -> Option<Language> {
+    language_for(path)
+}
+
 /// Pick the extractor language for a file path by extension, or `None`
 /// if the extension isn't recognized.
 fn language_for(path: &str) -> Option<Language> {
