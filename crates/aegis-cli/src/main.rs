@@ -144,6 +144,13 @@ enum Command {
         /// `ghcr.io/owner/repo:1.2`) instead of reading a local file.
         #[arg(long = "ref")]
         reference: Option<String>,
+        /// Registry username for a private pull (else $AEGIS_REGISTRY_USER).
+        #[arg(long)]
+        username: Option<String>,
+        /// Registry password/token for a private pull (else
+        /// $AEGIS_REGISTRY_PASS).
+        #[arg(long)]
+        password: Option<String>,
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -227,8 +234,16 @@ fn main() -> ExitCode {
         Command::Image {
             file,
             reference,
+            username,
+            password,
             json,
-        } => run_image(file.as_deref(), reference.as_deref(), json),
+        } => run_image(
+            file.as_deref(),
+            reference.as_deref(),
+            username.as_deref(),
+            password.as_deref(),
+            json,
+        ),
         Command::Fix {
             file,
             offline,

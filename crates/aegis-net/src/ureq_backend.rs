@@ -41,12 +41,26 @@ fn into_response(result: Result<ureq::Response, ureq::Error>) -> Result<HttpResp
         Err(e) => return Err(HttpError(e.to_string())),
     };
     let status = resp.status();
+    // Snapshot headers before consuming the response into its reader
+    // (name lowercased so HttpResponse::header can match case-insensitively).
+    let headers: Vec<(String, String)> = resp
+        .headers_names()
+        .into_iter()
+        .filter_map(|name| {
+            resp.header(&name)
+                .map(|v| (name.to_ascii_lowercase(), v.to_string()))
+        })
+        .collect();
     let mut body = Vec::new();
     resp.into_reader()
         .take(MAX_RESPONSE_BYTES)
         .read_to_end(&mut body)
         .map_err(|e| HttpError(format!("read body: {e}")))?;
-    Ok(HttpResponse { status, body })
+    Ok(HttpResponse {
+        status,
+        body,
+        headers,
+    })
 }
 
 impl HttpClient for UreqClient {
