@@ -27,7 +27,52 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
+use crate::risk::RiskAssessment;
 use crate::{Capability, Ecosystem};
+
+/// Prefix written into a flag's `suppress_by` when an allowlist rule excuses
+/// it. The rule's own reason follows, so the presenter can show why.
+pub const ALLOWLIST_SUPPRESS_PREFIX: &str = "allowlisted";
+
+/// Return a copy of `ra` with each flag whose capability an [`AllowSet`] rule
+/// covers for `(eco, name, version)` marked `suppressed`, its weight
+/// subtracted from the score (clamped at 0). Flags whose `code` isn't a
+/// capability (heuristic-only codes) are never touched, and an empty set is a
+/// no-op. Mirrors the Go risk engine's allowlist application; shaped like
+/// [`crate::reachability::downgrade_unused`].
+pub fn apply_allowlist(
+    ra: &RiskAssessment,
+    allow: &AllowSet,
+    eco: Ecosystem,
+    name: &str,
+    version: &str,
+) -> RiskAssessment {
+    if allow.is_empty() || ra.flags.is_empty() {
+        return ra.clone();
+    }
+    let mut out = ra.clone();
+    for f in &mut out.flags {
+        if f.suppressed {
+            continue;
+        }
+        let Some(cap) = Capability::from_name(&f.code) else {
+            continue;
+        };
+        if let Some(rule) = allow.suppresses(eco, name, version, cap) {
+            f.suppressed = true;
+            f.suppress_by = if rule.reason.is_empty() {
+                ALLOWLIST_SUPPRESS_PREFIX.to_string()
+            } else {
+                format!("{ALLOWLIST_SUPPRESS_PREFIX}: {}", rule.reason)
+            };
+            out.score -= f.weight;
+        }
+    }
+    if out.score < 0 {
+        out.score = 0;
+    }
+    out
+}
 
 /// One `(ecosystem, name, version-range, capability)` tuple whose risk-flag
 /// contribution should be suppressed. Rules come from three layers (builtin,
@@ -1254,5 +1299,92 @@ mod tests {
         assert!(Version::parse("1.2.10") > Version::parse("1.2.9"));
         assert_eq!(Version::parse("v1.0.0"), Version::parse("1.0.0"));
         assert!(Version::parse("not-a-version").is_none());
+    }
+
+    // --- apply_allowlist ---
+
+    use crate::risk::{RiskAssessment, RiskFlag};
+
+    fn flag(code: &str, weight: i32) -> RiskFlag {
+        RiskFlag {
+            code: code.to_string(),
+            detail: String::new(),
+            weight,
+            suppressed: false,
+            suppress_by: String::new(),
+        }
+    }
+
+    #[test]
+    fn apply_allowlist_suppresses_matching_capability_and_subtracts_weight() {
+        let ra = RiskAssessment {
+            score: 70,
+            flags: vec![flag("dynamic-eval", 40), flag("net-egress", 30)],
+        };
+        let set = must_set(vec![AllowRule {
+            name: "lodash".into(),
+            capability: Some(Capability::DynamicEval),
+            reason: "template compiler".into(),
+            source: "builtin".into(),
+            ..base()
+        }]);
+        let out = apply_allowlist(&ra, &set, Ecosystem::Npm, "lodash", "4.17.21");
+        // dynamic-eval suppressed (−40); net-egress untouched.
+        assert!(out.flags[0].suppressed);
+        assert_eq!(out.flags[0].suppress_by, "allowlisted: template compiler");
+        assert!(!out.flags[1].suppressed);
+        assert_eq!(out.score, 30);
+    }
+
+    #[test]
+    fn apply_allowlist_ignores_non_capability_codes() {
+        // "typosquat-risk" IS a capability; "some-heuristic" is not.
+        let ra = RiskAssessment {
+            score: 10,
+            flags: vec![flag("not-a-capability-code", 10)],
+        };
+        let set = must_set(vec![AllowRule {
+            name: "*".into(),
+            reason: "trust all".into(),
+            ..base()
+        }]);
+        let out = apply_allowlist(&ra, &set, Ecosystem::Npm, "x", "1.0.0");
+        assert!(!out.flags[0].suppressed);
+        assert_eq!(out.score, 10);
+    }
+
+    #[test]
+    fn apply_allowlist_empty_set_is_noop() {
+        let ra = RiskAssessment {
+            score: 40,
+            flags: vec![flag("dynamic-eval", 40)],
+        };
+        let out = apply_allowlist(&ra, &AllowSet::empty(), Ecosystem::Npm, "lodash", "4.17.21");
+        assert_eq!(out, ra);
+    }
+
+    #[test]
+    fn apply_allowlist_clamps_score_at_zero() {
+        let ra = RiskAssessment {
+            score: 40,
+            flags: vec![flag("dynamic-eval", 40), flag("net-egress", 30)],
+        };
+        // A wildcard-capability rule suppresses everything → score floors at 0.
+        let set = must_set(vec![AllowRule {
+            name: "demo".into(),
+            reason: "fully trusted".into(),
+            ..base()
+        }]);
+        let out = apply_allowlist(&ra, &set, Ecosystem::Npm, "demo", "1.0.0");
+        assert!(out.flags.iter().all(|f| f.suppressed));
+        assert_eq!(out.score, 0);
+    }
+
+    #[test]
+    fn capability_from_name_roundtrips() {
+        for c in crate::ALL_CAPABILITIES {
+            assert_eq!(Capability::from_name(c.name()), Some(c));
+        }
+        assert_eq!(Capability::from_name("not-a-capability"), None);
     }
 }

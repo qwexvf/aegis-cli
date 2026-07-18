@@ -189,6 +189,10 @@ enum Command {
         /// so `analyze` stays offline unless asked.
         #[arg(long)]
         online: bool,
+        /// Path to a TOML file of `[[allow]]` capability-suppression rules,
+        /// merged on top of the builtin allowlist.
+        #[arg(long)]
+        allowlist: Option<String>,
         /// Emit machine-readable JSON instead of a text summary.
         #[arg(long)]
         json: bool,
@@ -268,8 +272,17 @@ fn main() -> ExitCode {
             name,
             ecosystem,
             online,
+            allowlist,
             json,
             sarif,
-        } => run_analyze(&dir, name.as_deref(), &ecosystem, online, json, sarif),
+        } => run_analyze(
+            &dir,
+            name.as_deref(),
+            &ecosystem,
+            online,
+            allowlist.as_deref(),
+            json,
+            sarif,
+        ),
     }
 }

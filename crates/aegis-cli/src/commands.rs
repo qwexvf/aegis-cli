@@ -197,6 +197,11 @@ struct FlagView {
     code: String,
     detail: String,
     weight: i32,
+    /// true when an allowlist rule excused this flag (weight not counted).
+    suppressed: bool,
+    /// the matching rule's reason; omitted when not suppressed.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    suppress_by: String,
 }
 
 // --- config-driven task runner -------------------------------------
@@ -209,6 +214,84 @@ struct AegisConfig {
     parallelism: Option<toml::Value>,
     #[serde(default, rename = "task")]
     tasks: Vec<TaskConfig>,
+    /// User capability-suppression rules, merged on top of the builtin set.
+    #[serde(default, rename = "allow")]
+    allow: Vec<AllowRuleConfig>,
+}
+
+/// One `[[allow]]` config entry: an ecosystem/name/version/capability tuple
+/// whose risk-flag contribution should be suppressed.
+#[derive(Deserialize)]
+struct AllowRuleConfig {
+    #[serde(default = "crate::util::default_ecosystem")]
+    ecosystem: String,
+    /// Package name, or "*" for any package in the ecosystem.
+    name: String,
+    /// Semver range, or empty/"*" for any version.
+    #[serde(default)]
+    version_range: String,
+    /// Capability slug (e.g. "dynamic-eval"); omit to suppress any capability.
+    #[serde(default)]
+    capability: Option<String>,
+    #[serde(default)]
+    reason: String,
+}
+
+/// Convert parsed config entries into domain [`AllowRule`]s, validating the
+/// ecosystem and capability slugs. Source is stamped "user".
+fn allow_rules_from_config(
+    entries: &[AllowRuleConfig],
+) -> Result<Vec<aegis_domain::AllowRule>, String> {
+    let mut out = Vec::with_capacity(entries.len());
+    for e in entries {
+        let eco = parse_ecosystem(&e.ecosystem).ok_or_else(|| {
+            format!(
+                "allow rule {:?}: unknown ecosystem {:?}",
+                e.name, e.ecosystem
+            )
+        })?;
+        let capability = match &e.capability {
+            Some(slug) if !slug.is_empty() => {
+                Some(Capability::from_name(slug).ok_or_else(|| {
+                    format!("allow rule {:?}: unknown capability {slug:?}", e.name)
+                })?)
+            }
+            _ => None,
+        };
+        out.push(aegis_domain::AllowRule {
+            ecosystem: eco,
+            name: e.name.clone(),
+            version_range: e.version_range.clone(),
+            capability,
+            reason: e.reason.clone(),
+            source: "user".to_string(),
+        });
+    }
+    Ok(out)
+}
+
+/// Compile the effective allowlist: the builtin rules plus `user` rules.
+/// Builtin first so a user rule sharing a package can add coverage; matching
+/// is OR-based, so any match suppresses.
+fn resolved_allow_set(
+    user: Vec<aegis_domain::AllowRule>,
+) -> Result<aegis_domain::AllowSet, String> {
+    let mut rules = builtin_allow_rules();
+    rules.extend(user);
+    aegis_domain::AllowSet::new(rules)
+}
+
+/// Load `[[allow]]` rules from a standalone TOML file (for `analyze
+/// --allowlist`). The file uses the same `[[allow]]` shape as `aegis.toml`.
+fn load_allow_file(path: &str) -> Result<Vec<aegis_domain::AllowRule>, String> {
+    #[derive(Deserialize)]
+    struct AllowFile {
+        #[serde(default, rename = "allow")]
+        allow: Vec<AllowRuleConfig>,
+    }
+    let text = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
+    let parsed: AllowFile = toml::from_str(&text).map_err(|e| format!("parse {path}: {e}"))?;
+    allow_rules_from_config(&parsed.allow)
 }
 
 #[derive(Deserialize)]
@@ -268,7 +351,7 @@ struct RunView {
 }
 
 /// Run one task: collect its files once, then run the checks it declares.
-fn run_task(t: &TaskConfig) -> TaskResult {
+fn run_task(t: &TaskConfig, allow: &aegis_domain::AllowSet) -> TaskResult {
     let mut res = TaskResult {
         name: t.name.clone(),
         path: t.path.clone(),
@@ -299,6 +382,9 @@ fn run_task(t: &TaskConfig) -> TaskResult {
     // Source scan (ast + heuristics).
     if want("ast") || want("heuristics") {
         let (_caps, assessment) = scan_source(&files, &t.name, eco, Vec::new());
+        // Allowlist suppression: excuse capabilities declared expected for
+        // this package (builtin + user rules). Version unknown here → "".
+        let assessment = aegis_domain::apply_allowlist(&assessment, allow, eco, &t.name, "");
         let v = verdict(&assessment, &RiskAssessment::default());
         res.verdict = Some(v.name().to_string());
         res.score = assessment.score;
@@ -457,8 +543,22 @@ pub(crate) fn run_config(config_path: &str, json: bool, sarif: bool) -> ExitCode
         }
     }
 
+    // Effective allowlist = builtin + config [[allow]] rules, applied to each
+    // task's source-scan assessment.
+    let allow = match allow_rules_from_config(&config.allow).and_then(resolved_allow_set) {
+        Ok(set) => set,
+        Err(e) => {
+            eprintln!("aegis: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
     // Independent tasks run in PARALLEL (each task's source scan also fans out).
-    let results: Vec<TaskResult> = config.tasks.par_iter().map(run_task).collect();
+    let results: Vec<TaskResult> = config
+        .tasks
+        .par_iter()
+        .map(|t| run_task(t, &allow))
+        .collect();
     let failed = results.iter().any(|r| r.failed);
 
     if sarif {
@@ -555,6 +655,7 @@ pub(crate) fn run_analyze(
     name: Option<&str>,
     ecosystem: &str,
     online: bool,
+    allowlist: Option<&str>,
     json: bool,
     sarif: bool,
 ) -> ExitCode {
@@ -585,6 +686,27 @@ pub(crate) fn run_analyze(
         if let Some(flag) = crate::scan::provenance_flag(&files, &pkg_name, eco) {
             assessment.score += flag.weight;
             assessment.flags.push(flag);
+        }
+    }
+    // Allowlist suppression (builtin + optional --allowlist file). Version is
+    // unknown from a source dir → "", so only version-agnostic rules match.
+    let user_rules = match allowlist {
+        Some(path) => match load_allow_file(path) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("aegis: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        None => Vec::new(),
+    };
+    match resolved_allow_set(user_rules) {
+        Ok(set) => {
+            assessment = aegis_domain::apply_allowlist(&assessment, &set, eco, &pkg_name, "");
+        }
+        Err(e) => {
+            eprintln!("aegis: {e}");
+            return ExitCode::from(2);
         }
     }
     let v = verdict(&assessment, &RiskAssessment::default());
@@ -630,6 +752,8 @@ pub(crate) fn run_analyze(
                     code: f.code.clone(),
                     detail: f.detail.clone(),
                     weight: f.weight,
+                    suppressed: f.suppressed,
+                    suppress_by: f.suppress_by.clone(),
                 })
                 .collect(),
         };
@@ -648,7 +772,14 @@ pub(crate) fn run_analyze(
         } else {
             println!("signals:");
             for f in &assessment.flags {
-                println!("  [{:>3}] {} — {}", f.weight, f.code, f.detail);
+                if f.suppressed {
+                    println!(
+                        "  [  0] {} — {} (suppressed: {})",
+                        f.code, f.detail, f.suppress_by
+                    );
+                } else {
+                    println!("  [{:>3}] {} — {}", f.weight, f.code, f.detail);
+                }
             }
         }
     }

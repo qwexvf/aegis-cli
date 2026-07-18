@@ -99,6 +99,14 @@ impl Capability {
         }
     }
 
+    /// Parse a capability from its canonical [`name`](Self::name), the
+    /// inverse of `name`. Used to map a risk flag's `code` back to the
+    /// capability it represents (e.g. for allowlist suppression). Returns
+    /// `None` for codes that aren't capabilities.
+    pub fn from_name(name: &str) -> Option<Capability> {
+        ALL_CAPABILITIES.iter().copied().find(|c| c.name() == name)
+    }
+
     /// One-line human-readable explanation (<=80 chars), used by
     /// `aegis explain`. Mirrors `Capability.Description()`.
     pub fn description(self) -> &'static str {

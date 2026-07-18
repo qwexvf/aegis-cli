@@ -94,6 +94,53 @@ fn analyze_malicious_js_blocks() {
 }
 
 #[test]
+fn analyze_allowlist_suppresses_flag() {
+    let d = tmp("analyze-allow");
+    write(
+        &d,
+        "index.js",
+        "const cp = require('child_process');\ncp.execSync('ls');\n",
+    );
+    write(
+        &d,
+        "package.json",
+        "{\"name\":\"demo\",\"version\":\"1.0.0\"}",
+    );
+    write(
+        &d,
+        "allow.toml",
+        "[[allow]]\nname = \"demo\"\ncapability = \"shell-spawn\"\nreason = \"demo build step\"\n",
+    );
+    let allow = d.join("allow.toml");
+
+    // Without allowlist: shell-spawn scores.
+    let out = run(&["analyze", d.to_str().unwrap(), "--name", "demo", "--json"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("shell-spawn"), "{}", out.stdout);
+    assert!(!out.stdout.contains("\"score\": 0"), "{}", out.stdout);
+
+    // With allowlist: flag present but suppressed, score drops to 0.
+    let out = run(&[
+        "analyze",
+        d.to_str().unwrap(),
+        "--name",
+        "demo",
+        "--allowlist",
+        allow.to_str().unwrap(),
+        "--json",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\"suppressed\": true"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("demo build step"), "{}", out.stdout);
+    assert!(out.stdout.contains("\"score\": 0"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn analyze_npm_manifest_metadata_heuristics_fire() {
     // The metadata detectors (install-hook, optional-git-dep, vcs-dep) read the
     // package.json the analyze pipeline now parses — not source files. A clean

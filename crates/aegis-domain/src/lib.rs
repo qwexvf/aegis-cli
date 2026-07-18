@@ -14,7 +14,10 @@ pub mod risk;
 pub mod types;
 
 pub use advisory::{max_severity, Advisory, AdvisoryQuery, Severity};
-pub use allowlist::{builtin_allow_rules, AllowRule, AllowSet, Match, MatchKind};
+pub use allowlist::{
+    apply_allowlist, builtin_allow_rules, AllowRule, AllowSet, Match, MatchKind,
+    ALLOWLIST_SUPPRESS_PREFIX,
+};
 pub use capability::{Capability, CapabilitySet, ALL_CAPABILITIES};
 pub use fix::{build_fix_plan, compare_fix_version, upgrade_command, FixItem};
 pub use reachability::{downgrade_unused, Reachability, UNREACHABLE_SUPPRESS_REASON};
