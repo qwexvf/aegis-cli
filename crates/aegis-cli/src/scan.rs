@@ -137,6 +137,32 @@ pub(crate) fn scan_source(
     (fp.capabilities, assessment)
 }
 
+/// Enrich one dependency for `ci`: fetch its published source, AST + heuristics
+/// scan it, apply the allowlist, and return the capability risk assessment
+/// (flags + score). Mirrors Go's per-dep snapshot enrich.
+///
+/// Only npm has a source fetcher today; other ecosystems return an empty
+/// assessment (no capability signal — they still score via advisories in the
+/// caller). Any fetch/scan failure degrades to an empty assessment so one bad
+/// dep never fails the whole run.
+pub(crate) fn enrich_dep(dep: &Dependency, allow: &aegis_domain::AllowSet) -> RiskAssessment {
+    if dep.ecosystem != Ecosystem::Npm || dep.name.is_empty() || dep.version.is_empty() {
+        return RiskAssessment::default();
+    }
+    let http = UreqClient::new();
+    let files = match aegis_registry::fetch_npm_source(
+        &http,
+        "https://registry.npmjs.org",
+        &dep.name,
+        &dep.version,
+    ) {
+        Ok(f) => f,
+        Err(_) => return RiskAssessment::default(),
+    };
+    let (_caps, assessment) = scan_source(&files, &dep.name, dep.ecosystem, Vec::new());
+    aegis_domain::apply_allowlist(&assessment, allow, dep.ecosystem, &dep.name, &dep.version)
+}
+
 /// Map the heuristics' manifest hooks onto domain [`InstallHook`]s. Phase
 /// strings mirror the Go npm parser (preinstall → PreInstall; install /
 /// postinstall / prepare → PostInstall; build → Build). `source` is

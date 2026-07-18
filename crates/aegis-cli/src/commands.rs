@@ -5,8 +5,9 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use aegis_domain::{
-    build_fix_plan, builtin_allow_rules, risk_score, upgrade_command, verdict, AdvisoryQuery,
-    Capability, CapabilitySet, Dependency, Fingerprint, RiskAssessment, Severity, ALL_CAPABILITIES,
+    build_fix_plan, builtin_allow_rules, risk_score, upgrade_command, verdict,
+    verdict_for_advisories, Advisory, AdvisoryQuery, Capability, CapabilitySet, Dependency,
+    Fingerprint, RiskAssessment, Severity, VerdictKind, ALL_CAPABILITIES,
 };
 use aegis_lockfile::{parse_file, DirectMap};
 use aegis_net::UreqClient;
@@ -15,7 +16,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::enrich::{advisories_by_key, ci_findings_to_sarif, cve_findings, osv_disk_cache};
-use crate::scan::{collect_files, fetch_online_caps, lockfile_deps, scan_source};
+use crate::scan::{collect_files, enrich_dep, fetch_online_caps, lockfile_deps, scan_source};
 use crate::util::{parse_ecosystem, parse_severity, severity_rank};
 
 /// JSON/serialization view of a dependency (domain `Dependency` stays
@@ -54,11 +55,58 @@ pub(crate) struct FindingView {
     pub(crate) in_kev: bool,
 }
 
+/// Go-shaped `ci --json` report: a per-verdict summary over the whole project
+/// plus the findings that meet the fail-on threshold. Mirrors the Go CI
+/// presenter so the two are diffable.
 #[derive(Serialize)]
-struct CiView {
+struct CiReport {
+    project: String,
     fail_on: String,
-    failed: bool,
-    findings: Vec<FindingView>,
+    enriched: bool,
+    passed: bool,
+    summary: CiSummary,
+    findings: Vec<CiFinding>,
+}
+
+#[derive(Serialize)]
+struct CiSummary {
+    total: usize,
+    safe: usize,
+    review: usize,
+    prompt: usize,
+    blocked: usize,
+}
+
+#[derive(Serialize)]
+struct CiFinding {
+    ecosystem: String,
+    name: String,
+    version: String,
+    direct: bool,
+    verdict: String,
+    risk_score: i32,
+    flags: Vec<CiFlag>,
+    advisories: Vec<CiAdvisory>,
+}
+
+/// A ci finding's risk flag — Go shape `{code, detail, weight}` (a suppressed
+/// flag carries weight 0).
+#[derive(Serialize)]
+struct CiFlag {
+    code: String,
+    detail: String,
+    weight: i32,
+}
+
+#[derive(Serialize)]
+struct CiAdvisory {
+    id: String,
+    severity: String,
+    summary: String,
+    url: String,
+    source: String,
+    epss: f64,
+    epss_percentile: f64,
 }
 
 pub(crate) fn run_ci(
@@ -68,8 +116,9 @@ pub(crate) fn run_ci(
     json: bool,
     sarif: bool,
 ) -> ExitCode {
-    let Some(threshold) = parse_severity(fail_on) else {
-        eprintln!("aegis: unknown --fail-on severity: {fail_on}");
+    // fail-on is a VERDICT threshold (safe|review|prompt|block), matching Go.
+    let Some(fail_on_v) = VerdictKind::parse(fail_on) else {
+        eprintln!("aegis: unknown --fail-on verdict: {fail_on} (want safe|review|prompt|block)");
         return ExitCode::from(2);
     };
     let bytes = match std::fs::read(file) {
@@ -79,10 +128,8 @@ pub(crate) fn run_ci(
             return ExitCode::from(2);
         }
     };
-    let basename = Path::new(file)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(file);
+    let path = Path::new(file);
+    let basename = path.file_name().and_then(|n| n.to_str()).unwrap_or(file);
     let deps = match parse_file(basename, &bytes, &DirectMap::new()) {
         Ok(Some(d)) => d,
         Ok(None) => {
@@ -94,8 +141,17 @@ pub(crate) fn run_ci(
             return ExitCode::from(2);
         }
     };
+    // Project name = the lockfile's parent dir (mirrors Go's project identity).
+    let project = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("project")
+        .to_string();
 
-    // Look up CVEs unless offline.
+    // Advisories for every pinned dep (OSV + GHSA, EPSS/KEV enriched), unless
+    // offline. Keyed by versioned_key.
     let queries: Vec<AdvisoryQuery> = deps
         .iter()
         .filter(|d| !d.version.is_empty())
@@ -105,40 +161,106 @@ pub(crate) fn run_ci(
             version: d.version.clone(),
         })
         .collect();
-
-    let mut findings: Vec<FindingView> = Vec::new();
-    if !offline {
-        match cve_findings(&queries) {
-            Ok(f) => findings = f,
+    let adv_map = if offline {
+        std::collections::BTreeMap::new()
+    } else {
+        match advisories_by_key(&queries) {
+            Ok(m) => m,
             Err(e) => {
-                eprintln!("aegis: CVE lookup failed: {e}");
+                eprintln!("aegis: advisory lookup failed: {e}");
                 return ExitCode::from(2);
             }
         }
-    }
+    };
 
-    // Gate: fail when any finding meets the severity threshold.
-    let failed = findings.iter().any(|f| {
-        parse_severity(&f.severity)
-            .map(|s| severity_rank(s) >= severity_rank(threshold))
-            .unwrap_or(false)
-    });
+    // Enrich (fetch source + AST/heuristics scan → per-dep verdict) unless
+    // offline. Builtin allowlist applies during scoring, like Go.
+    let enriched = !offline;
+    let allow = match resolved_allow_set(Vec::new()) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("aegis: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
+    // Per-dep enrich in parallel (each does its own network fetch).
+    let mut findings: Vec<CiFinding> = deps
+        .par_iter()
+        .map(|d| {
+            let assessment = if enriched {
+                enrich_dep(d, &allow)
+            } else {
+                RiskAssessment::default()
+            };
+            let advs = adv_map.get(&d.versioned_key()).cloned().unwrap_or_default();
+            let cap_v = verdict(&assessment, &RiskAssessment::default());
+            let final_v = cap_v.max(verdict_for_advisories(&advs));
+            CiFinding {
+                ecosystem: d.ecosystem.as_str().to_string(),
+                name: d.name.clone(),
+                version: d.version.clone(),
+                direct: d.direct,
+                verdict: final_v.name().to_string(),
+                risk_score: assessment.score,
+                // Suppressed (allowlisted) flags are omitted from the ci
+                // finding, matching Go — they don't contribute to the score.
+                flags: assessment
+                    .flags
+                    .iter()
+                    .filter(|f| !f.suppressed)
+                    .map(|f| CiFlag {
+                        code: f.code.clone(),
+                        detail: f.detail.clone(),
+                        weight: f.weight,
+                    })
+                    .collect(),
+                advisories: advs.iter().map(CiAdvisory::from).collect(),
+            }
+        })
+        .collect();
+    findings.sort_by(|a, b| a.name.cmp(&b.name).then(a.version.cmp(&b.version)));
+
+    // Summary tally over ALL deps; the reported findings are those whose
+    // verdict meets the fail-on threshold.
+    let mut summary = CiSummary {
+        total: findings.len(),
+        safe: 0,
+        review: 0,
+        prompt: 0,
+        blocked: 0,
+    };
+    for f in &findings {
+        match f.verdict.as_str() {
+            "safe" => summary.safe += 1,
+            "review" => summary.review += 1,
+            "prompt" => summary.prompt += 1,
+            "block" => summary.blocked += 1,
+            _ => {}
+        }
+    }
+    let gated: Vec<CiFinding> = findings
+        .into_iter()
+        .filter(|f| VerdictKind::parse(&f.verdict).is_some_and(|v| v >= fail_on_v))
+        .collect();
+    let passed = gated.is_empty();
 
     if sarif {
-        println!("{}", ci_findings_to_sarif(&findings));
-        return if failed {
-            ExitCode::from(1)
-        } else {
-            ExitCode::SUCCESS
-        };
+        // SARIF stays advisory-oriented (GitHub code-scanning surfaces CVEs).
+        let adv_findings = advisory_finding_views(&deps, &adv_map);
+        println!("{}", ci_findings_to_sarif(&adv_findings));
+        return exit_for(passed);
     }
     if json {
-        let view = CiView {
-            fail_on: threshold.as_str().to_string(),
-            failed,
-            findings,
+        let report = CiReport {
+            project,
+            fail_on: fail_on_v.name().to_string(),
+            enriched,
+            passed,
+            summary,
+            findings: gated,
         };
-        match serde_json::to_string_pretty(&view) {
+        match serde_json::to_string_pretty(&report) {
             Ok(s) => println!("{s}"),
             Err(e) => {
                 eprintln!("aegis: json encode failed: {e}");
@@ -146,40 +268,80 @@ pub(crate) fn run_ci(
             }
         }
     } else {
-        let scanned = queries.len();
-        if offline {
-            println!("scanned {scanned} deps (offline — no CVE lookup)");
-        } else {
+        println!(
+            "project: {project} — {} deps ({} safe, {} review, {} prompt, {} blocked){}",
+            summary.total,
+            summary.safe,
+            summary.review,
+            summary.prompt,
+            summary.blocked,
+            if enriched { "" } else { " [offline]" }
+        );
+        for f in &gated {
             println!(
-                "scanned {scanned} deps, {} advisories found",
-                findings.len()
+                "  [{}] {}/{}@{} (score {})",
+                f.verdict, f.ecosystem, f.name, f.version, f.risk_score
             );
+            for a in &f.advisories {
+                println!("      {} [{}] {}", a.id, a.severity, a.summary);
+            }
         }
-        for f in &findings {
-            let kev = if f.in_kev { " [KEV]" } else { "" };
-            let epss = if f.epss > 0.0 {
-                format!(" epss={:.0}%", f.epss * 100.0)
-            } else {
-                String::new()
-            };
-            let fixed = if f.fixed_in.is_empty() {
-                String::new()
-            } else {
-                format!(" → fixed in {}", f.fixed_in)
-            };
-            println!(
-                "  [{}]{kev}{epss} {}/{}@{} — {} ({}){fixed}",
-                f.severity, f.ecosystem, f.name, f.version, f.advisory, f.summary
-            );
-        }
-        println!("verdict: {}", if failed { "FAIL" } else { "pass" });
+        println!(
+            "verdict: {} (fail-on {})",
+            if passed { "pass" } else { "FAIL" },
+            fail_on_v.name()
+        );
     }
+    exit_for(passed)
+}
 
-    // Exit 0 clean, 1 on findings ≥ threshold, matching the Go gate.
-    if failed {
-        ExitCode::from(1)
-    } else {
+impl From<&Advisory> for CiAdvisory {
+    fn from(a: &Advisory) -> Self {
+        CiAdvisory {
+            id: a.id.clone(),
+            severity: a.severity.as_str().to_string(),
+            summary: a.summary.clone(),
+            url: a.url.clone(),
+            source: a.source.clone(),
+            epss: a.epss,
+            epss_percentile: a.epss_percentile,
+        }
+    }
+}
+
+/// Flatten the per-dep advisory map into the flat [`FindingView`] list the
+/// SARIF emitter consumes.
+fn advisory_finding_views(
+    deps: &[Dependency],
+    adv_map: &std::collections::BTreeMap<String, Vec<Advisory>>,
+) -> Vec<FindingView> {
+    let mut out = Vec::new();
+    for d in deps {
+        let Some(advs) = adv_map.get(&d.versioned_key()) else {
+            continue;
+        };
+        for a in advs {
+            out.push(FindingView {
+                ecosystem: d.ecosystem.as_str().to_string(),
+                name: d.name.clone(),
+                version: d.version.clone(),
+                advisory: a.id.clone(),
+                severity: a.severity.as_str().to_string(),
+                summary: a.summary.clone(),
+                fixed_in: a.fixed_in.clone(),
+                epss: a.epss,
+                in_kev: a.in_kev,
+            });
+        }
+    }
+    out
+}
+
+fn exit_for(passed: bool) -> ExitCode {
+    if passed {
         ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
     }
 }
 
@@ -1483,7 +1645,7 @@ set -e
 for lock in $(git diff --cached --name-only --diff-filter=ACM | grep -E '(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|go\.sum|requirements\.txt|poetry\.lock|Gemfile\.lock|composer\.lock)$' || true); do
   [ -f "$lock" ] || continue
   echo "aegis: scanning $lock"
-  aegis ci "$lock" --fail-on high || {
+  aegis ci "$lock" --fail-on block || {
     echo "aegis: commit blocked — high/critical vulnerability in $lock" >&2
     exit 1
   }
@@ -1510,7 +1672,7 @@ jobs:
       - name: Install aegis
         run: cargo install --git https://github.com/qwexvf/aegis-cli
       - name: Scan lockfile
-        run: aegis ci package-lock.json --fail-on high --sarif > aegis.sarif
+        run: aegis ci package-lock.json --fail-on block --sarif > aegis.sarif
         continue-on-error: true
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3

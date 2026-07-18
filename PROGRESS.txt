@@ -94,13 +94,26 @@ Status @ this snapshot:
                                        sbom = content-parity ✓ (CDX components +
                                        SPDX packages match Go; only the root
                                        component name differs by --project default).
-                                       ci = NOT at parity: Go ci enriches every dep
-                                       (tarball fetch + AST scan → per-dep verdict +
-                                       flags) then attaches advisories; Rust ci is
-                                       CVE-only (OSV). Full ci parity needs the
-                                       snapshot.Enrich port (per-dep fetch+scan) —
-                                       the documented big-risk item, next major
-                                       milestone.
+                                       ci = ENRICH MODEL PORTED: Rust ci now matches
+                                       Go — fetches each dep's tarball
+                                       (registry::fetch_npm_source, npm), AST +
+                                       heuristics scans it → per-dep capability
+                                       verdict, folds in advisory severity (verdict =
+                                       max(cap, VerdictForAdvisories)), emits the
+                                       Go-shaped report {project, fail_on, enriched,
+                                       passed, summary{safe/review/prompt/blocked},
+                                       findings[{verdict, risk_score, flags,
+                                       advisories}]}. --fail-on is now a VERDICT
+                                       threshold (safe|review|prompt|block, default
+                                       block), not severity; hook/actions updated.
+                                       LIVE vs Go on lodash 4.17.4: verdict=block,
+                                       score=55, flags=[unlisted-large-file], summary
+                                       match. REMAINING diff: advisory SET (8 vs 10)
+                                       — over-aggressive alias-dedup in
+                                       advisories_by_key drops distinct GHSAs sharing
+                                       a CVE alias (vuln-layer, affects fix/sarif
+                                       too); next fix. npm enrich only; other-eco
+                                       source fetchers = follow-up.
   P1  domain ......................... DONE
   P2  lockfile (24 parsers) .......... DONE
   P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,

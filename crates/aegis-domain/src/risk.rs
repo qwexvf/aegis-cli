@@ -355,7 +355,9 @@ fn join_names(names: &[String], max: usize) -> String {
 // --- Verdict ----------------------------------------------------------
 
 /// A combined score bucketed into a UX category. Mirrors `VerdictKind`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Ordered Safe < Review < Prompt < Block (declaration order), so a CI gate
+/// can compare a verdict against its `fail_on` threshold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum VerdictKind {
     Safe,
     Review,
@@ -371,6 +373,30 @@ impl VerdictKind {
             VerdictKind::Prompt => "prompt",
             VerdictKind::Block => "block",
         }
+    }
+
+    /// Parse a `fail_on` threshold name. `None` for an unknown string.
+    pub fn parse(s: &str) -> Option<VerdictKind> {
+        match s.to_ascii_lowercase().as_str() {
+            "safe" => Some(VerdictKind::Safe),
+            "review" => Some(VerdictKind::Review),
+            "prompt" => Some(VerdictKind::Prompt),
+            "block" => Some(VerdictKind::Block),
+            _ => None,
+        }
+    }
+}
+
+/// The verdict floor a set of advisories imposes, independent of capability
+/// score: info→safe, low→review, medium→prompt, high/critical→block. Mirrors
+/// Go's `VerdictForAdvisories`. The `ci` gate takes the max of this and the
+/// capability verdict.
+pub fn verdict_for_advisories(advisories: &[crate::Advisory]) -> VerdictKind {
+    match crate::max_severity(advisories) {
+        crate::Severity::Critical | crate::Severity::High => VerdictKind::Block,
+        crate::Severity::Medium => VerdictKind::Prompt,
+        crate::Severity::Low => VerdictKind::Review,
+        crate::Severity::Info => VerdictKind::Safe,
     }
 }
 
@@ -490,4 +516,57 @@ fn parse_int(s: &str) -> Option<i64> {
 
 fn cap_list_string(caps: &CapabilitySet) -> String {
     caps.iter().map(|c| c.name()).collect::<Vec<_>>().join(", ")
+}
+
+#[cfg(test)]
+mod verdict_tests {
+    use super::*;
+    use crate::{Advisory, Severity};
+
+    fn adv(sev: Severity) -> Advisory {
+        Advisory {
+            severity: sev,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn verdict_kind_orders_and_parses() {
+        assert!(VerdictKind::Block > VerdictKind::Prompt);
+        assert!(VerdictKind::Prompt > VerdictKind::Review);
+        assert!(VerdictKind::Review > VerdictKind::Safe);
+        assert_eq!(VerdictKind::parse("block"), Some(VerdictKind::Block));
+        assert_eq!(VerdictKind::parse("REVIEW"), Some(VerdictKind::Review));
+        assert_eq!(VerdictKind::parse("nope"), None);
+    }
+
+    #[test]
+    fn advisory_verdict_floor() {
+        assert_eq!(verdict_for_advisories(&[]), VerdictKind::Safe);
+        assert_eq!(
+            verdict_for_advisories(&[adv(Severity::Info)]),
+            VerdictKind::Safe
+        );
+        assert_eq!(
+            verdict_for_advisories(&[adv(Severity::Low)]),
+            VerdictKind::Review
+        );
+        assert_eq!(
+            verdict_for_advisories(&[adv(Severity::Medium)]),
+            VerdictKind::Prompt
+        );
+        assert_eq!(
+            verdict_for_advisories(&[adv(Severity::High)]),
+            VerdictKind::Block
+        );
+        assert_eq!(
+            verdict_for_advisories(&[adv(Severity::Critical)]),
+            VerdictKind::Block
+        );
+        // max severity wins.
+        assert_eq!(
+            verdict_for_advisories(&[adv(Severity::Low), adv(Severity::High)]),
+            VerdictKind::Block
+        );
+    }
 }
