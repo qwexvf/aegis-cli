@@ -362,50 +362,39 @@ coloring. AST scan verified multi-core (253% CPU on a big tree, 16 cores avail).
   ci command: lockfile → osv cve lookup → severity gate + exit code
 
 -------------------------------------------------------------------------------
- RESUME TOMORROW  —  pick one; each is self-contained & committable
+ NEXT - RANKED  (foundations all DONE; these drive toward P11 cutover)
 -------------------------------------------------------------------------------
-RULE: every feature ships WITH its test in the same commit (CLI too — network-
-free integration tests in crates/aegis-cli/tests/cli.rs). Not manual-verify-only.
+RULE: every feature ships WITH its test in the same commit (CLI too - network-
+free integration tests in crates/aegis-cli/tests/cli.rs). Verify against the Go
+binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
 
-P4 HEURISTICS — COMPLETE. All detectors ported + feature-gated (lean builds
-  exclude regex/serde_json/semver/time). tarball-drift's pure diff engine is
-  done; it stays dormant until repo_files is supplied (see NETWORK TAIL).
-  WIRING DONE: analyze calls parse_npm_manifest / parse_go_retract via
-    build_normalized() — deps/install-hook/unlisted-payload fire from
-    package.json end-to-end (integration-tested). go-retract wired but dormant
-    in analyze (no pinned version in a source tree). `analyze --online` runs the
-    3 maintainer detectors off the npm packument (LIVE-verified).
-  WIRING STILL TODO (rest of P8): ci/run don't populate manifest metadata —
-    only analyze does. snapshot.Enrich per-dep fan-out not ported.
-  DONE: tarball-drift + maintainer both fire via `analyze --online` (GitHub
-    git-tree + npm packument fetches, LIVE-verified).
-  [P5] grammars — DONE. gleam (tree-sitter-gleam 1.0), dart (tree-sitter-dart
-       0.2), cocoapods (ruby grammar + podspec query) all added + detect-tested.
-       ABI compatible with tree-sitter 0.25.
-  [P10] more CLI commands with tests: `sbom` (needs P7), `fix` (domain.BuildFixPlan
-       already portable), `deprecated`/`license` checks in the config runner
-       (aegis-registry already built + mock-tested — wire DepsDevClient/LicenseFetcher).
+1. OTHER-ECOSYSTEM ENRICH FETCHERS  <- main gap for full `ci` parity
+   `ci` enrich fetches npm source only (registry::fetch_npm_source). Non-npm
+   lockfiles (requirements.txt / Cargo.lock / Gemfile.lock / go.sum) get
+   advisory-only verdicts - no capability scan. The SCANNERS already match Go
+   (analyze 36/36 across all 13 ecosystems proves it); only the per-registry
+   fetch layer is missing. Add fetch_<eco>_source mirroring the npm one:
+     - pypi     PyPI JSON API -> sdist/wheel (files.pythonhosted). START HERE
+                (7 incident fixtures - biggest non-npm corpus).
+     - crates   crates.io/api/v1/crates/<n>/<v>/download -> .crate (gzip-tar)
+     - rubygems rubygems.org/downloads/<n>-<v>.gem (tar-of-tars: data.tar.gz)
+     - go       module zip from proxy.golang.org
+   Wire each into scan::enrich_dep's ecosystem match. Verify each vs Go `ci`.
 
-HARD / LONG POLES (real design work):
-  [P5] aegis-reach — reimplement qwexvf/depusage (Go-only). Gates reachability
-       suppression. HIGHEST RISK. Scope it as its own crate + sub-plan.
-  [P5] full JS taint — symbol table (const x = "..." / char-code arrays) + tainted-
-       sink tracking (base64 → eval). Port rest of ast/js/taint.go (~400 lines).
-  [P6] aegis-image — OCI image scan. go-containerregistry has no mature Rust peer;
-       build on oci-client/oci-spec + tar + sha2. Feature-gate; ship after parity.
-  [P7] aegis-sbom — CycloneDX (cyclonedx-bom crate) + SPDX + SARIF. `sbom` command.
+2. `ci` PARITY GATE  (after enrich is multi-eco)
+   Committed gate like `xtask analyze-parity`, but ci enrich hits the network
+   (tarballs + OSV) -> nondeterministic. Options: pin fixtures + record goldens
+   (network at --record only), or a small live smoke set. Lower ROI than #1.
 
-GATING (do once --json output stabilizes):
-  [P0/P11] xtask PARITY HARNESS — diff Rust vs Go `--json`.
-       FINDING (this session): the Go binary DOES build (GOWORK=off go build
-       ./cmd/aegis). BUT the CLIs diverge structurally: Go has no parse/run;
-       Go `analyze` fetches a package by name (registry) and `sbom` reads a
-       saved snapshot — the Rust port is lockfile-direct. So a naive
-       same-args/diff-output harness won't work. Parity needs a schema-mapping
-       layer first (align Rust JSON to Go shapes, or an adapter per command).
-       That alignment is the real blocker, not the harness plumbing.
+3. SMALLER COMMAND TAILS
+   - snapshot / explain (per-package) parity vs Go.
+   - other-ecosystem used-symbols in aegis-reach (js/py/go/php done; ruby N/A).
 
-CUTOVER (P11): 100% corpus parity, reproduce cosign + SLSA release pipeline, flip default.
+4. P11 CUTOVER
+   Broad parity confidence exists for the 3 core commands (analyze/ci/sbom).
+   Remaining is release infra, not library parity: reproduce cosign keyless +
+   SLSA provenance release pipeline (sigstore-rs, CI secrets), then flip the
+   default. Separate track from the parity work above.
 
 -------------------------------------------------------------------------------
  NETWORK TAIL (Phase 3 leftovers, not blocking)
