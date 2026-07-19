@@ -284,6 +284,18 @@ pub(crate) fn is_enriched_ecosystem(eco: Ecosystem) -> bool {
     )
 }
 
+/// Ecosystems the `ci` reachability layer can classify: enriched AND covered
+/// by an aegis-reach import parser (js/python/go/ruby). Crates is enriched but
+/// has no Rust import parser, so a crate dep stays Unknown (never downgraded on
+/// a false "unused"). Go v0.29 classifies npm only — extending to the other
+/// parseable enriched ecosystems is a Rust-ahead behavior.
+pub(crate) fn reachability_eligible(eco: Ecosystem) -> bool {
+    matches!(
+        eco,
+        Ecosystem::Npm | Ecosystem::PyPI | Ecosystem::Go | Ecosystem::RubyGems
+    )
+}
+
 /// Fetch a dependency's published source from its registry. Returns the file
 /// map (relative path, bytes) or an `Err` for ecosystems without a fetcher /
 /// on any transport failure.
