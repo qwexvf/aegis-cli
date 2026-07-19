@@ -78,6 +78,20 @@ pub(crate) fn scan_source(
     eco: Ecosystem,
     extra_caps: Vec<aegis_domain::Capability>,
 ) -> (CapabilitySet, RiskAssessment) {
+    let fp = fingerprint_source(files, pkg_name, eco, extra_caps);
+    let assessment = risk_score(Some(&fp));
+    (fp.capabilities, assessment)
+}
+
+/// Build the full [`Fingerprint`] for a package's source (capabilities, install
+/// hooks, source size, env reads). `scan_source` wraps this + `risk_score`;
+/// `snapshot` needs the whole fingerprint for behavioral-drift diffing.
+pub(crate) fn fingerprint_source(
+    files: &[(String, Vec<u8>)],
+    pkg_name: &str,
+    eco: Ecosystem,
+    extra_caps: Vec<aegis_domain::Capability>,
+) -> Fingerprint {
     // Compile one scanner per distinct extension once; share it read-only
     // across the rayon pool; scan every file concurrently; merge.
     let mut scanners: HashMap<String, Option<Arc<dyn LanguageScanner>>> = HashMap::new();
@@ -126,15 +140,13 @@ pub(crate) fn scan_source(
         caps.push(Capability::InstallHookExec);
     }
 
-    let fp = Fingerprint {
+    Fingerprint {
         analyzed: true,
         capabilities: CapabilitySet::new(caps),
         env_reads: findings.env_reads().to_vec(),
         source_size_bytes: source_bytes,
         hooks,
-    };
-    let assessment = risk_score(Some(&fp));
-    (fp.capabilities, assessment)
+    }
 }
 
 /// Directories that hold dependency installs or build output, not user
