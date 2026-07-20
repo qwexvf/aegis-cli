@@ -365,6 +365,41 @@ pub(crate) fn enrich_dep(dep: &Dependency, allow: &aegis_domain::AllowSet) -> Ri
     aegis_domain::apply_allowlist(&assessment, allow, dep.ecosystem, &dep.name, &dep.version)
 }
 
+/// Fetch a published package's source, capability-scan it, and apply the
+/// builtin allowlist (same as `analyze` / `ci` enrich, so the score/verdict
+/// match Go's per-package `explain`). Powers `explain <name@version>`. Returns
+/// the allowlisted assessment; suppressed flags stay listed but don't score.
+/// `Err` for un-fetchable ecosystems or on any network/scan failure.
+pub(crate) fn fetch_and_scan_package(
+    eco: Ecosystem,
+    name: &str,
+    version: &str,
+) -> Result<(CapabilitySet, RiskAssessment), String> {
+    if !is_enriched_ecosystem(eco) {
+        return Err(format!(
+            "explain: no source fetcher for ecosystem {}",
+            eco.as_str()
+        ));
+    }
+    let dep = Dependency {
+        ecosystem: eco,
+        name: name.to_string(),
+        version: version.to_string(),
+        integrity: String::new(),
+        direct: false,
+        depends_on: Vec::new(),
+        provenance_status: String::new(),
+        license: String::new(),
+    };
+    let http = UreqClient::new();
+    let files = fetch_source(&http, &dep)?;
+    let allow = aegis_domain::AllowSet::new(aegis_domain::builtin_allow_rules())
+        .unwrap_or_else(|_| aegis_domain::AllowSet::empty());
+    let (caps, assessment) = scan_source(&files, name, eco, Vec::new());
+    let assessment = aegis_domain::apply_allowlist(&assessment, &allow, eco, name, version);
+    Ok((caps, assessment))
+}
+
 /// Map the heuristics' manifest hooks onto domain [`InstallHook`]s. Phase
 /// strings mirror the Go npm parser (preinstall → PreInstall; install /
 /// postinstall / prepare → PostInstall; build → Build). `source` is

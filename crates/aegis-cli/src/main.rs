@@ -130,8 +130,14 @@ enum Command {
     },
     /// Explain the risk model: capabilities, their meaning, and score weight.
     Explain {
-        /// A capability slug (e.g. "shell-spawn"); omit to list them all.
+        /// A capability slug (e.g. "shell-spawn") for the risk-model doc, OR a
+        /// package spec "name@version" (e.g. "lodash@4.17.4") to fetch + scan
+        /// that published package and explain its capabilities. Omit for the
+        /// full capability catalog.
         capability: Option<String>,
+        /// Ecosystem for a package spec (default: npm). Ignored for the doc.
+        #[arg(long, default_value = "npm")]
+        ecosystem: String,
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -220,7 +226,11 @@ fn main() -> ExitCode {
             sarif,
         } => run_config(&config, json, sarif),
         Command::Allowlist { json } => run_allowlist(json),
-        Command::Explain { capability, json } => run_explain(capability.as_deref(), json),
+        Command::Explain {
+            capability,
+            ecosystem,
+            json,
+        } => run_explain(capability.as_deref(), &ecosystem, json),
         Command::Reach {
             dir,
             package,
