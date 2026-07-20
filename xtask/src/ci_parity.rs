@@ -5,10 +5,14 @@
 //! report against a committed golden (`<fixture>/ci.golden.json`). Exit non-zero
 //! if any fixture diverges.
 //!
-//! Unlike `analyze-parity`, `ci` enrich hits the network (fetches each dep's
-//! tarball + queries OSV/GHSA/EPSS/KEV), so this gate is **not** offline: both
-//! `--record` (Go) and the check (Rust) need network access. It is therefore
-//! wired as an opt-in xtask, not the offline fmt/clippy/test CI job.
+//! `ci` enrich hits the network (fetches each dep's tarball + queries OSV/
+//! EPSS/KEV), so making this an offline CI gate needs two recorded halves: the
+//! Go-captured golden (`--record`, needs the Go binary + network) and an HTTP
+//! cassette of the Rust `ci` run (`--record-cassettes`, needs network once)
+//! under [`CASSETTE_DIR`]. With both committed, the plain check runs the Rust
+//! binary against the replayed cassette (`AEGIS_HTTP_REPLAY`) — fully offline +
+//! deterministic, so it now runs in the blocking CI `parity` job alongside
+//! analyze/sbom.
 //!
 //! ## The Go/Rust invocation bridge
 //!
@@ -33,6 +37,11 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 
 const CORPUS: &str = "examples/ci-parity";
+/// Shared HTTP cassette for every fixture's Rust `ci` run — outside CORPUS so
+/// it is not mistaken for a fixture dir. One dir dedupes shared responses (the
+/// ~1 MB KEV feed is stored once, not per fixture); requests key on body so
+/// per-fixture OSV/EPSS batch POSTs still map to distinct entries.
+const CASSETTE_DIR: &str = "examples/ci-parity-cassettes";
 
 // ── normalized (comparable) report ──────────────────────────────────────────
 
@@ -228,7 +237,7 @@ struct Fixture {
     golden: PathBuf,
 }
 
-pub fn run(record: bool) -> std::process::ExitCode {
+pub fn run(record: bool, record_cassettes: bool) -> std::process::ExitCode {
     let fixtures = match discover() {
         Ok(f) => f,
         Err(e) => {
@@ -239,6 +248,11 @@ pub fn run(record: bool) -> std::process::ExitCode {
     if fixtures.is_empty() {
         eprintln!("xtask: no fixtures under {CORPUS}");
         return std::process::ExitCode::from(2);
+    }
+
+    // Capture the shared HTTP cassette by running each Rust `ci` live once.
+    if record_cassettes {
+        return record_cassettes_run(&fixtures);
     }
 
     let go_bin = if record {
@@ -355,7 +369,7 @@ fn check_one(f: &Fixture, go_bin: Option<&Path>, record: bool) -> Result<String,
         ));
     }
 
-    let rust_out = run_rust_ci(f)?;
+    let rust_out = run_rust_ci(f, ("AEGIS_HTTP_REPLAY", CASSETTE_DIR))?;
     let rust = CiNorm::from_json(&rust_out)?;
     let golden_str = std::fs::read_to_string(&f.golden)
         .map_err(|e| format!("read golden {} (record first?): {e}", f.golden.display()))?;
@@ -411,16 +425,46 @@ fn diff_summary(golden: &CiNorm, rust: &CiNorm) -> String {
     "       (fields differ — fail_on/enriched)".to_string()
 }
 
-fn run_rust_ci(f: &Fixture) -> Result<String, String> {
+/// Run the Rust `ci` on a fixture. `http_env` sets AEGIS_HTTP_REPLAY (offline
+/// check) or AEGIS_HTTP_RECORD (capture). Both use a fresh cache dir so the
+/// on-disk advisory/KEV cache never shadows the HTTP call, and drop
+/// GITHUB_TOKEN so the GHSA path stays out of both record and replay.
+fn run_rust_ci(f: &Fixture, http_env: (&str, &str)) -> Result<String, String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let cache = std::env::temp_dir().join("aegis-ci-parity-xdg");
+    let _ = std::fs::remove_dir_all(&cache);
     let out = Command::new(cargo)
         .args(["run", "-q", "-p", "aegis-cli", "--", "ci"])
         .arg(&f.lockfile)
         .arg("--json")
+        .env(http_env.0, http_env.1)
+        .env("XDG_CACHE_HOME", &cache)
+        .env_remove("GITHUB_TOKEN")
         .output()
         .map_err(|e| format!("spawn rust ci: {e}"))?;
     // ci exits 1 on findings; stdout still carries the report.
     stdout_or_err(out, "rust ci")
+}
+
+/// `--record-cassettes`: run each fixture's Rust `ci` live once, persisting the
+/// HTTP traffic into the shared [`CASSETTE_DIR`] so the plain check can replay
+/// it offline. Needs network; commit the resulting dir.
+fn record_cassettes_run(fixtures: &[Fixture]) -> std::process::ExitCode {
+    let _ = std::fs::remove_dir_all(CASSETTE_DIR);
+    for f in fixtures {
+        match run_rust_ci(f, ("AEGIS_HTTP_RECORD", CASSETTE_DIR)) {
+            Ok(_) => println!("  rec  {} — captured", f.name),
+            Err(e) => {
+                println!("  FAIL {} — {e}", f.name);
+                return std::process::ExitCode::from(1);
+            }
+        }
+    }
+    let n = std::fs::read_dir(CASSETTE_DIR)
+        .map(|d| d.count())
+        .unwrap_or(0);
+    println!("\nrecorded {n} cassette entr(ies) under {CASSETTE_DIR}");
+    std::process::ExitCode::SUCCESS
 }
 
 /// Run Go `ci` in a scratch copy of the fixture so its `aegis.lock` side-effect

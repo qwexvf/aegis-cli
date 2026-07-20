@@ -14,7 +14,6 @@ use aegis_heuristics::go_retract::parse_go_retract;
 use aegis_heuristics::manifest::parse_npm_manifest;
 use aegis_heuristics::{run_heuristics, NormalizedPackage};
 use aegis_lockfile::{parse_file, DirectMap};
-use aegis_net::UreqClient;
 use rayon::prelude::*;
 
 /// Recursively collect `(relative_path, bytes)` for regular files under
@@ -356,7 +355,7 @@ pub(crate) fn enrich_dep(dep: &Dependency, allow: &aegis_domain::AllowSet) -> Ri
     if !is_enriched_ecosystem(dep.ecosystem) || dep.name.is_empty() || dep.version.is_empty() {
         return RiskAssessment::default();
     }
-    let http = UreqClient::new();
+    let http = aegis_net::default_client();
     let files = match fetch_source(&http, dep) {
         Ok(f) => f,
         Err(_) => return RiskAssessment::default(),
@@ -391,7 +390,7 @@ pub(crate) fn fetch_and_scan_package(
         provenance_status: String::new(),
         license: String::new(),
     };
-    let http = UreqClient::new();
+    let http = aegis_net::default_client();
     let files = fetch_source(&http, &dep)?;
     let allow = aegis_domain::AllowSet::new(aegis_domain::builtin_allow_rules())
         .unwrap_or_else(|_| aegis_domain::AllowSet::empty());
@@ -503,7 +502,7 @@ pub(crate) fn fetch_online_caps(
         return Vec::new();
     }
 
-    let client = UreqClient::new();
+    let client = aegis_net::default_client();
     let mut caps = Vec::new();
 
     // 1. Maintainer-hijack signal from the npm packument.
@@ -572,7 +571,7 @@ pub(crate) fn provenance_flag(
         return None;
     }
 
-    let client = UreqClient::new();
+    let client = aegis_net::default_client();
     let status = aegis_registry::fetch_provenance(
         &client,
         aegis_registry::attestations::DEFAULT_REGISTRY_URL,

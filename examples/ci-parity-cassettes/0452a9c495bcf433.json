@@ -1,0 +1,120 @@
+{
+  "method": "GET",
+  "url": "https://api.first.org/data/v1/epss?cve=CVE-2020-26235",
+  "status": 200,
+  "headers": [
+    [
+      "connection",
+      "keep-alive"
+    ],
+    [
+      "content-type",
+      "application/json; charset=utf-8"
+    ],
+    [
+      "access-control-allow-headers",
+      "x-requested-with"
+    ],
+    [
+      "access-control-allow-methods",
+      "GET, HEAD, OPTIONS"
+    ],
+    [
+      "access-control-allow-origin",
+      "*"
+    ],
+    [
+      "cache-control",
+      "public, max-age=86400, s-maxage=86400"
+    ],
+    [
+      "content-security-policy",
+      "default-src 'self'; img-src 'self' https: data:; font-src 'self' https:; media-src 'self' *.first.org; connect-src 'self' *.first.org; object-src 'self' *.first.org; frame-src https: data:; frame-ancestors 'self'; base-uri 'self'"
+    ],
+    [
+      "link",
+      "<https://api.first.org/data/v1/epss/schema> rel=describedBy"
+    ],
+    [
+      "permissions-policy",
+      "microphone=(), camera=(), autoplay=(self \"https://*.first.org\")"
+    ],
+    [
+      "referrer-policy",
+      "origin-when-cross-origin"
+    ],
+    [
+      "server",
+      "nginx"
+    ],
+    [
+      "x-access",
+      "public, max-age=86400, s-maxage=86400"
+    ],
+    [
+      "x-content-type-options",
+      "nosniff"
+    ],
+    [
+      "x-frame-options",
+      "SAMEORIGIN"
+    ],
+    [
+      "x-frame-options",
+      "SAMEORIGIN"
+    ],
+    [
+      "x-total",
+      "1"
+    ],
+    [
+      "x-xss-protection",
+      "1; mode=block"
+    ],
+    [
+      "accept-ranges",
+      "bytes"
+    ],
+    [
+      "age",
+      "0"
+    ],
+    [
+      "date",
+      "Mon, 20 Jul 2026 23:40:33 GMT"
+    ],
+    [
+      "via",
+      "1.1 varnish"
+    ],
+    [
+      "x-served-by",
+      "cache-nrt-rjtf7700081-NRT"
+    ],
+    [
+      "x-cache",
+      "MISS"
+    ],
+    [
+      "x-cache-hits",
+      "0"
+    ],
+    [
+      "x-timer",
+      "S1784590834.501399,VS0,VE170"
+    ],
+    [
+      "vary",
+      "accept-encoding, Accept-Encoding"
+    ],
+    [
+      "strict-transport-security",
+      "max-age=31557600"
+    ],
+    [
+      "alt-svc",
+      "h3=\":443\";ma=86400,h3-29=\":443\";ma=86400,h3-27=\":443\";ma=86400"
+    ]
+  ],
+  "body_b64": "eyJzdGF0dXMiOiJPSyIsInN0YXR1cy1jb2RlIjoyMDAsInZlcnNpb24iOiIxLjAiLCJhY2Nlc3MiOiJwdWJsaWMiLCJ0b3RhbCI6MSwib2Zmc2V0IjowLCJsaW1pdCI6MTAwLCJkYXRhIjpbeyJjdmUiOiJDVkUtMjAyMC0yNjIzNSIsImVwc3MiOiIwLjAxNjIyMDAwMCIsInBlcmNlbnRpbGUiOiIwLjczNDUxMDAwMCIsImRhdGUiOiIyMDI2LTA3LTIwIn1dfQo="
+}

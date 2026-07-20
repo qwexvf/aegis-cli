@@ -168,6 +168,70 @@ mod ureq_backend;
 #[cfg(feature = "ureq-backend")]
 pub use ureq_backend::UreqClient;
 
+#[cfg(feature = "cassette")]
+pub mod cassette;
+
+/// The transport [`default_client`] hands back. A concrete enum (not a boxed
+/// trait object) so `&Client` coerces to `&dyn HttpClient` at every call site
+/// with no churn. Variants exist only for the transports compiled in.
+#[cfg(feature = "ureq-backend")]
+pub enum Client {
+    Ureq(UreqClient),
+    #[cfg(feature = "cassette")]
+    Replay(cassette::ReplayClient),
+    #[cfg(feature = "cassette")]
+    Record(cassette::RecordClient),
+}
+
+#[cfg(feature = "ureq-backend")]
+impl HttpClient for Client {
+    fn get(&self, url: &str, headers: &[Header<'_>]) -> Result<HttpResponse, HttpError> {
+        match self {
+            Client::Ureq(c) => c.get(url, headers),
+            #[cfg(feature = "cassette")]
+            Client::Replay(c) => c.get(url, headers),
+            #[cfg(feature = "cassette")]
+            Client::Record(c) => c.get(url, headers),
+        }
+    }
+    fn post(
+        &self,
+        url: &str,
+        body: &[u8],
+        headers: &[Header<'_>],
+    ) -> Result<HttpResponse, HttpError> {
+        match self {
+            Client::Ureq(c) => c.post(url, body, headers),
+            #[cfg(feature = "cassette")]
+            Client::Replay(c) => c.post(url, body, headers),
+            #[cfg(feature = "cassette")]
+            Client::Record(c) => c.post(url, body, headers),
+        }
+    }
+}
+
+/// Build the default HTTP transport. Live `ureq` unless a cassette env var
+/// redirects it: `AEGIS_HTTP_REPLAY=<dir>` serves recorded responses offline
+/// (the ci-parity gate), `AEGIS_HTTP_RECORD=<dir>` captures them live. Every
+/// call site that used `UreqClient::new()` goes through here so the whole
+/// network surface can be replayed at once.
+#[cfg(feature = "ureq-backend")]
+pub fn default_client() -> Client {
+    #[cfg(feature = "cassette")]
+    {
+        if let Some(dir) = std::env::var_os("AEGIS_HTTP_REPLAY") {
+            return Client::Replay(cassette::ReplayClient::new(dir));
+        }
+        if let Some(dir) = std::env::var_os("AEGIS_HTTP_RECORD") {
+            return Client::Record(cassette::RecordClient::new(
+                dir,
+                Box::new(UreqClient::new()),
+            ));
+        }
+    }
+    Client::Ureq(UreqClient::new())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

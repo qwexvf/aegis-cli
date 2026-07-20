@@ -1,0 +1,120 @@
+{
+  "method": "GET",
+  "url": "https://api.first.org/data/v1/epss?cve=CVE-2020-28500,CVE-2021-23337,CVE-2018-16487,CVE-2025-13465,CVE-2018-3721,CVE-2019-10744,CVE-2020-8203,CVE-2019-1010266",
+  "status": 200,
+  "headers": [
+    [
+      "connection",
+      "keep-alive"
+    ],
+    [
+      "content-type",
+      "application/json; charset=utf-8"
+    ],
+    [
+      "access-control-allow-headers",
+      "x-requested-with"
+    ],
+    [
+      "access-control-allow-methods",
+      "GET, HEAD, OPTIONS"
+    ],
+    [
+      "access-control-allow-origin",
+      "*"
+    ],
+    [
+      "cache-control",
+      "public, max-age=86400, s-maxage=86400"
+    ],
+    [
+      "content-security-policy",
+      "default-src 'self'; img-src 'self' https: data:; font-src 'self' https:; media-src 'self' *.first.org; connect-src 'self' *.first.org; object-src 'self' *.first.org; frame-src https: data:; frame-ancestors 'self'; base-uri 'self'"
+    ],
+    [
+      "link",
+      "<https://api.first.org/data/v1/epss/schema> rel=describedBy"
+    ],
+    [
+      "permissions-policy",
+      "microphone=(), camera=(), autoplay=(self \"https://*.first.org\")"
+    ],
+    [
+      "referrer-policy",
+      "origin-when-cross-origin"
+    ],
+    [
+      "server",
+      "nginx"
+    ],
+    [
+      "x-access",
+      "public, max-age=86400, s-maxage=86400"
+    ],
+    [
+      "x-content-type-options",
+      "nosniff"
+    ],
+    [
+      "x-frame-options",
+      "SAMEORIGIN"
+    ],
+    [
+      "x-frame-options",
+      "SAMEORIGIN"
+    ],
+    [
+      "x-total",
+      "8"
+    ],
+    [
+      "x-xss-protection",
+      "1; mode=block"
+    ],
+    [
+      "accept-ranges",
+      "bytes"
+    ],
+    [
+      "age",
+      "0"
+    ],
+    [
+      "date",
+      "Mon, 20 Jul 2026 23:40:41 GMT"
+    ],
+    [
+      "via",
+      "1.1 varnish"
+    ],
+    [
+      "x-served-by",
+      "cache-nrt-rjtf7700097-NRT"
+    ],
+    [
+      "x-cache",
+      "MISS"
+    ],
+    [
+      "x-cache-hits",
+      "0"
+    ],
+    [
+      "x-timer",
+      "S1784590842.506379,VS0,VE176"
+    ],
+    [
+      "vary",
+      "accept-encoding, Accept-Encoding"
+    ],
+    [
+      "strict-transport-security",
+      "max-age=31557600"
+    ],
+    [
+      "alt-svc",
+      "h3=\":443\";ma=86400,h3-29=\":443\";ma=86400,h3-27=\":443\";ma=86400"
+    ]
+  ],
+  "body_b64": "eyJzdGF0dXMiOiJPSyIsInN0YXR1cy1jb2RlIjoyMDAsInZlcnNpb24iOiIxLjAiLCJhY2Nlc3MiOiJwdWJsaWMiLCJ0b3RhbCI6OCwib2Zmc2V0IjowLCJsaW1pdCI6MTAwLCJkYXRhIjpbeyJjdmUiOiJDVkUtMjAyNS0xMzQ2NSIsImVwc3MiOiIwLjAxNTM1MDAwMCIsInBlcmNlbnRpbGUiOiIwLjcyMDcxMDAwMCIsImRhdGUiOiIyMDI2LTA3LTIwIn0seyJjdmUiOiJDVkUtMjAyMS0yMzMzNyIsImVwc3MiOiIwLjIyNDEwMDAwMCIsInBlcmNlbnRpbGUiOiIwLjk3NDM3MDAwMCIsImRhdGUiOiIyMDI2LTA3LTIwIn0seyJjdmUiOiJDVkUtMjAyMC04MjAzIiwiZXBzcyI6IjAuMDUyMTMwMDAwIiwicGVyY2VudGlsZSI6IjAuOTE1OTIwMDAwIiwiZGF0ZSI6IjIwMjYtMDctMjAifSx7ImN2ZSI6IkNWRS0yMDIwLTI4NTAwIiwiZXBzcyI6IjAuMDczMzYwMDAwIiwicGVyY2VudGlsZSI6IjAuOTM3MTIwMDAwIiwiZGF0ZSI6IjIwMjYtMDctMjAifSx7ImN2ZSI6IkNWRS0yMDE5LTEwNzQ0IiwiZXBzcyI6IjAuMDUwMDYwMDAwIiwicGVyY2VudGlsZSI6IjAuOTEyOTcwMDAwIiwiZGF0ZSI6IjIwMjYtMDctMjAifSx7ImN2ZSI6IkNWRS0yMDE5LTEwMTAyNjYiLCJlcHNzIjoiMC4wMzA3NjAwMDAiLCJwZXJjZW50aWxlIjoiMC44NjIxNjAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMTgtMzcyMSIsImVwc3MiOiIwLjAyNDEzMDAwMCIsInBlcmNlbnRpbGUiOiIwLjgyMzA2MDAwMCIsImRhdGUiOiIyMDI2LTA3LTIwIn0seyJjdmUiOiJDVkUtMjAxOC0xNjQ4NyIsImVwc3MiOiIwLjAxNTUzMDAwMCIsInBlcmNlbnRpbGUiOiIwLjcyMzk5MDAwMCIsImRhdGUiOiIyMDI2LTA3LTIwIn1dfQo="
+}

@@ -1,0 +1,48 @@
+{
+  "method": "GET",
+  "url": "https://api.osv.dev/v1/vulns/PYSEC-2021-66",
+  "status": 200,
+  "headers": [
+    [
+      "content-type",
+      "application/json"
+    ],
+    [
+      "traceparent",
+      "00-a0c557488b21155ff61594087c3aaa55-6969bc3ef1b19423-00"
+    ],
+    [
+      "x-cloud-trace-context",
+      "a0c557488b21155ff61594087c3aaa55/7595809225065993251"
+    ],
+    [
+      "alt-svc",
+      "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+    ],
+    [
+      "grpc-status",
+      "0"
+    ],
+    [
+      "grpc-message",
+      ""
+    ],
+    [
+      "x-envoy-decorator-operation",
+      "ingress GetVulnById"
+    ],
+    [
+      "date",
+      "Mon, 20 Jul 2026 23:40:45 GMT"
+    ],
+    [
+      "server",
+      "Google Frontend"
+    ],
+    [
+      "content-length",
+      "1726"
+    ]
+  ],
+  "body_b64": "eyJpZCI6IlBZU0VDLTIwMjEtNjYiLCJkZXRhaWxzIjoiVGhpcyBhZmZlY3RzIHRoZSBwYWNrYWdlIGppbmphMiBmcm9tIDAuMC4wIGFuZCBiZWZvcmUgMi4xMS4zLiBUaGUgUmVEb1MgdnVsbmVyYWJpbGl0eSBpcyBtYWlubHkgZHVlIHRvIHRoZSBgX3B1bmN0dWF0aW9uX3JlIHJlZ2V4YCBvcGVyYXRvciBhbmQgaXRzIHVzZSBvZiBtdWx0aXBsZSB3aWxkY2FyZHMuIFRoZSBsYXN0IHdpbGRjYXJkIGlzIHRoZSBtb3N0IGV4cGxvaXRhYmxlIGFzIGl0IHNlYXJjaGVzIGZvciB0cmFpbGluZyBwdW5jdHVhdGlvbi4gVGhpcyBpc3N1ZSBjYW4gYmUgbWl0aWdhdGVkIGJ5IE1hcmtkb3duIHRvIGZvcm1hdCB1c2VyIGNvbnRlbnQgaW5zdGVhZCBvZiB0aGUgdXJsaXplIGZpbHRlciwgb3IgYnkgaW1wbGVtZW50aW5nIHJlcXVlc3QgdGltZW91dHMgYW5kIGxpbWl0aW5nIHByb2Nlc3MgbWVtb3J5LiIsImFsaWFzZXMiOlsiQ1ZFLTIwMjAtMjg0OTMiLCJHSFNBLWczcnEtZzI5NS00ajNtIiwiU05ZSy1QWVRIT04tSklOSkEyLTEwMTI5OTQiXSwibW9kaWZpZWQiOiIyMDIzLTExLTA4VDA0OjAzOjI4LjU0MzMwOFoiLCJwdWJsaXNoZWQiOiIyMDIxLTAyLTAxVDIwOjE1OjAwWiIsInJlZmVyZW5jZXMiOlt7InR5cGUiOiJXRUIiLCJ1cmwiOiJodHRwczovL2dpdGh1Yi5jb20vcGFsbGV0cy9qaW5qYS9ibG9iL2FiODFmZDljMjc3OTAwYzg1ZGEwYzMyMmEyZmY5ZDY4YTIzNWIyZTYvc3JjL2ppbmphMi91dGlscy5weSUyM0wyMCJ9LHsidHlwZSI6IldFQiIsInVybCI6Imh0dHBzOi8vZ2l0aHViLmNvbS9wYWxsZXRzL2ppbmphL3B1bGwvMTM0MyJ9LHsidHlwZSI6IkFEVklTT1JZIiwidXJsIjoiaHR0cHM6Ly9zbnlrLmlvL3Z1bG4vU05ZSy1QWVRIT04tSklOSkEyLTEwMTI5OTQifSx7InR5cGUiOiJXRUIiLCJ1cmwiOiJodHRwczovL2xpc3RzLmZlZG9yYXByb2plY3Qub3JnL2FyY2hpdmVzL2xpc3QvcGFja2FnZS1hbm5vdW5jZUBsaXN0cy5mZWRvcmFwcm9qZWN0Lm9yZy9tZXNzYWdlL1BWQUtDT083VkJWVUJNM1E2Q0JCVFBCRk5QNU5EWEY0LyJ9LHsidHlwZSI6IkFEVklTT1JZIiwidXJsIjoiaHR0cHM6Ly9naXRodWIuY29tL2Fkdmlzb3JpZXMvR0hTQS1nM3JxLWcyOTUtNGozbSJ9XSwiYWZmZWN0ZWQiOlt7InBhY2thZ2UiOnsibmFtZSI6ImppbmphMiIsImVjb3N5c3RlbSI6IlB5UEkiLCJwdXJsIjoicGtnOnB5cGkvamluamEyIn0sInJhbmdlcyI6W3sidHlwZSI6IkVDT1NZU1RFTSIsImV2ZW50cyI6W3siaW50cm9kdWNlZCI6IjAifSx7ImZpeGVkIjoiMi4xMS4zIn1dfV0sInZlcnNpb25zIjpbIjIuMHJjMSIsIjIuMCIsIjIuMSIsIjIuMS4xIiwiMi4yIiwiMi4yLjEiLCIyLjMiLCIyLjMuMSIsIjIuNCIsIjIuNC4xIiwiMi41IiwiMi41LjEiLCIyLjUuMiIsIjIuNS4zIiwiMi41LjQiLCIyLjUuNSIsIjIuNiIsIjIuNyIsIjIuNy4xIiwiMi43LjIiLCIyLjcuMyIsIjIuOCIsIjIuOC4xIiwiMi45IiwiMi45LjEiLCIyLjkuMiIsIjIuOS4zIiwiMi45LjQiLCIyLjkuNSIsIjIuOS42IiwiMi4xMCIsIjIuMTAuMSIsIjIuMTAuMiIsIjIuMTAuMyIsIjIuMTEuMCIsIjIuMTEuMSIsIjIuMTEuMiJdLCJkYXRhYmFzZV9zcGVjaWZpYyI6eyJzb3VyY2UiOiJodHRwczovL2dpdGh1Yi5jb20vcHlwYS9hZHZpc29yeS1kYXRhYmFzZS9ibG9iL21haW4vdnVsbnMvamluamEyL1BZU0VDLTIwMjEtNjYueWFtbCJ9fV0sInNjaGVtYV92ZXJzaW9uIjoiMS43LjMifQ=="
+}

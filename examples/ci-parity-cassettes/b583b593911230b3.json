@@ -1,0 +1,48 @@
+{
+  "method": "GET",
+  "url": "https://api.osv.dev/v1/vulns/GHSA-fvqr-27wr-82fm",
+  "status": 200,
+  "headers": [
+    [
+      "content-type",
+      "application/json"
+    ],
+    [
+      "traceparent",
+      "00-e1d6519fb0edc746349f1807e394688e-ca087d78b2e60852-00"
+    ],
+    [
+      "x-cloud-trace-context",
+      "e1d6519fb0edc746349f1807e394688e/14558023752826095698"
+    ],
+    [
+      "alt-svc",
+      "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+    ],
+    [
+      "grpc-status",
+      "0"
+    ],
+    [
+      "grpc-message",
+      ""
+    ],
+    [
+      "x-envoy-decorator-operation",
+      "ingress GetVulnById"
+    ],
+    [
+      "date",
+      "Mon, 20 Jul 2026 23:40:39 GMT"
+    ],
+    [
+      "server",
+      "Google Frontend"
+    ],
+    [
+      "content-length",
+      "2430"
+    ]
+  ],
+  "body_b64": "eyJpZCI6IkdIU0EtZnZxci0yN3dyLTgyZm0iLCJzdW1tYXJ5IjoiUHJvdG90eXBlIFBvbGx1dGlvbiBpbiBsb2Rhc2giLCJkZXRhaWxzIjoiVmVyc2lvbnMgb2YgYGxvZGFzaGAgYmVmb3JlIDQuMTcuNSBhcmUgdnVsbmVyYWJsZSB0byBwcm90b3R5cGUgcG9sbHV0aW9uLiBcblxuVGhlIHZ1bG5lcmFibGUgZnVuY3Rpb25zIGFyZSAnZGVmYXVsdHNEZWVwJywgJ21lcmdlJywgYW5kICdtZXJnZVdpdGgnIHdoaWNoIGFsbG93IGEgbWFsaWNpb3VzIHVzZXIgdG8gbW9kaWZ5IHRoZSBwcm90b3R5cGUgb2YgYE9iamVjdGAgdmlhIGBfX3Byb3RvX19gIGNhdXNpbmcgdGhlIGFkZGl0aW9uIG9yIG1vZGlmaWNhdGlvbiBvZiBhbiBleGlzdGluZyBwcm9wZXJ0eSB0aGF0IHdpbGwgZXhpc3Qgb24gYWxsIG9iamVjdHMuXG5cblxuXG5cbiMjIFJlY29tbWVuZGF0aW9uXG5cblVwZGF0ZSB0byB2ZXJzaW9uIDQuMTcuNSBvciBsYXRlci4iLCJhbGlhc2VzIjpbIkNWRS0yMDE4LTM3MjEiXSwibW9kaWZpZWQiOiIyMDI1LTA4LTEyVDIxOjU1OjE2LjAwMzA2NloiLCJwdWJsaXNoZWQiOiIyMDE4LTA3LTI2VDE1OjE0OjUyWiIsImRhdGFiYXNlX3NwZWNpZmljIjp7ImdpdGh1Yl9yZXZpZXdlZCI6dHJ1ZSwibnZkX3B1Ymxpc2hlZF9hdCI6IjIwMTgtMDYtMDdUMDI6Mjk6MDhaIiwic2V2ZXJpdHkiOiJNT0RFUkFURSIsImN3ZV9pZHMiOlsiQ1dFLTEzMjEiLCJDV0UtNDcxIl0sImdpdGh1Yl9yZXZpZXdlZF9hdCI6IjIwMjAtMDYtMTZUMjE6MzU6MjZaIn0sInJlZmVyZW5jZXMiOlt7InR5cGUiOiJBRFZJU09SWSIsInVybCI6Imh0dHBzOi8vbnZkLm5pc3QuZ292L3Z1bG4vZGV0YWlsL0NWRS0yMDE4LTM3MjEifSx7InR5cGUiOiJXRUIiLCJ1cmwiOiJodHRwczovL2dpdGh1Yi5jb20vbG9kYXNoL2xvZGFzaC9jb21taXQvZDhlMDY5Y2MzNDEwMDgyZTQ0ZWIxOGZjZjhlN2YzZDA4ZWJlMWQ0YSJ9LHsidHlwZSI6IldFQiIsInVybCI6Imh0dHBzOi8vaGFja2Vyb25lLmNvbS9yZXBvcnRzLzMxMDQ0MyJ9LHsidHlwZSI6IldFQiIsInVybCI6Imh0dHBzOi8vZ2l0aHViLmNvbS9ydWJ5c2VjL3J1YnktYWR2aXNvcnktZGIvYmxvYi9tYXN0ZXIvZ2Vtcy9sb2Rhc2gtcmFpbHMvQ1ZFLTIwMTgtMzcyMS55bWwifSx7InR5cGUiOiJXRUIiLCJ1cmwiOiJodHRwczovL3NlY3VyaXR5Lm5ldGFwcC5jb20vYWR2aXNvcnkvbnRhcC0yMDE5MDkxOS0wMDA0In1dLCJhZmZlY3RlZCI6W3sicGFja2FnZSI6eyJuYW1lIjoibG9kYXNoIiwiZWNvc3lzdGVtIjoibnBtIiwicHVybCI6InBrZzpucG0vbG9kYXNoIn0sInJhbmdlcyI6W3sidHlwZSI6IlNFTVZFUiIsImV2ZW50cyI6W3siaW50cm9kdWNlZCI6IjAifSx7ImZpeGVkIjoiNC4xNy41In1dfV0sImRhdGFiYXNlX3NwZWNpZmljIjp7InNvdXJjZSI6Imh0dHBzOi8vZ2l0aHViLmNvbS9naXRodWIvYWR2aXNvcnktZGF0YWJhc2UvYmxvYi9tYWluL2Fkdmlzb3JpZXMvZ2l0aHViLXJldmlld2VkLzIwMTgvMDcvR0hTQS1mdnFyLTI3d3ItODJmbS9HSFNBLWZ2cXItMjd3ci04MmZtLmpzb24ifX0seyJwYWNrYWdlIjp7Im5hbWUiOiJsb2Rhc2gtcmFpbHMiLCJlY29zeXN0ZW0iOiJSdWJ5R2VtcyIsInB1cmwiOiJwa2c6Z2VtL2xvZGFzaC1yYWlscyJ9LCJyYW5nZXMiOlt7InR5cGUiOiJFQ09TWVNURU0iLCJldmVudHMiOlt7ImludHJvZHVjZWQiOiIwIn0seyJmaXhlZCI6IjQuMTcuNSJ9XX1dLCJ2ZXJzaW9ucyI6WyIwLjEwLjAiLCIwLjcuMCIsIjAuOC4xIiwiMC44LjIiLCIwLjkuMCIsIjAuOS4xIiwiMC45LjIiLCIxLjAuMC5yYy4xIiwiMS4wLjAucmMuMiIsIjEuMC4wLnJjLjMiLCIxLjAuMSIsIjEuMS4wIiwiMS4xLjEiLCIxLjIuMCIsIjEuMi4xIiwiMS4zLjEiLCIyLjAuMCIsIjIuMS4wIiwiMi4yLjAiLCIyLjIuMSIsIjIuMy4wIiwiMi40LjAiLCIyLjQuMSIsIjMuMS4wIiwiMy4xMC4wIiwiMy4xMC4xIiwiMy4yLjAiLCIzLjMuMCIsIjMuMy4xIiwiMy4zLjEuMSIsIjMuNC4wIiwiMy41LjAiLCIzLjYuMCIsIjMuNy4wIiwiMy45LjMiLCI0LjAuMCIsIjQuMTEuMiIsIjQuMTIuMCIsIjQuMTMuMSIsIjQuMTQuMSIsIjQuMTUuMCIsIjQuMTYuMSIsIjQuMTYuMyIsIjQuMTYuNCIsIjQuMTYuNiIsIjQuMTcuMiIsIjQuMTcuNCIsIjQuMy4wIiwiNC41LjEiLCI0LjYuMSJdLCJkYXRhYmFzZV9zcGVjaWZpYyI6eyJzb3VyY2UiOiJodHRwczovL2dpdGh1Yi5jb20vZ2l0aHViL2Fkdmlzb3J5LWRhdGFiYXNlL2Jsb2IvbWFpbi9hZHZpc29yaWVzL2dpdGh1Yi1yZXZpZXdlZC8yMDE4LzA3L0dIU0EtZnZxci0yN3dyLTgyZm0vR0hTQS1mdnFyLTI3d3ItODJmbS5qc29uIn19XSwic2NoZW1hX3ZlcnNpb24iOiIxLjcuMyIsInNldmVyaXR5IjpbeyJ0eXBlIjoiQ1ZTU19WMyIsInNjb3JlIjoiQ1ZTUzozLjEvQVY6Ti9BQzpML1BSOkwvVUk6Ti9TOlUvQzpOL0k6SC9BOk4ifV19"
+}

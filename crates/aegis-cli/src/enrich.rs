@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use aegis_domain::{Advisory, AdvisoryQuery, Severity};
-use aegis_net::{DiskCache, UreqClient};
+use aegis_net::DiskCache;
 use aegis_vuln::{EpssClient, KevCatalog, OsvClient};
 
 use crate::commands::FindingView;
@@ -41,7 +41,7 @@ pub(crate) fn osv_disk_cache() -> DiskCache {
 /// OSV CVE lookup + EPSS/KEV enrichment for a set of queries. Shared by
 /// `ci` and the config runner. Uses the real network.
 pub(crate) fn cve_findings(queries: &[AdvisoryQuery]) -> Result<Vec<FindingView>, String> {
-    let client = UreqClient::new();
+    let client = aegis_net::default_client();
     let results = OsvClient::default()
         .with_cache(osv_disk_cache())
         .lookup(&client, queries)?;
@@ -117,7 +117,7 @@ pub(crate) fn cve_findings(queries: &[AdvisoryQuery]) -> Result<Vec<FindingView>
 pub(crate) fn advisories_by_key(
     queries: &[AdvisoryQuery],
 ) -> Result<BTreeMap<String, Vec<Advisory>>, String> {
-    let client = UreqClient::new();
+    let client = aegis_net::default_client();
     let results = OsvClient::default()
         .with_cache(osv_disk_cache())
         .lookup(&client, queries)?;
