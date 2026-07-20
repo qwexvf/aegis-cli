@@ -923,3 +923,47 @@ fn run_missing_config_exits_2() {
     let out = run(&["run", "/nonexistent/aegis.toml"]);
     assert_eq!(out.code, 2);
 }
+
+/// Network-gated regression for the Rust-ahead non-npm enrich: fetch + scan
+/// pinned packages and assert the capabilities they produce. The ci-parity Go
+/// gate deliberately ignores non-npm caps (Go can't enrich them), so this locks
+/// the Rust behavior. Skipped unless AEGIS_NET_TESTS=1 (needs network); run with
+/// `AEGIS_NET_TESTS=1 cargo test -p aegis-cli --test cli -- --ignored`.
+#[test]
+#[ignore = "network: set AEGIS_NET_TESTS=1"]
+fn nonnpm_enrich_capabilities_regression() {
+    if std::env::var("AEGIS_NET_TESTS").is_err() {
+        return;
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("examples")
+        .join("ci-parity");
+    // (fixture lockfile, capability codes that MUST appear)
+    let cases: &[(&str, &[&str])] = &[
+        (
+            "pypi-jinja2/requirements.txt",
+            &["dynamic-eval", "fs-write-outside-root"],
+        ),
+        ("go-jwt/go.sum", &["base64-decode", "net-egress"]),
+        ("rubygems-rack/Gemfile.lock", &["shell-spawn", "net-egress"]),
+    ];
+    for (rel, want) in cases {
+        let lockfile = root.join(rel);
+        let out = run(&[
+            "ci",
+            lockfile.to_str().unwrap(),
+            "--fail-on",
+            "review",
+            "--json",
+        ]);
+        for cap in *want {
+            assert!(
+                out.stdout.contains(cap),
+                "{rel}: expected capability {cap} in enrich output:\n{}",
+                out.stdout
+            );
+        }
+    }
+}
