@@ -10,30 +10,44 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  12 workspace members (11 crates + xtask parity harness) · clippy + rustfmt
-  clean.
+  12 workspace members (11 crates + xtask parity harness) · 531 tests (all
+  green) · clippy + rustfmt clean · 163 commits.
   13 CLI commands: parse / analyze / ci / run / sbom / fix / allowlist / image /
   explain / reach / hook / actions / snapshot.
 
-  *** PARITY COMPLETE FOR ALL 3 CORE COMMANDS — 3 COMMITTED GATES ***
+  *** PARITY COMPLETE + RUST NOW AHEAD OF GO v0.29. Only P11 (release) remains,
+      and it is DEFERRED by the owner: no release until the CLI is proven solid.
   The Go aegis-cli source is local (../aegis-cli) + Go 1.26 installed, so real
-  Go-vs-Rust diffs run. Only P11 (release cutover) remains.
+  Go-vs-Rust diffs run. 3 committed parity gates:
   - analyze: `xtask analyze-parity` — 36/36 incident fixtures across ALL 13
     ecosystems match Go (verdict+score+capabilities). Committed goldens, no Go
     at check time. IN CI (.github/workflows/ci.yml).
   - ci: `xtask ci-parity` — 6 fixtures / 5 ecosystems (npm/pypi/crates/go/gem)
-    match Go. Enrich model ported (per-dep tarball fetch+scan → verdict +
-    advisories, Go-shaped report), reachability downgrade ported (npm-gated),
-    advisory fixed_in+in_kev added. Network-dependent → OPT-IN, not in CI.
+    match Go on the Go-comparable surface. Enrich model ported + EXTENDED past
+    Go: per-dep source fetch+scan now for ALL 5 ecosystems (npm/pypi/crates/
+    rubygems/go; pypi wheel fallback), reachability downgrade for npm/pypi/go/
+    rubygems, advisory fixed_in+in_kev. Network-dependent → OPT-IN, not in CI;
+    the Rust-ahead non-npm behavior is locked by dedicated tests instead.
   - sbom: `xtask sbom-parity` — CDX+SPDX vs Go goldens, 4/4. Offline +
     deterministic → IN CI. Fixed CDX $schema + empty-dependsOn shape.
-  - explain / snapshot: CLI-model-divergent (see NEXT #4); per-package caps ≡
-    analyze (gated), unique logic (model-doc / drift) golden-/integration-tested.
+  - explain: per-package mode added (`explain name@version` → fetch+scan+caps,
+    allowlisted) matching Go; the capability-slug risk-model doc kept.
+  - snapshot: drift_score wired into --baseline (weighted hook/size/capability
+    drift report) alongside the strict new-cap/hook exit gate.
   Parity bugs found + fixed by diffing against Go: install-hook base flag;
   R + Perl obfuscated-payload regexes; .ex/.exs analyzable-source (Elixir);
   Java tree-sitter grammar (maven); advisory alias-over-dedup (ci 10 vs 8);
   install-hook fingerprint population; ci advisory fixed_in/in_kev; ci
   reachability-unused downgrade; CDX $schema + empty dependsOn.
+
+  CI (.github/workflows/ci.yml) — 3 blocking jobs: build-test (fmt/clippy -D/
+  test), lean-build (feature-gating guard), parity (analyze + sbom). Details in
+  the CI PIPELINE block lower down.
+
+  RUST-AHEAD OF GO v0.29 (implemented on owner request; see FORMERLY-NOT-PORTED):
+  non-npm ci enrich (5 ecosystems) + reachability (4) + snapshot drift score +
+  per-package explain + sbom npm transitive graph. Not ported: interactive TUI
+  (owner-declined), ci-parity in blocking CI (network-nondeterministic).
 
   Feature surface (all CLI-wired + LIVE-verified):
   - reachability (aegis-reach): imports + used-symbols (js/ts/py/go/php; ruby
@@ -122,8 +136,9 @@ Status @ this snapshot:
                                        10 advisories match. (Fixed the last diff:
                                        advisories_by_key was alias-deduping OSV's
                                        mutual alias-pairs 10→8; now id-only dedup,
-                                       also corrects fix/sarif.) npm enrich only;
-                                       other-ecosystem source fetchers = follow-up.
+                                       also corrects fix/sarif.) Enrich now
+                                       spans all 5 ecosystems (npm/pypi/crates/
+                                       rubygems/go) — Rust-ahead of Go.
   P1  domain ......................... DONE
   P2  lockfile (24 parsers) .......... DONE
   P3  net / vuln / registry .......... DONE (core)  tail: GHSA, npm attestations,
@@ -369,21 +384,23 @@ coloring. AST scan verified multi-core (253% CPU on a big tree, 16 cores avail).
   ci command: lockfile → osv cve lookup → severity gate + exit code
 
 -------------------------------------------------------------------------------
- NEXT - RANKED  (foundations all DONE; these drive toward P11 cutover)
+ GATE REFERENCE + REMAINING WORK
 -------------------------------------------------------------------------------
 RULE: every feature ships WITH its test in the same commit (CLI too - network-
 free integration tests in crates/aegis-cli/tests/cli.rs). Verify against the Go
 binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
 
-1. [DONE-with-caveat] OTHER-ECOSYSTEM ENRICH FETCHERS
-   RE-EXAMINED against Go: this would DIVERGE from Go, not converge. Go v0.29
-   wires ONLY the npm source fetcher (cmd/aegis/risk_engine.go →
-   jspkgsource.New). jspkgsource.Fetch hard-errors on any non-npm ecosystem
-   ("cannot fetch ecosystem"); snapshot.go:539 enrich calls it for every dep,
-   so non-npm deps degrade to advisory-only verdicts IN GO TOO. Rust already
-   matches (scan::enrich_dep returns default for non-npm). Adding fetch_<eco>_
-   source to Rust = a feature BEYOND Go = a new divergence the parity gate
-   flags. Deferred until post-cutover as a deliberate enhancement, not parity.
+The mechanics of the three parity gates are documented in items 2–3 below;
+items 1 & 4 record history now SUPERSEDED by the FORMERLY-NOT-PORTED section
+(read that for current behavior). Only P11 (item 5) is genuinely open.
+
+1. OTHER-ECOSYSTEM ENRICH FETCHERS — [now IMPLEMENTED; see FORMERLY-NOT-PORTED
+   #1]. History: originally deferred because Go v0.29 fetches npm only
+   (cmd/aegis/risk_engine.go → jspkgsource.New; Fetch hard-errors on non-npm),
+   so matching Go meant advisory-only for non-npm. On owner request Rust went
+   AHEAD of Go: all 5 ecosystems now fetch+scan. The ci-parity gate compares
+   only the Go-comparable surface for non-npm (verdict+advisories), and the
+   Rust-ahead caps are locked by dedicated tests.
 
 2. [DONE] `ci` PARITY GATE  →  `xtask ci-parity [--record]`
    Mirrors analyze-parity: pinned lockfile corpus under examples/ci-parity/
@@ -412,15 +429,14 @@ binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
    downgrade_verdict + downgrade_unused applied per dep. VERIFIED vs Go on
    lodash 4.17.4: bare lockfile → prompt (flag kept); +AEGIS_UNUSED_SUPPRESS →
    prompt (flag suppressed); index.js importing lodash → block. All 3 match Go.
-   GATED TO THE ENRICHED ECOSYSTEM (npm): Go only classifies deps of the
-   ecosystem it fetches+scans — a pypi/crates/go/gem dep stays Unknown (no
-   downgrade, full advisory verdict) even with consuming .py/.rs/etc source
-   present (verified: jinja2 bare AND +app.py → block both; jwt-go bare →
-   block). Rust run_ci now gates reachability on Ecosystem::Npm to match.
-   (Empirical Go contract: a scored lockfile dep is Used iff imported else
-   Unused — never Unknown; the source-`.json`/scannedEcos code path reads
-   otherwise but the built binary behaves as Used-iff-imported.) The ci-parity
-   fixtures carry an index.js (Used path) so the gate exercises the common case.
+   REACHABILITY SCOPE — SUPERSEDED: originally gated to npm (Go classifies only
+   the ecosystem it enriches). On owner request Rust EXTENDED reachability to
+   all enriched ecosystems with an aegis-reach import parser: npm/pypi/go/
+   rubygems (crates stays Unknown — no Rust import parser). This is Rust-ahead
+   of Go (Go never downgrades non-npm). See FORMERLY-NOT-PORTED #2. Empirical Go
+   contract for npm: a scored lockfile dep is Used iff imported else Unused,
+   never Unknown. ci-parity fixtures carry consuming source (Used path) so
+   verdicts still line up with Go; the gate zeroes Rust's non-npm caps.
 
 3. [DONE] `sbom` PARITY GATE  →  `xtask sbom-parity [--record]`
    Offline + deterministic (no network, no clock — timestamp/serial scrubbed),
@@ -439,23 +455,16 @@ binary (../aegis-cli, GOWORK=off go build ./cmd/aegis) when the surface allows.
    not populate them. The npm fixture is kept flat so the gate stays green; the
    cargo fixture (3 deps, real edges both agree on) exercises the graph.
 
-4. [DONE — covered, no new gate needed] SMALLER COMMAND TAILS
-   - explain: the Rust CLI reorganized this command. Go `explain <pkg-spec>` is
-     PER-PACKAGE capability analysis (aegis.lock or fresh fetch); Rust `explain
-     [capability]` is a static RISK-MODEL doc (capability catalog + weights).
-     Go's per-package explain ≡ Rust `analyze` — SAME scanner, SAME result:
-     verified live, Go `explain lodash@4.17.4` → caps [dynamic-eval,
-     unlisted-large-file], verdict review, score 55 == Rust `analyze` on the
-     same source. That per-package surface is already gated by analyze-parity
-     (36/36). Rust's model-doc `explain --json` has a committed regression
-     golden (xtask parity: examples/static/explain.golden.json).
-   - snapshot: also model-divergent (Go save/enrich/diff over aegis.lock; Rust
-     fingerprints a dir + `--baseline` drift). The per-package fingerprint caps
-     == analyze (gated); the unique DRIFT logic (new capability between versions
-     → exit 1, the takeover signal) is integration-tested
-     (crates/aegis-cli/tests/cli.rs::snapshot_detects_behavioral_drift). Go's
-     full DiffReport/DriftScore verdict richness is intentionally not ported
-     (see P8) — the rayon slice supersedes the actor model for a CLI.
+4. SMALLER COMMAND TAILS — [now DONE; see FORMERLY-NOT-PORTED #3 (snapshot) &
+   #4 (explain)].
+   - explain: per-package mode ADDED — `explain <name@version> [--ecosystem]`
+     fetches+scans the published package and reports caps (allowlisted),
+     matching Go's per-package explain (lodash@4.17.4 → review/55/[dynamic-eval,
+     unlisted-large-file], identical to Go). The capability-slug / no-arg
+     risk-MODEL doc (Rust's reorganization) is unchanged; disambiguated by '@'.
+   - snapshot: drift_score wired into `--baseline` — weighted hook/size/
+     capability drift report + total, alongside the strict new-cap/hook → exit 1
+     gate. Baseline format extended (source_size_bytes+hooks; back-compatible).
    - other-ecosystem used-symbols in aegis-reach (js/py/go/php done; ruby N/A).
 
 5. P11 CUTOVER
