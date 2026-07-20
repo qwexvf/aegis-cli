@@ -520,6 +520,16 @@ compare only the Go-comparable surface for non-npm (see gate note in #2 below).
    mocking the registry/OSV inside the binary. analyze-parity + sbom-parity
    (offline) DO run in CI.
 
+CI PIPELINE (.github/workflows/ci.yml) — 3 blocking jobs:
+  - build-test: fmt --check, clippy -D warnings, test --workspace.
+  - lean-build: each feature-gated crate compiles with --no-default-features +
+    isolated optional-dep features (npm/maven/hex, js/cocoapods, secrets/
+    install-hook/maintainer, cyclonedx, registry npm). Guards the lean-build
+    promise — a leaked dep or missing #[cfg] fails here. (aegis-cli itself is
+    all-in-one; leanness lives in the library crates.)
+  - parity: analyze-parity + sbom-parity vs Go-captured goldens (offline).
+  Not in CI: ci-parity (network, opt-in), release/signing (P11).
+
 RUST-AHEAD (Rust does MORE than Go v0.29 — kept, documented):
  - Non-npm ci enrich (capabilities for pypi/crates/rubygems/go) + reachability
    for pypi/go/rubygems (items 1–2 above). LOCKED BY TESTS (the ci-parity Go
