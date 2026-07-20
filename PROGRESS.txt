@@ -473,8 +473,10 @@ request. They make Rust EXCEED Go v0.29; the ci-parity gate was adjusted to
 compare only the Go-comparable surface for non-npm (see gate note in #2 below).
 
 1. [DONE] NON-NPM ENRICH SOURCE FETCHERS — all 5 ecosystems fetch + scan.
-   aegis-registry::pkgsource: fetch_pypi_source (PyPI JSON → sdist .tar.gz),
-   fetch_crates_source (crates.io → .crate gzip-tar, UA required),
+   aegis-registry::pkgsource: fetch_pypi_source (PyPI JSON → sdist .tar.gz,
+   falls back to a pure-python wheel .whl when the release is wheel-only —
+   verified live on charset-normalizer-rs), fetch_crates_source (crates.io →
+   .crate gzip-tar, UA required),
    fetch_rubygems_source (.gem = tar wrapping data.tar.gz), fetch_go_source
    (proxy.golang.org → module zip, !-escaped path, prefix strip). Wired in
    scan::fetch_source + scan::enrich_dep (is_enriched_ecosystem = npm/pypi/
