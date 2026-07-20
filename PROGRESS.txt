@@ -520,7 +520,11 @@ compare only the Go-comparable surface for non-npm (see gate note in #2 below).
 
 RUST-AHEAD (Rust does MORE than Go v0.29 — kept, documented):
  - Non-npm ci enrich (capabilities for pypi/crates/rubygems/go) + reachability
-   for pypi/go/rubygems (items 1–2 above).
+   for pypi/go/rubygems (items 1–2 above). LOCKED BY TESTS (the ci-parity Go
+   gate can't cover this): reachability classify for pypi/go/ruby is
+   offline-unit-tested in CI (scan.rs::tests); the non-npm enrich capabilities
+   are pinned in a network-gated regression (cli.rs::nonnpm_enrich_capabilities
+   _regression, #[ignore], run with AEGIS_NET_TESTS=1 — jinja2/jwt-go/rack caps).
  - sbom npm lockfileVersion-3 transitive graph: Rust extracts packages[].
    dependencies → CDX dependsOn edges; Go v0.29 does not. sbom-parity npm
    fixture kept FLAT to stay green; cargo fixture exercises a graph both agree on.
