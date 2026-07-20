@@ -156,12 +156,14 @@ fn extract_tgz_map(
     Ok(out)
 }
 
-/// Fetch and extract a PyPI package's published **sdist** (source tarball).
-/// `api_base` is e.g. `https://pypi.org` (injectable for tests). Reads the
-/// per-version JSON (`{api_base}/pypi/{name}/{version}/json`), picks the
-/// `sdist` URL, downloads the `.tar.gz`, and extracts it with the top
-/// `<name>-<version>/` dir stripped. Wheel-only packages (no sdist) return an
-/// `Err` — the caller degrades to advisory-only. Never panics.
+/// Fetch and extract a PyPI package's published source. `api_base` is e.g.
+/// `https://pypi.org` (injectable for tests). Reads the per-version JSON
+/// (`{api_base}/pypi/{name}/{version}/json`) and prefers the `sdist`
+/// (`.tar.gz`, top `<name>-<version>/` dir stripped); when the release is
+/// wheel-only it falls back to a `bdist_wheel` (`.whl` = a zip with the
+/// package modules at root, no prefix to strip), preferring a pure-python
+/// `py3-none-any` wheel. Only when neither exists does it `Err` — the caller
+/// then degrades to advisory-only. Never panics.
 pub fn fetch_pypi_source(
     http: &dyn HttpClient,
     api_base: &str,
@@ -189,24 +191,57 @@ pub fn fetch_pypi_source(
         .get("urls")
         .and_then(Value::as_array)
         .ok_or("pkgsource: pypi json has no urls[]")?;
-    let sdist = urls
+
+    // Prefer the sdist (real source); fall back to a wheel.
+    if let Some(sdist) = urls
         .iter()
         .find(|u| u.get("packagetype").and_then(Value::as_str) == Some("sdist"))
         .and_then(|u| u.get("url"))
         .and_then(Value::as_str)
         .filter(|s| s.ends_with(".tar.gz"))
-        .ok_or_else(|| format!("pkgsource: no sdist for {name}@{version}"))?;
+    {
+        let tb = http
+            .get(sdist, &[])
+            .map_err(|e| format!("pkgsource: sdist GET: {e}"))?;
+        if !tb.is_ok() {
+            return Err(format!("pkgsource: sdist HTTP {}", tb.status));
+        }
+        if tb.body.len() as u64 > MAX_TARBALL_BYTES {
+            return Err("pkgsource: sdist exceeds size cap".to_string());
+        }
+        return extract_tgz_first_dir(&tb.body);
+    }
 
-    let tb = http
-        .get(sdist, &[])
-        .map_err(|e| format!("pkgsource: sdist GET: {e}"))?;
-    if !tb.is_ok() {
-        return Err(format!("pkgsource: sdist HTTP {}", tb.status));
+    let wheel = pick_wheel(urls)
+        .ok_or_else(|| format!("pkgsource: no sdist/wheel for {name}@{version}"))?;
+    let wb = http
+        .get(wheel, &[])
+        .map_err(|e| format!("pkgsource: wheel GET: {e}"))?;
+    if !wb.is_ok() {
+        return Err(format!("pkgsource: wheel HTTP {}", wb.status));
     }
-    if tb.body.len() as u64 > MAX_TARBALL_BYTES {
-        return Err("pkgsource: sdist exceeds size cap".to_string());
+    if wb.body.len() as u64 > MAX_TARBALL_BYTES {
+        return Err("pkgsource: wheel exceeds size cap".to_string());
     }
-    extract_tgz_first_dir(&tb.body)
+    // Wheel files sit at the archive root (`pkg/…`, `pkg-ver.dist-info/…`),
+    // so no prefix is stripped.
+    extract_zip(&wb.body, "")
+}
+
+/// Pick a `bdist_wheel` URL from the PyPI `urls[]`, preferring a pure-python
+/// `py3-none-any` (or `-none-any`) wheel over a platform-specific one.
+fn pick_wheel(urls: &[Value]) -> Option<&str> {
+    let wheels: Vec<&str> = urls
+        .iter()
+        .filter(|u| u.get("packagetype").and_then(Value::as_str) == Some("bdist_wheel"))
+        .filter_map(|u| u.get("url").and_then(Value::as_str))
+        .filter(|s| s.ends_with(".whl"))
+        .collect();
+    wheels
+        .iter()
+        .find(|s| s.contains("-none-any"))
+        .or_else(|| wheels.first())
+        .copied()
 }
 
 /// Fetch and extract a crates.io crate's source. `api_base` is e.g.
@@ -481,15 +516,54 @@ mod tests {
     }
 
     #[test]
-    fn pypi_wheel_only_errors() {
+    fn pypi_wheel_only_falls_back_to_wheel() {
         let base = "https://pypi.test";
-        let json = r#"{"urls":[{"packagetype":"bdist_wheel","url":"https://f.test/x-1.0-py3-none-any.whl"}]}"#;
+        let json = r#"{"urls":[
+            {"packagetype":"bdist_wheel","url":"https://f.test/x-1.0-cp39-cp39-linux.whl"},
+            {"packagetype":"bdist_wheel","url":"https://f.test/x-1.0-py3-none-any.whl"}
+        ]}"#;
+        // wheel files sit at the archive root (no top dir).
+        let whl = make_zip(&[
+            ("x/__init__.py", b"__version__='1.0'"),
+            ("x-1.0.dist-info/METADATA", b"Name: x"),
+        ]);
+        let http = MockHttpClient::new()
+            .with(
+                &format!("{base}/pypi/x/1.0/json"),
+                200,
+                json.as_bytes().to_vec(),
+            )
+            // pure-python wheel is preferred over the platform one.
+            .with("https://f.test/x-1.0-py3-none-any.whl", 200, whl);
+        let files = fetch_pypi_source(&http, base, "x", "1.0").expect("fetch");
+        let names: Vec<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
+        assert!(names.contains(&"x/__init__.py"), "{names:?}");
+        assert!(names.contains(&"x-1.0.dist-info/METADATA"), "{names:?}");
+    }
+
+    #[test]
+    fn pypi_no_dist_errors() {
+        let base = "https://pypi.test";
+        let json = r#"{"urls":[]}"#;
         let http = MockHttpClient::new().with(
             &format!("{base}/pypi/x/1.0/json"),
             200,
             json.as_bytes().to_vec(),
         );
         assert!(fetch_pypi_source(&http, base, "x", "1.0").is_err());
+    }
+
+    #[test]
+    fn pick_wheel_prefers_pure_python() {
+        let urls: Vec<Value> = serde_json::from_str(
+            r#"[
+                {"packagetype":"bdist_wheel","url":"https://f/x-1.0-cp39-cp39-manylinux.whl"},
+                {"packagetype":"bdist_wheel","url":"https://f/x-1.0-py3-none-any.whl"},
+                {"packagetype":"sdist","url":"https://f/x-1.0.tar.gz"}
+            ]"#,
+        )
+        .unwrap();
+        assert_eq!(pick_wheel(&urls), Some("https://f/x-1.0-py3-none-any.whl"));
     }
 
     #[test]
