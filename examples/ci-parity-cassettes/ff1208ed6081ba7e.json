@@ -1,0 +1,48 @@
+{
+  "method": "POST",
+  "url": "https://api.osv.dev/v1/querybatch",
+  "status": 200,
+  "headers": [
+    [
+      "content-type",
+      "application/json"
+    ],
+    [
+      "x-cloud-trace-context",
+      "0c3ae24f132c111fcda9266e3c1bc6da/16063532089465791243"
+    ],
+    [
+      "traceparent",
+      "00-0c3ae24f132c111fcda9266e3c1bc6da-deed2153beb2630b-00"
+    ],
+    [
+      "alt-svc",
+      "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+    ],
+    [
+      "grpc-status",
+      "0"
+    ],
+    [
+      "grpc-message",
+      ""
+    ],
+    [
+      "x-envoy-decorator-operation",
+      "ingress QueryAffectedBatch"
+    ],
+    [
+      "date",
+      "Mon, 20 Jul 2026 23:40:37 GMT"
+    ],
+    [
+      "server",
+      "Google Frontend"
+    ],
+    [
+      "content-length",
+      "16"
+    ]
+  ],
+  "body_b64": "eyJyZXN1bHRzIjpbe31dfQ=="
+}

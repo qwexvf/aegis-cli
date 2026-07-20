@@ -49,13 +49,16 @@ struct Case {
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let record = args.iter().any(|a| a == "--record");
+    let record_cassettes = args.iter().any(|a| a == "--record-cassettes");
     match args.first().map(String::as_str) {
         Some("parity") => run_parity(record),
         Some("analyze-parity") => analyze_parity::run(record),
-        Some("ci-parity") => ci_parity::run(record),
+        Some("ci-parity") => ci_parity::run(record, record_cassettes),
         Some("sbom-parity") => sbom_parity::run(record),
         _ => {
-            eprintln!("usage: xtask <parity|analyze-parity|ci-parity|sbom-parity> [--record]");
+            eprintln!(
+                "usage: xtask <parity|analyze-parity|ci-parity|sbom-parity> [--record] [--record-cassettes]"
+            );
             std::process::ExitCode::from(2)
         }
     }

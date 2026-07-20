@@ -11,7 +11,6 @@ use aegis_domain::{
     RiskAssessment, Severity, VerdictKind, ALL_CAPABILITIES,
 };
 use aegis_lockfile::{parse_file, DirectMap};
-use aegis_net::UreqClient;
 use aegis_vuln::OsvClient;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -642,7 +641,7 @@ fn run_task(t: &TaskConfig, allow: &aegis_domain::AllowSet) -> TaskResult {
     if want("deprecated") {
         let deps = lockfile_deps(&files);
         if !deps.is_empty() {
-            let http = UreqClient::new();
+            let http = aegis_net::default_client();
             let client = aegis_registry::DepsDevClient::default();
             let deprecated = deps
                 .iter()
@@ -666,7 +665,7 @@ fn run_task(t: &TaskConfig, allow: &aegis_domain::AllowSet) -> TaskResult {
         let deny: Vec<String> = t.deny_licenses.iter().map(|s| s.to_lowercase()).collect();
         let deps = lockfile_deps(&files);
         if !deps.is_empty() {
-            let http = UreqClient::new();
+            let http = aegis_net::default_client();
             let fetcher = aegis_registry::LicenseFetcher::default();
             let violations = deps
                 .iter()
@@ -1042,7 +1041,7 @@ pub(crate) fn run_fix(file: &str, offline: bool, script: bool, json: bool) -> Ex
             })
             .collect();
         if !queries.is_empty() {
-            let client = UreqClient::new();
+            let client = aegis_net::default_client();
             match OsvClient::default()
                 .with_cache(osv_disk_cache())
                 .lookup(&client, &queries)
@@ -1181,7 +1180,7 @@ pub(crate) fn run_sbom(
     if online {
         let fetcher = aegis_registry::LicenseFetcher::default();
         deps.par_iter_mut().for_each(|d| {
-            let http = UreqClient::new();
+            let http = aegis_net::default_client();
             if let Some(lic) = fetcher.fetch_license(&http, d.ecosystem, &d.name, &d.version) {
                 d.license = lic;
             }
@@ -1338,7 +1337,7 @@ pub(crate) fn run_image(
             }
         },
         (None, Some(r)) => {
-            let client = UreqClient::new();
+            let client = aegis_net::default_client();
             // Credentials from flags, falling back to env. When neither is
             // set the pull stays anonymous (public images).
             let creds = registry_credentials(username, password);

@@ -10,7 +10,7 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  12 workspace members (11 crates + xtask parity harness) · 531 tests (all
+  12 workspace members (11 crates + xtask parity harness) · 533 tests (all
   green) · clippy + rustfmt clean · 163 commits.
   13 CLI commands: parse / analyze / ci / run / sbom / fix / allowlist / image /
   explain / reach / hook / actions / snapshot.
@@ -26,8 +26,12 @@ Status @ this snapshot:
     match Go on the Go-comparable surface. Enrich model ported + EXTENDED past
     Go: per-dep source fetch+scan now for ALL 5 ecosystems (npm/pypi/crates/
     rubygems/go; pypi wheel fallback), reachability downgrade for npm/pypi/go/
-    rubygems, advisory fixed_in+in_kev. Network-dependent → OPT-IN, not in CI;
-    the Rust-ahead non-npm behavior is locked by dedicated tests instead.
+    rubygems, advisory fixed_in+in_kev. NOW OFFLINE + IN CI: the Rust `ci` run
+    replays a committed HTTP cassette (examples/ci-parity-cassettes/, keyed by
+    method|url|body) instead of hitting the network, so the gate is
+    deterministic and blocking. Re-capture with `ci-parity --record-cassettes`
+    when a pinned advisory set changes. Non-npm capability surface still locked
+    by dedicated tests on top (gate compares only the Go-comparable surface).
   - sbom: `xtask sbom-parity` — CDX+SPDX vs Go goldens, 4/4. Offline +
     deterministic → IN CI. Fixed CDX $schema + empty-dependsOn shape.
   - explain: per-package mode added (`explain name@version` → fetch+scan+caps,
@@ -41,13 +45,13 @@ Status @ this snapshot:
   reachability-unused downgrade; CDX $schema + empty dependsOn.
 
   CI (.github/workflows/ci.yml) — 3 blocking jobs: build-test (fmt/clippy -D/
-  test), lean-build (feature-gating guard), parity (analyze + sbom). Details in
-  the CI PIPELINE block lower down.
+  test), lean-build (feature-gating guard), parity (analyze + sbom + ci — all
+  offline vs Go-captured goldens). Details in the CI PIPELINE block lower down.
 
   RUST-AHEAD OF GO v0.29 (implemented on owner request; see FORMERLY-NOT-PORTED):
   non-npm ci enrich (5 ecosystems) + reachability (4) + snapshot drift score +
   per-package explain + sbom npm transitive graph. Not ported: interactive TUI
-  (owner-declined), ci-parity in blocking CI (network-nondeterministic).
+  (owner-declined). ci-parity is now IN blocking CI (HTTP cassette replay).
 
   Feature surface (all CLI-wired + LIVE-verified):
   - reachability (aegis-reach): imports + used-symbols (js/ts/py/go/php; ruby
@@ -243,9 +247,9 @@ Status @ this snapshot:
                                        model. main.rs modularized (148 lines).
   P11 parity gate + cutover ......... GATE DONE, CUTOVER PENDING. Parity gate
                                        shipped: 3 committed harnesses (analyze-
-                                       parity + sbom-parity in CI, ci-parity
-                                       opt-in) prove Go==Rust for all 3 core
-                                       commands. Remaining = release infra only
+                                       parity + sbom-parity + ci-parity, all
+                                       offline + in CI) prove Go==Rust for all 3
+                                       core commands. Remaining = release infra only
                                        (cosign keyless + SLSA provenance via
                                        sigstore-rs, CI secrets), then flip the
                                        default. Deferred by owner — do after.
@@ -405,9 +409,11 @@ items 1 & 4 record history now SUPERSEDED by the FORMERLY-NOT-PORTED section
 2. [DONE] `ci` PARITY GATE  →  `xtask ci-parity [--record]`
    Mirrors analyze-parity: pinned lockfile corpus under examples/ci-parity/
    <fixture>/ (lockfile + optional consuming source + ci.golden.json), Rust
-   `ci --json` normalized vs a Go-captured golden. Network-dependent (enrich
-   fetches tarballs + OSV), so it is OPT-IN, NOT in the offline fmt/clippy/test
-   CI job. Normalized subset drops drift-prone fields (project name, advisory
+   `ci --json` normalized vs a Go-captured golden. Enrich fetches tarballs +
+   OSV, but the Rust run REPLAYS a committed HTTP cassette
+   (examples/ci-parity-cassettes/) so the gate is offline + deterministic and
+   NOW RUNS IN the blocking parity CI job. Normalized subset drops drift-prone
+   fields (project name, advisory
    epss/summary/url); keeps verdict/score/flags/advisory-ids+severities+fixed_in.
    6 fixtures across 5 ecosystems, 6/6 match Go: npm-lodash (block, enrich caps
    + 10 advisories + fixed_in), npm-clean (safe), pypi-jinja2 (block, 12 adv),
@@ -469,8 +475,8 @@ items 1 & 4 record history now SUPERSEDED by the FORMERLY-NOT-PORTED section
 
 5. P11 CUTOVER
    Broad parity confidence exists for the 3 core commands (analyze/ci/sbom) —
-   all THREE now have committed gates (analyze-parity + sbom-parity in CI;
-   ci-parity opt-in/network). Remaining is release infra, not library parity:
+   all THREE now have committed gates, all offline + in CI (analyze-parity +
+   sbom-parity + ci-parity). Remaining is release infra, not library parity:
    reproduce cosign keyless + SLSA provenance release pipeline (sigstore-rs, CI
    secrets), then flip the default. Separate track from the parity work above.
 
@@ -519,25 +525,29 @@ compare only the Go-comparable surface for non-npm (see gate note in #2 below).
    the '@' in a package spec; scoped npm splits on the last '@').
 
 -------------------------------------------------------------------------------
- STILL NOT PORTED  (deferred — TUI by owner; ci-in-CI infeasible)
+ STILL NOT PORTED  (deferred — TUI by owner)
 -------------------------------------------------------------------------------
 4. INTERACTIVE TUI PRESENTER (P9) — NOT built, deferred by owner. JSON + SARIF
    + CycloneDX/SPDX feed dashboards / Code Scanning; text + JSON complete.
 
-5. ci-parity gate IN BLOCKING CI — stays OPT-IN. ci enrich hits the network
-   (tarballs + OSV) → nondeterministic; can't be a clean blocking gate without
-   mocking the registry/OSV inside the binary. analyze-parity + sbom-parity
-   (offline) DO run in CI.
+   (ci-parity IN BLOCKING CI — DONE, was item 5. The network was the only
+   blocker; solved with an HTTP record/replay cassette in aegis-net
+   (`cassette` feature): `default_client()` swaps the ureq transport for a
+   replay transport when AEGIS_HTTP_REPLAY points at a committed cassette dir.
+   The Rust `ci` run now replays examples/ci-parity-cassettes/ offline +
+   deterministic, so `xtask ci-parity` joins analyze/sbom in the blocking
+   parity job. Re-capture via `ci-parity --record-cassettes` (needs net once).)
 
 CI PIPELINE (.github/workflows/ci.yml) — 3 blocking jobs:
   - build-test: fmt --check, clippy -D warnings, test --workspace.
   - lean-build: each feature-gated crate compiles with --no-default-features +
     isolated optional-dep features (npm/maven/hex, js/cocoapods, secrets/
-    install-hook/maintainer, cyclonedx, registry npm). Guards the lean-build
-    promise — a leaked dep or missing #[cfg] fails here. (aegis-cli itself is
-    all-in-one; leanness lives in the library crates.)
-  - parity: analyze-parity + sbom-parity vs Go-captured goldens (offline).
-  Not in CI: ci-parity (network, opt-in), release/signing (P11).
+    install-hook/maintainer, cyclonedx, registry npm, net cassette). Guards the
+    lean-build promise — a leaked dep or missing #[cfg] fails here. (aegis-cli
+    itself is all-in-one; leanness lives in the library crates.)
+  - parity: analyze-parity + sbom-parity + ci-parity vs Go-captured goldens.
+    All offline — ci-parity replays a committed HTTP cassette (no network).
+  Not in CI: release/signing (P11).
 
 RUST-AHEAD (Rust does MORE than Go v0.29 — kept, documented):
  - Non-npm ci enrich (capabilities for pypi/crates/rubygems/go) + reachability

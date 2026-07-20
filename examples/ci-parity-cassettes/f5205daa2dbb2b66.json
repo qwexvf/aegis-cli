@@ -1,0 +1,48 @@
+{
+  "method": "GET",
+  "url": "https://api.osv.dev/v1/vulns/PYSEC-2026-1475",
+  "status": 200,
+  "headers": [
+    [
+      "content-type",
+      "application/json"
+    ],
+    [
+      "x-cloud-trace-context",
+      "4d00c623e367287ff61594087c3aa1b3/18387749332169965369"
+    ],
+    [
+      "traceparent",
+      "00-4d00c623e367287ff61594087c3aa1b3-ff2e68985aeabf39-00"
+    ],
+    [
+      "alt-svc",
+      "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+    ],
+    [
+      "grpc-status",
+      "0"
+    ],
+    [
+      "grpc-message",
+      ""
+    ],
+    [
+      "x-envoy-decorator-operation",
+      "ingress GetVulnById"
+    ],
+    [
+      "date",
+      "Mon, 20 Jul 2026 23:40:46 GMT"
+    ],
+    [
+      "server",
+      "Google Frontend"
+    ],
+    [
+      "content-length",
+      "2623"
+    ]
+  ],
+  "body_b64": "eyJpZCI6IlBZU0VDLTIwMjYtMTQ3NSIsInN1bW1hcnkiOiJKaW5qYSBoYXMgYSBzYW5kYm94IGJyZWFrb3V0IHRocm91Z2ggaW5kaXJlY3QgcmVmZXJlbmNlIHRvIGZvcm1hdCBtZXRob2QiLCJkZXRhaWxzIjoiQW4gb3ZlcnNpZ2h0IGluIGhvdyB0aGUgSmluamEgc2FuZGJveGVkIGVudmlyb25tZW50IGRldGVjdHMgY2FsbHMgdG8gYHN0ci5mb3JtYXRgIGFsbG93cyBhbiBhdHRhY2tlciB0aGF0IGNvbnRyb2xzIHRoZSBjb250ZW50IG9mIGEgdGVtcGxhdGUgdG8gZXhlY3V0ZSBhcmJpdHJhcnkgUHl0aG9uIGNvZGUuXG5cblRvIGV4cGxvaXQgdGhlIHZ1bG5lcmFiaWxpdHksIGFuIGF0dGFja2VyIG5lZWRzIHRvIGNvbnRyb2wgdGhlIGNvbnRlbnQgb2YgYSB0ZW1wbGF0ZS4gV2hldGhlciB0aGF0IGlzIHRoZSBjYXNlIGRlcGVuZHMgb24gdGhlIHR5cGUgb2YgYXBwbGljYXRpb24gdXNpbmcgSmluamEuIFRoaXMgdnVsbmVyYWJpbGl0eSBpbXBhY3RzIHVzZXJzIG9mIGFwcGxpY2F0aW9ucyB3aGljaCBleGVjdXRlIHVudHJ1c3RlZCB0ZW1wbGF0ZXMuXG5cbkppbmphJ3Mgc2FuZGJveCBkb2VzIGNhdGNoIGNhbGxzIHRvIGBzdHIuZm9ybWF0YCBhbmQgZW5zdXJlcyB0aGV5IGRvbid0IGVzY2FwZSB0aGUgc2FuZGJveC4gSG93ZXZlciwgaXQncyBwb3NzaWJsZSB0byBzdG9yZSBhIHJlZmVyZW5jZSB0byBhIG1hbGljaW91cyBzdHJpbmcncyBgZm9ybWF0YCBtZXRob2QsIHRoZW4gcGFzcyB0aGF0IHRvIGEgZmlsdGVyIHRoYXQgY2FsbHMgaXQuIE5vIHN1Y2ggZmlsdGVycyBhcmUgYnVpbHQtaW4gdG8gSmluamEsIGJ1dCBjb3VsZCBiZSBwcmVzZW50IHRocm91Z2ggY3VzdG9tIGZpbHRlcnMgaW4gYW4gYXBwbGljYXRpb24uIEFmdGVyIHRoZSBmaXgsIHN1Y2ggaW5kaXJlY3QgY2FsbHMgYXJlIGFsc28gaGFuZGxlZCBieSB0aGUgc2FuZGJveC4iLCJhbGlhc2VzIjpbIkNWRS0yMDI0LTU2MzI2IiwiR0hTQS1xMng3LThydjYtNnE3aCJdLCJtb2RpZmllZCI6IjIwMjYtMDctMDdUMTc6NDY6MTMuODQyNDY2NDI5WiIsInB1Ymxpc2hlZCI6IjIwMjYtMDctMDdUMTQ6MzQ6NDcuNzMyNTc2WiIsInJlZmVyZW5jZXMiOlt7InR5cGUiOiJXRUIiLCJ1cmwiOiJodHRwczovL2dpdGh1Yi5jb20vcGFsbGV0cy9qaW5qYS9zZWN1cml0eS9hZHZpc29yaWVzL0dIU0EtcTJ4Ny04cnY2LTZxN2gifSx7InR5cGUiOiJBRFZJU09SWSIsInVybCI6Imh0dHBzOi8vbnZkLm5pc3QuZ292L3Z1bG4vZGV0YWlsL0NWRS0yMDI0LTU2MzI2In0seyJ0eXBlIjoiRklYIiwidXJsIjoiaHR0cHM6Ly9naXRodWIuY29tL3BhbGxldHMvamluamEvY29tbWl0LzQ4YjA2ODdlMDVhNTQ2NmE5MWNkNTgxMmQ2MDRmYTM3YWQwOTQzYjQifSx7InR5cGUiOiJQQUNLQUdFIiwidXJsIjoiaHR0cHM6Ly9naXRodWIuY29tL3BhbGxldHMvamluamEifSx7InR5cGUiOiJXRUIiLCJ1cmwiOiJodHRwczovL2dpdGh1Yi5jb20vcGFsbGV0cy9qaW5qYS9yZWxlYXNlcy90YWcvMy4xLjUifSx7InR5cGUiOiJXRUIiLCJ1cmwiOiJodHRwczovL2xpc3RzLmRlYmlhbi5vcmcvZGViaWFuLWx0cy1hbm5vdW5jZS8yMDI1LzA0L21zZzAwMDIyLmh0bWwifSx7InR5cGUiOiJQQUNLQUdFIiwidXJsIjoiaHR0cHM6Ly9weXBpLm9yZy9wcm9qZWN0L2ppbmphMiJ9LHsidHlwZSI6IkFEVklTT1JZIiwidXJsIjoiaHR0cHM6Ly9naXRodWIuY29tL2Fkdmlzb3JpZXMvR0hTQS1xMng3LThydjYtNnE3aCJ9XSwiYWZmZWN0ZWQiOlt7InBhY2thZ2UiOnsibmFtZSI6ImppbmphMiIsImVjb3N5c3RlbSI6IlB5UEkiLCJwdXJsIjoicGtnOnB5cGkvamluamEyIn0sInJhbmdlcyI6W3sidHlwZSI6IkVDT1NZU1RFTSIsImV2ZW50cyI6W3siaW50cm9kdWNlZCI6IjAifSx7ImZpeGVkIjoiMy4xLjUifV19XSwidmVyc2lvbnMiOlsiMi4wIiwiMi4wcmMxIiwiMi4xIiwiMi4xLjEiLCIyLjEwIiwiMi4xMC4xIiwiMi4xMC4yIiwiMi4xMC4zIiwiMi4xMS4wIiwiMi4xMS4xIiwiMi4xMS4yIiwiMi4xMS4zIiwiMi4yIiwiMi4yLjEiLCIyLjMiLCIyLjMuMSIsIjIuNCIsIjIuNC4xIiwiMi41IiwiMi41LjEiLCIyLjUuMiIsIjIuNS4zIiwiMi41LjQiLCIyLjUuNSIsIjIuNiIsIjIuNyIsIjIuNy4xIiwiMi43LjIiLCIyLjcuMyIsIjIuOCIsIjIuOC4xIiwiMi45IiwiMi45LjEiLCIyLjkuMiIsIjIuOS4zIiwiMi45LjQiLCIyLjkuNSIsIjIuOS42IiwiMy4wLjAiLCIzLjAuMGExIiwiMy4wLjByYzEiLCIzLjAuMHJjMiIsIjMuMC4xIiwiMy4wLjIiLCIzLjAuMyIsIjMuMS4wIiwiMy4xLjEiLCIzLjEuMiIsIjMuMS4zIiwiMy4xLjQiXSwiZGF0YWJhc2Vfc3BlY2lmaWMiOnsic291cmNlIjoiaHR0cHM6Ly9naXRodWIuY29tL3B5cGEvYWR2aXNvcnktZGF0YWJhc2UvYmxvYi9tYWluL3Z1bG5zL2ppbmphMi9QWVNFQy0yMDI2LTE0NzUueWFtbCJ9fV0sInNjaGVtYV92ZXJzaW9uIjoiMS43LjUiLCJzZXZlcml0eSI6W3sidHlwZSI6IkNWU1NfVjMiLCJzY29yZSI6IkNWU1M6My4xL0FWOkwvQUM6TC9QUjpML1VJOk4vUzpVL0M6SC9JOkgvQTpIIn0seyJ0eXBlIjoiQ1ZTU19WNCIsInNjb3JlIjoiQ1ZTUzo0LjAvQVY6TC9BQzpML0FUOlAvUFI6TC9VSTpQL1ZDOkgvVkk6SC9WQTpIL1NDOk4vU0k6Ti9TQTpOIn1dfQ=="
+}

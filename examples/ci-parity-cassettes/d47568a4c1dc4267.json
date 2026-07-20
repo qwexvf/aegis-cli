@@ -1,0 +1,48 @@
+{
+  "method": "GET",
+  "url": "https://api.osv.dev/v1/vulns/GHSA-5f9h-9pjv-v6j7",
+  "status": 200,
+  "headers": [
+    [
+      "content-type",
+      "application/json"
+    ],
+    [
+      "x-cloud-trace-context",
+      "6f1d3cf5b6105f742a0affc960b7b6ac/18038636162239095309"
+    ],
+    [
+      "traceparent",
+      "00-6f1d3cf5b6105f742a0affc960b7b6ac-fa561c044ac6e20d-00"
+    ],
+    [
+      "alt-svc",
+      "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+    ],
+    [
+      "grpc-status",
+      "0"
+    ],
+    [
+      "grpc-message",
+      ""
+    ],
+    [
+      "x-envoy-decorator-operation",
+      "ingress GetVulnById"
+    ],
+    [
+      "date",
+      "Mon, 20 Jul 2026 23:40:49 GMT"
+    ],
+    [
+      "server",
+      "Google Frontend"
+    ],
+    [
+      "content-length",
+      "2606"
+    ]
+  ],
+  "body_b64": "eyJpZCI6IkdIU0EtNWY5aC05cGp2LXY2ajciLCJzdW1tYXJ5IjoiRGlyZWN0b3J5IHRyYXZlcnNhbCBpbiBSYWNrOjpEaXJlY3RvcnkgYXBwIGJ1bmRsZWQgd2l0aCBSYWNrIiwiZGV0YWlscyI6IkEgZGlyZWN0b3J5IHRyYXZlcnNhbCB2dWxuZXJhYmlsaXR5IGV4aXN0cyBpbiByYWNrIFx1MDAzYyAyLjIuMCB0aGF0IGFsbG93cyBhbiBhdHRhY2tlciBwZXJmb3JtIGRpcmVjdG9yeSB0cmF2ZXJzYWwgdnVsbmVyYWJpbGl0eSBpbiB0aGUgUmFjazo6RGlyZWN0b3J5IGFwcCB0aGF0IGlzIGJ1bmRsZWQgd2l0aCBSYWNrIHdoaWNoIGNvdWxkIHJlc3VsdCBpbiBpbmZvcm1hdGlvbiBkaXNjbG9zdXJlLiIsImFsaWFzZXMiOlsiQ1ZFLTIwMjAtODE2MSJdLCJtb2RpZmllZCI6IjIwMjQtMDItMThUMDU6NDM6MDYuNjExNTYwWiIsInB1Ymxpc2hlZCI6IjIwMjAtMDctMDZUMjE6MzE6MDJaIiwiZGF0YWJhc2Vfc3BlY2lmaWMiOnsiY3dlX2lkcyI6WyJDV0UtMjIiLCJDV0UtNTQ4Il0sImdpdGh1Yl9yZXZpZXdlZF9hdCI6IjIwMjAtMDctMDZUMjE6MzA6MzJaIiwiZ2l0aHViX3Jldmlld2VkIjp0cnVlLCJudmRfcHVibGlzaGVkX2F0IjoiMjAyMC0wNy0wMlQxOToxNTowMFoiLCJzZXZlcml0eSI6IkhJR0gifSwicmVmZXJlbmNlcyI6W3sidHlwZSI6IkFEVklTT1JZIiwidXJsIjoiaHR0cHM6Ly9udmQubmlzdC5nb3YvdnVsbi9kZXRhaWwvQ1ZFLTIwMjAtODE2MSJ9LHsidHlwZSI6IldFQiIsInVybCI6Imh0dHBzOi8vZ2l0aHViLmNvbS9yYWNrL3JhY2svY29tbWl0L2RkZGI3YWQxOGVkNzljYTZhYjA2Y2NjNDE3YTE2OWZkZTQ1MTI0NmUifSx7InR5cGUiOiJQQUNLQUdFIiwidXJsIjoiaHR0cHM6Ly9naXRodWIuY29tL3JhY2svcmFjayJ9LHsidHlwZSI6IldFQiIsInVybCI6Imh0dHBzOi8vZ2l0aHViLmNvbS9ydWJ5c2VjL3J1YnktYWR2aXNvcnktZGIvYmxvYi9tYXN0ZXIvZ2Vtcy9yYWNrL0NWRS0yMDIwLTgxNjEueW1sIn0seyJ0eXBlIjoiV0VCIiwidXJsIjoiaHR0cHM6Ly9ncm91cHMuZ29vZ2xlLmNvbS9mb3J1bS8jIXRvcGljL3J1Ynktc2VjdXJpdHktYW5uL1Q0WklzZlJmMmVBIn0seyJ0eXBlIjoiV0VCIiwidXJsIjoiaHR0cHM6Ly9ncm91cHMuZ29vZ2xlLmNvbS9nL3J1YnlvbnJhaWxzLXNlY3VyaXR5L2MvSU9PMXZOWlR6UEEifSx7InR5cGUiOiJXRUIiLCJ1cmwiOiJodHRwczovL2xpc3RzLmRlYmlhbi5vcmcvZGViaWFuLWx0cy1hbm5vdW5jZS8yMDIwLzA3L21zZzAwMDA2Lmh0bWwifSx7InR5cGUiOiJXRUIiLCJ1cmwiOiJodHRwczovL2xpc3RzLmRlYmlhbi5vcmcvZGViaWFuLWx0cy1hbm5vdW5jZS8yMDIzLzAxL21zZzAwMDM4Lmh0bWwifSx7InR5cGUiOiJXRUIiLCJ1cmwiOiJodHRwczovL3Vzbi51YnVudHUuY29tLzQ1NjEtMSJ9XSwiYWZmZWN0ZWQiOlt7InBhY2thZ2UiOnsibmFtZSI6InJhY2siLCJlY29zeXN0ZW0iOiJSdWJ5R2VtcyIsInB1cmwiOiJwa2c6Z2VtL3JhY2sifSwicmFuZ2VzIjpbeyJ0eXBlIjoiRUNPU1lTVEVNIiwiZXZlbnRzIjpbeyJpbnRyb2R1Y2VkIjoiMCJ9LHsiZml4ZWQiOiIyLjEuMyJ9XX1dLCJ2ZXJzaW9ucyI6WyIwLjEuMCIsIjAuMi4wIiwiMC4zLjAiLCIwLjQuMCIsIjAuOS4wIiwiMC45LjEiLCIxLjAuMCIsIjEuMC4xIiwiMS4xLjAiLCIxLjEuMSIsIjEuMS4xLnByZSIsIjEuMS4yIiwiMS4xLjMiLCIxLjEuNCIsIjEuMS41IiwiMS4xLjYiLCIxLjIuMCIsIjEuMi4xIiwiMS4yLjIiLCIxLjIuMyIsIjEuMi40IiwiMS4yLjUiLCIxLjIuNiIsIjEuMi43IiwiMS4yLjgiLCIxLjMuMCIsIjEuMy4wLmJldGEiLCIxLjMuMC5iZXRhMiIsIjEuMy4xIiwiMS4zLjEwIiwiMS4zLjIiLCIxLjMuMyIsIjEuMy40IiwiMS4zLjUiLCIxLjMuNiIsIjEuMy43IiwiMS4zLjgiLCIxLjMuOSIsIjEuNC4wIiwiMS40LjEiLCIxLjQuMiIsIjEuNC4zIiwiMS40LjQiLCIxLjQuNSIsIjEuNC42IiwiMS40LjciLCIxLjUuMCIsIjEuNS4wLmJldGEuMSIsIjEuNS4wLmJldGEuMiIsIjEuNS4xIiwiMS41LjIiLCIxLjUuMyIsIjEuNS40IiwiMS41LjUiLCIxLjYuMCIsIjEuNi4wLmJldGEiLCIxLjYuMC5iZXRhMiIsIjEuNi4xIiwiMS42LjEwIiwiMS42LjExIiwiMS42LjEyIiwiMS42LjEzIiwiMS42LjIiLCIxLjYuMyIsIjEuNi40IiwiMS42LjUiLCIxLjYuNiIsIjEuNi43IiwiMS42LjgiLCIxLjYuOSIsIjIuMC4wLmFscGhhIiwiMi4wLjAucmMxIiwiMi4wLjEiLCIyLjAuMiIsIjIuMC4zIiwiMi4wLjQiLCIyLjAuNSIsIjIuMC42IiwiMi4wLjciLCIyLjAuOCIsIjIuMC45IiwiMi4wLjkuMSIsIjIuMC45LjIiLCIyLjAuOS4zIiwiMi4xLjAiLCIyLjEuMSIsIjIuMS4yIl0sImRhdGFiYXNlX3NwZWNpZmljIjp7InNvdXJjZSI6Imh0dHBzOi8vZ2l0aHViLmNvbS9naXRodWIvYWR2aXNvcnktZGF0YWJhc2UvYmxvYi9tYWluL2Fkdmlzb3JpZXMvZ2l0aHViLXJldmlld2VkLzIwMjAvMDcvR0hTQS01ZjloLTlwanYtdjZqNy9HSFNBLTVmOWgtOXBqdi12Nmo3Lmpzb24ifX1dLCJzY2hlbWFfdmVyc2lvbiI6IjEuNy4zIiwic2V2ZXJpdHkiOlt7InR5cGUiOiJDVlNTX1YzIiwic2NvcmUiOiJDVlNTOjMuMS9BVjpOL0FDOkwvUFI6Ti9VSTpOL1M6Qy9DOkgvSTpOL0E6TiJ9XX0="
+}

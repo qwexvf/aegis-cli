@@ -1,0 +1,120 @@
+{
+  "method": "GET",
+  "url": "https://api.first.org/data/v1/epss?cve=CVE-2024-25126,CVE-2023-27530,CVE-2024-26146,CVE-2020-8161,CVE-2018-16471,CVE-2025-59830,CVE-2022-44570,CVE-2025-61919,CVE-2025-25184,CVE-2026-34763,CVE-2025-27610,CVE-2025-27111,CVE-2026-34829,CVE-2022-44571,CVE-2023-27539,CVE-2025-46727,CVE-2026-34785,CVE-2018-16470,CVE-2019-16782,CVE-2022-30122,CVE-2020-8184,CVE-2026-22860,CVE-2025-61770,CVE-2026-34831,CVE-2026-34786,CVE-2026-34830,CVE-2025-61780,CVE-2022-44572,CVE-2026-34230,CVE-2026-26961,CVE-2025-32441,CVE-2025-61771,CVE-2026-25500,CVE-2025-61772,CVE-2022-30123,CVE-2026-34826,CVE-2024-26141",
+  "status": 200,
+  "headers": [
+    [
+      "connection",
+      "keep-alive"
+    ],
+    [
+      "content-type",
+      "application/json; charset=utf-8"
+    ],
+    [
+      "access-control-allow-headers",
+      "x-requested-with"
+    ],
+    [
+      "access-control-allow-methods",
+      "GET, HEAD, OPTIONS"
+    ],
+    [
+      "access-control-allow-origin",
+      "*"
+    ],
+    [
+      "cache-control",
+      "public, max-age=86400, s-maxage=86400"
+    ],
+    [
+      "content-security-policy",
+      "default-src 'self'; img-src 'self' https: data:; font-src 'self' https:; media-src 'self' *.first.org; connect-src 'self' *.first.org; object-src 'self' *.first.org; frame-src https: data:; frame-ancestors 'self'; base-uri 'self'"
+    ],
+    [
+      "link",
+      "<https://api.first.org/data/v1/epss/schema> rel=describedBy"
+    ],
+    [
+      "permissions-policy",
+      "microphone=(), camera=(), autoplay=(self \"https://*.first.org\")"
+    ],
+    [
+      "referrer-policy",
+      "origin-when-cross-origin"
+    ],
+    [
+      "server",
+      "nginx"
+    ],
+    [
+      "x-access",
+      "public, max-age=86400, s-maxage=86400"
+    ],
+    [
+      "x-content-type-options",
+      "nosniff"
+    ],
+    [
+      "x-frame-options",
+      "SAMEORIGIN"
+    ],
+    [
+      "x-frame-options",
+      "SAMEORIGIN"
+    ],
+    [
+      "x-total",
+      "37"
+    ],
+    [
+      "x-xss-protection",
+      "1; mode=block"
+    ],
+    [
+      "accept-ranges",
+      "bytes"
+    ],
+    [
+      "age",
+      "0"
+    ],
+    [
+      "date",
+      "Mon, 20 Jul 2026 23:40:59 GMT"
+    ],
+    [
+      "via",
+      "1.1 varnish"
+    ],
+    [
+      "x-served-by",
+      "cache-nrt-rjtf7700051-NRT"
+    ],
+    [
+      "x-cache",
+      "MISS"
+    ],
+    [
+      "x-cache-hits",
+      "0"
+    ],
+    [
+      "x-timer",
+      "S1784590859.679924,VS0,VE701"
+    ],
+    [
+      "vary",
+      "accept-encoding, Accept-Encoding"
+    ],
+    [
+      "strict-transport-security",
+      "max-age=31557600"
+    ],
+    [
+      "alt-svc",
+      "h3=\":443\";ma=86400,h3-29=\":443\";ma=86400,h3-27=\":443\";ma=86400"
+    ]
+  ],
+  "body_b64": "eyJzdGF0dXMiOiJPSyIsInN0YXR1cy1jb2RlIjoyMDAsInZlcnNpb24iOiIxLjAiLCJhY2Nlc3MiOiJwdWJsaWMiLCJ0b3RhbCI6MzcsIm9mZnNldCI6MCwibGltaXQiOjEwMCwiZGF0YSI6W3siY3ZlIjoiQ1ZFLTIwMjYtMzQ4MzEiLCJlcHNzIjoiMC4wMDE0NzAwMDAiLCJwZXJjZW50aWxlIjoiMC4wNDM1MzAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjYtMzQ4MzAiLCJlcHNzIjoiMC4wMDIwOTAwMDAiLCJwZXJjZW50aWxlIjoiMC4xMTIyNjAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjYtMzQ4MjkiLCJlcHNzIjoiMC4wMDM2OTAwMDAiLCJwZXJjZW50aWxlIjoiMC4yOTIwNzAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjYtMzQ4MjYiLCJlcHNzIjoiMC4wMDM4MDAwMDAiLCJwZXJjZW50aWxlIjoiMC4zMDM4MzAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjYtMzQ3ODYiLCJlcHNzIjoiMC4wMDE5NTAwMDAiLCJwZXJjZW50aWxlIjoiMC4wOTQxOTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjYtMzQ3ODUiLCJlcHNzIjoiMC4wMDM4NzAwMDAiLCJwZXJjZW50aWxlIjoiMC4zMTEwMDAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjYtMzQ3NjMiLCJlcHNzIjoiMC4wMDI0MDAwMDAiLCJwZXJjZW50aWxlIjoiMC4xNTIxNTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjYtMzQyMzAiLCJlcHNzIjoiMC4wMDQzMDAwMDAiLCJwZXJjZW50aWxlIjoiMC4zNDkyMzAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjYtMjY5NjEiLCJlcHNzIjoiMC4wMDI1MzAwMDAiLCJwZXJjZW50aWxlIjoiMC4xNjc0MjAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjYtMjU1MDAiLCJlcHNzIjoiMC4wMDIyNDAwMDAiLCJwZXJjZW50aWxlIjoiMC4xMzA5OTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjYtMjI4NjAiLCJlcHNzIjoiMC4wMDY2NTAwMDAiLCJwZXJjZW50aWxlIjoiMC40NzcyMDAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtNjE5MTkiLCJlcHNzIjoiMC4wMDYwNTAwMDAiLCJwZXJjZW50aWxlIjoiMC40NTA0OTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtNjE3ODAiLCJlcHNzIjoiMC4wMDQzNDAwMDAiLCJwZXJjZW50aWxlIjoiMC4zNTIwOTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtNjE3NzIiLCJlcHNzIjoiMC4wMDg2ODAwMDAiLCJwZXJjZW50aWxlIjoiMC41NDc0MjAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtNjE3NzEiLCJlcHNzIjoiMC4wMDUyODAwMDAiLCJwZXJjZW50aWxlIjoiMC40MTIwNDAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtNjE3NzAiLCJlcHNzIjoiMC4wMDg2ODAwMDAiLCJwZXJjZW50aWxlIjoiMC41NDc0MjAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtNTk4MzAiLCJlcHNzIjoiMC4wMDUzNTAwMDAiLCJwZXJjZW50aWxlIjoiMC40MTYxNDAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtNDY3MjciLCJlcHNzIjoiMC4wMDkxMTAwMDAiLCJwZXJjZW50aWxlIjoiMC41NjA4NDAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtMzI0NDEiLCJlcHNzIjoiMC4wMDIwMTAwMDAiLCJwZXJjZW50aWxlIjoiMC4xMDIxMjAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtMjc2MTAiLCJlcHNzIjoiMC4wMTA2ODAwMDAiLCJwZXJjZW50aWxlIjoiMC42MTA4ODAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtMjcxMTEiLCJlcHNzIjoiMC4wMDY5OTAwMDAiLCJwZXJjZW50aWxlIjoiMC40OTA2MTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjUtMjUxODQiLCJlcHNzIjoiMC4wMTE0MjAwMDAiLCJwZXJjZW50aWxlIjoiMC42MzE0MTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjQtMjYxNDYiLCJlcHNzIjoiMC4wMTk5NjAwMDAiLCJwZXJjZW50aWxlIjoiMC43ODUxMjAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjQtMjYxNDEiLCJlcHNzIjoiMC4wMTYxMjAwMDAiLCJwZXJjZW50aWxlIjoiMC43MzMwNTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjQtMjUxMjYiLCJlcHNzIjoiMC4zNTM3NjAwMDAiLCJwZXJjZW50aWxlIjoiMC45ODI3NjAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjMtMjc1MzkiLCJlcHNzIjoiMC4wMTA4MTAwMDAiLCJwZXJjZW50aWxlIjoiMC42MTQ0NjAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjMtMjc1MzAiLCJlcHNzIjoiMC4wMTgzMDAwMDAiLCJwZXJjZW50aWxlIjoiMC43NjQ5MzAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjItNDQ1NzIiLCJlcHNzIjoiMC4wMTYxNzAwMDAiLCJwZXJjZW50aWxlIjoiMC43MzM3NjAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjItNDQ1NzEiLCJlcHNzIjoiMC4wMTUwMzAwMDAiLCJwZXJjZW50aWxlIjoiMC43MTQ5NzAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjItNDQ1NzAiLCJlcHNzIjoiMC4wMTYyNjAwMDAiLCJwZXJjZW50aWxlIjoiMC43MzUzMTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjItMzAxMjMiLCJlcHNzIjoiMC4wMTgwMTAwMDAiLCJwZXJjZW50aWxlIjoiMC43NjA5OTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjItMzAxMjIiLCJlcHNzIjoiMC4wMjA1NjAwMDAiLCJwZXJjZW50aWxlIjoiMC43OTE4MTAwMDAiLCJkYXRlIjoiMjAyNi0wNy0yMCJ9LHsiY3ZlIjoiQ1ZFLTIwMjAtODE4NCIsImVwc3MiOiIwLjAyOTM4MDAwMCIsInBlcmNlbnRpbGUiOiIwLjg1NTkzMDAwMCIsImRhdGUiOiIyMDI2LTA3LTIwIn0seyJjdmUiOiJDVkUtMjAyMC04MTYxIiwiZXBzcyI6IjAuMDM1OTMwMDAwIiwicGVyY2VudGlsZSI6IjAuODgxNzAwMDAwIiwiZGF0ZSI6IjIwMjYtMDctMjAifSx7ImN2ZSI6IkNWRS0yMDE5LTE2NzgyIiwiZXBzcyI6IjAuMDM2ODcwMDAwIiwicGVyY2VudGlsZSI6IjAuODg0ODAwMDAwIiwiZGF0ZSI6IjIwMjYtMDctMjAifSx7ImN2ZSI6IkNWRS0yMDE4LTE2NDcxIiwiZXBzcyI6IjAuMDE4ODIwMDAwIiwicGVyY2VudGlsZSI6IjAuNzcxNzIwMDAwIiwiZGF0ZSI6IjIwMjYtMDctMjAifSx7ImN2ZSI6IkNWRS0yMDE4LTE2NDcwIiwiZXBzcyI6IjAuMDIwMzMwMDAwIiwicGVyY2VudGlsZSI6IjAuNzg5MzYwMDAwIiwiZGF0ZSI6IjIwMjYtMDctMjAifV19Cg=="
+}

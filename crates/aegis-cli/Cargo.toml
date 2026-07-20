@@ -21,7 +21,7 @@ aegis-registry = { path = "../aegis-registry" }
 aegis-sbom = { path = "../aegis-sbom" }
 aegis-image = { path = "../aegis-image" }
 aegis-reach = { path = "../aegis-reach" }
-aegis-net = { path = "../aegis-net" }
+aegis-net = { path = "../aegis-net", features = ["cassette"] }
 time = { version = "0.3", features = ["formatting"] }
 clap = { version = "4", features = ["derive"] }
 rayon = "1"
