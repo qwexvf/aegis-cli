@@ -694,4 +694,60 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn python_import_marks_pypi_dep_used() {
+        let dir = scratch();
+        std::fs::write(dir.join("app.py"), b"import requests\nrequests.get('x')\n").unwrap();
+        let reach = project_reachability(&dir);
+        assert_eq!(
+            reach.classify(&dep("requests", Ecosystem::PyPI)),
+            Reachability::Used
+        );
+        assert_eq!(
+            reach.classify(&dep("flask", Ecosystem::PyPI)),
+            Reachability::Unused
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn go_import_marks_module_used_by_prefix() {
+        let dir = scratch();
+        std::fs::write(
+            dir.join("main.go"),
+            b"package main\nimport \"github.com/spf13/cobra\"\nfunc main() { _ = cobra.Command{} }\n",
+        )
+        .unwrap();
+        let reach = project_reachability(&dir);
+        // exact module match
+        assert_eq!(
+            reach.classify(&dep("github.com/spf13/cobra", Ecosystem::Go)),
+            Reachability::Used
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ruby_require_marks_gem_used() {
+        let dir = scratch();
+        std::fs::write(dir.join("app.rb"), b"require 'rack'\nputs Rack.release\n").unwrap();
+        let reach = project_reachability(&dir);
+        assert_eq!(
+            reach.classify(&dep("rack", Ecosystem::RubyGems)),
+            Reachability::Used
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn crates_never_classified_via_reachability_gate() {
+        // Crates has no aegis-reach import parser, so it is not
+        // reachability-eligible — run_ci keeps such deps Unknown.
+        assert!(!reachability_eligible(Ecosystem::Crates));
+        assert!(reachability_eligible(Ecosystem::Npm));
+        assert!(reachability_eligible(Ecosystem::PyPI));
+        assert!(reachability_eligible(Ecosystem::Go));
+        assert!(reachability_eligible(Ecosystem::RubyGems));
+    }
 }
