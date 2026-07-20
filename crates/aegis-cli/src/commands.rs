@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::enrich::{advisories_by_key, ci_findings_to_sarif, cve_findings, osv_disk_cache};
 use crate::scan::{
-    collect_files, enrich_dep, fetch_online_caps, fingerprint_source, lockfile_deps,
-    project_reachability, scan_source,
+    collect_files, enrich_dep, fetch_and_scan_package, fetch_online_caps, fingerprint_source,
+    lockfile_deps, project_reachability, scan_source,
 };
 use crate::util::{parse_ecosystem, parse_severity, severity_rank};
 
@@ -1427,7 +1427,15 @@ fn capability_doc(cap: Capability) -> CapabilityDoc {
 
 /// Explain the risk model: list every capability (or one named slug) with its
 /// meaning and score weight, ordered by weight descending.
-pub(crate) fn run_explain(capability: Option<&str>, json: bool) -> ExitCode {
+pub(crate) fn run_explain(capability: Option<&str>, ecosystem: &str, json: bool) -> ExitCode {
+    // Package spec ("name@version") → fetch + scan + explain that package's
+    // capabilities (Go's per-package `explain`). A scoped npm name is
+    // "@scope/pkg@ver", so split on the LAST '@'. A capability slug never
+    // contains '@', so its presence disambiguates.
+    if let Some(spec) = capability.filter(|s| s.contains('@')) {
+        return explain_package(spec, ecosystem, json);
+    }
+
     let mut docs: Vec<CapabilityDoc> = match capability {
         Some(slug) => {
             let Some(cap) = ALL_CAPABILITIES.iter().copied().find(|c| c.name() == slug) else {
@@ -1459,6 +1467,89 @@ pub(crate) fn run_explain(capability: Option<&str>, json: bool) -> ExitCode {
     } else {
         for d in &docs {
             println!("[{:>3}] {} — {}", d.weight, d.capability, d.description);
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+/// JSON view for `explain <name@version>`: the fetched package's capabilities
+/// (each with description + weight), risk score, and verdict.
+#[derive(Serialize)]
+struct ExplainPackageView {
+    ecosystem: String,
+    name: String,
+    version: String,
+    verdict: String,
+    score: i32,
+    capabilities: Vec<CapabilityDoc>,
+}
+
+/// Split a package spec into (name, version). The version is after the LAST
+/// `@`, so a scoped npm name (`@scope/pkg@1.0.0`) parses correctly. Returns
+/// `None` when either side is empty.
+fn parse_pkg_spec(spec: &str) -> Option<(&str, &str)> {
+    spec.rsplit_once('@')
+        .filter(|(n, v)| !n.is_empty() && !v.is_empty())
+}
+
+/// Fetch a published package and explain its capabilities (Go's per-package
+/// `explain`). `spec` is `name@version` (scoped npm: `@scope/pkg@version`).
+fn explain_package(spec: &str, ecosystem: &str, json: bool) -> ExitCode {
+    let Some((name, version)) = parse_pkg_spec(spec) else {
+        eprintln!("aegis: package spec must be name@version (got {spec})");
+        return ExitCode::from(2);
+    };
+    let Some(eco) = parse_ecosystem(ecosystem) else {
+        eprintln!("aegis: unknown ecosystem: {ecosystem}");
+        return ExitCode::from(2);
+    };
+
+    let (caps, assessment) = match fetch_and_scan_package(eco, name, version) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("aegis: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    // List the full capability set (like Go), while score/verdict come from the
+    // allowlisted assessment — so an allowlist-suppressed capability shows but
+    // doesn't inflate the score.
+    let mut docs: Vec<CapabilityDoc> = caps.iter().copied().map(capability_doc).collect();
+    docs.sort_by(|a, b| {
+        b.weight
+            .cmp(&a.weight)
+            .then(a.capability.cmp(&b.capability))
+    });
+    let v = verdict(&assessment, &RiskAssessment::default());
+
+    if json {
+        let view = ExplainPackageView {
+            ecosystem: eco.as_str().to_string(),
+            name: name.to_string(),
+            version: version.to_string(),
+            verdict: v.name().to_string(),
+            score: assessment.score,
+            capabilities: docs,
+        };
+        match serde_json::to_string_pretty(&view) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("aegis: json encode failed: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        println!(
+            "{name}@{version} ({}) — {} (score {})",
+            eco.as_str(),
+            v.name(),
+            assessment.score
+        );
+        if docs.is_empty() {
+            println!("  no notable capabilities");
+        }
+        for d in &docs {
+            println!("  [{:>3}] {} — {}", d.weight, d.capability, d.description);
         }
     }
     ExitCode::SUCCESS
@@ -2002,4 +2093,30 @@ pub(crate) fn run_parse(file: &str, json: bool) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pkg_spec_splits_on_last_at() {
+        assert_eq!(parse_pkg_spec("lodash@4.17.4"), Some(("lodash", "4.17.4")));
+        // scoped npm: version is after the LAST '@'
+        assert_eq!(
+            parse_pkg_spec("@scope/pkg@1.2.3"),
+            Some(("@scope/pkg", "1.2.3"))
+        );
+        assert_eq!(
+            parse_pkg_spec("github.com/foo/bar@v1.0.0"),
+            Some(("github.com/foo/bar", "v1.0.0"))
+        );
+    }
+
+    #[test]
+    fn pkg_spec_rejects_incomplete() {
+        assert_eq!(parse_pkg_spec("lodash"), None);
+        assert_eq!(parse_pkg_spec("lodash@"), None);
+        assert_eq!(parse_pkg_spec("@1.0.0"), None);
+    }
 }
