@@ -15,7 +15,13 @@ Status @ this snapshot:
   13 CLI commands: parse / analyze / ci / run / sbom / fix / allowlist / image /
   explain / reach / hook / actions / snapshot.
 
-  *** PARITY COMPLETE + RUST NOW AHEAD OF GO v0.29. Only P11 (release) remains,
+  *** SCANNING-ENGINE PARITY COMPLETE (core-3: analyze/ci/sbom) + RUST AHEAD
+      OF GO v0.29. This is verdict/score/capability/advisory parity on the
+      scanning behavior — NOT a 1:1 port of Go's command surface. The Rust CLI
+      is a deliberate, flat, stateless, CI-first SUBSET; ~half of Go's commands
+      (the aegis.lock snapshot lifecycle, local cache/audit, cloud/API) are
+      intentionally absent. See COMMAND SURFACE SCOPE below for the full map.
+      Only P11 (release) remains on the porting plan,
       and it is DEFERRED by the owner: no release until the CLI is proven solid.
   The Go aegis-cli source is local (../aegis-cli) + Go 1.26 installed, so real
   Go-vs-Rust diffs run. 3 committed parity gates:
@@ -256,7 +262,8 @@ Status @ this snapshot:
 
   Rough count: P1/P2/P3/P4/P5/P6/P7/P8/P9/P10 done or done-to-a-strong-slice
   (with documented deep follow-ups); P0/P11 documented-blocked (architectural,
-  not a code gap). Foundational + detection + output + CLI surface complete;
+  not a code gap). Foundational + detection + output complete; CLI surface =
+  a deliberate CI-first SUBSET of Go's commands (see COMMAND SURFACE SCOPE).
   remaining = full reachability (call-graph), OCI registry pull, the parity gate.
 
 -------------------------------------------------------------------------------
@@ -537,6 +544,53 @@ compare only the Go-comparable surface for non-npm (see gate note in #2 below).
    The Rust `ci` run now replays examples/ci-parity-cassettes/ offline +
    deterministic, so `xtask ci-parity` joins analyze/sbom in the blocking
    parity job. Re-capture via `ci-parity --record-cassettes` (needs net once).)
+
+-------------------------------------------------------------------------------
+ COMMAND SURFACE SCOPE  (Rust is a deliberate SUBSET of Go v0.29's commands)
+-------------------------------------------------------------------------------
+The Rust port is NOT a 1:1 command port. Go is built on three subsystems the
+Rust CLI deliberately does not have: the `aegis.lock` snapshot lifecycle, a
+local decision/fingerprint cache + audit log, and the cloud/incident-DB API.
+Rust is instead FLAT (no noun→subcommand grouping), STATELESS (every command
+takes an explicit lockfile/dir arg — no `aegis.lock`, no cache), and CI-first.
+Scanning-engine parity (analyze/ci/sbom verdict+score+caps+advisories) holds
+and is gated in CI; the command SURFACE below is where the two diverge.
+
+REUSED VERB NAMES ≠ SAME BEHAVIOR (a Go-docs reader will be surprised):
+  - snapshot : Go = aegis.lock lifecycle;  Rust = capability fingerprint of a
+               dir (closest to Go `analyze --baseline`, NOT Go snapshot).
+  - actions  : Go = SCAN .github/workflows for risk;  Rust = GENERATE a CI
+               workflow yaml that runs `aegis ci`.
+  - analyze  : Go = fetch pkg spec + scan;  Rust = scan a local dir
+               (== Go `analyze --local`; fetch-by-spec lives in Rust `explain`).
+  - allowlist: Go = manage suppressions (add/remove/…);  Rust = dump the
+               builtin rules read-only (`--json`).
+
+RUST-AHEAD commands (no Go analog): `parse`, `run` (aegis.toml task runner),
+`reach` (standalone reachability; internal-only in Go), workflow-GENERATING
+`actions`, and `explain`'s capability-catalog mode.
+
+DELIBERATELY ABSENT — cloud/API-coupled (out of scope: CLI ↔ Cloud is HTTP-only
+per the monorepo split, and that repo owns these):
+  admin, admin gen-key, cloud, cloud analyze, allowlist sync, recheck,
+  snapshot submit.
+
+DELIBERATELY ABSENT — local Go features with no Rust equivalent yet (NOT
+cloud; these are the real "could port later" candidates, none currently
+planned):
+  - snapshot lifecycle: save / show / diff / enrich / rescan / verify
+    (Rust reuses the `snapshot` verb for capability fingerprinting instead)
+  - cache (clear / list)          — Rust has no persistent decision cache
+  - audit (tail)                  — Rust has no local audit log
+  - doctor                        — env sanity check
+  - completion                    — shell completion generation
+  - hook uninstall                — Rust `hook` installs a native git hook only
+  - actions scan                  — workflow risk scanning (see verb-reuse note)
+  - allowlist add/remove/test/verify — only read-only builtin dump exists
+
+Bottom line: the DECISION ENGINE is fully ported + ahead; the lifecycle/state/
+cloud command surface around it is intentionally not. Closing the local gaps
+above is a scoping decision for the owner, not a parity defect.
 
 CI PIPELINE (.github/workflows/ci.yml) — 3 blocking jobs:
   - build-test: fmt --check, clippy -D warnings, test --workspace.
