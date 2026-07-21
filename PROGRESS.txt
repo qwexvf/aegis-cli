@@ -11,7 +11,7 @@ Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
   12 workspace members (11 crates + xtask parity harness) · 533 tests (all
-  green) · clippy + rustfmt clean · 163 commits.
+  green) · clippy + rustfmt clean · 166 commits.
   13 CLI commands: parse / analyze / ci / run / sbom / fix / allowlist / image /
   explain / reach / hook / actions / snapshot.
 
@@ -644,8 +644,14 @@ RUST-AHEAD (Rust does MORE than Go v0.29 — kept, documented):
  QUICK START TOMORROW
 -------------------------------------------------------------------------------
   cd /home/qwexvf/projects/aegis/aegis-rs
-  git log --oneline | head          # 26 commits on branch port/domain-lockfile
-  cargo test --workspace            # 113 tests, all green
-  ./target/debug/aegis --help       # parse / analyze / ci / run
+  git log --oneline | head          # 166 commits on branch port/domain-lockfile
+  cargo test --workspace            # 533 tests, all green
+  ./target/debug/aegis --help       # 13 cmds: parse/analyze/ci/run/sbom/fix/
+                                     #   allowlist/image/explain/reach/hook/
+                                     #   actions/snapshot (flat, CI-first subset
+                                     #   — see COMMAND SURFACE SCOPE)
+  cargo run -q -p xtask -- analyze-parity   # 36/36 vs Go goldens (offline)
+  cargo run -q -p xtask -- sbom-parity      # 4/4   vs Go goldens (offline)
+  cargo run -q -p xtask -- ci-parity        # 6/6   replay cassette (offline)
   # Go source to port from: /home/qwexvf/projects/aegis/aegis-cli/internal/...
 ===============================================================================
