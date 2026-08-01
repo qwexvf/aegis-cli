@@ -1,0 +1,17 @@
+[package]
+name = "aegis-pkgbuild"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Static PKGBUILD / AUR malware scanner for the aegis supply-chain scanner."
+
+[dependencies]
+# The pattern rules are all regex; unlike the other crates there is no
+# useful regex-free subset here, so it is a hard dependency and the whole
+# crate is gated at the CLI instead.
+regex = "1"
+
+[features]
+default = []

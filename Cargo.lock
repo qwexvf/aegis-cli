@@ -39,6 +39,7 @@ dependencies = [
  "aegis-image",
  "aegis-lockfile",
  "aegis-net",
+ "aegis-pkgbuild",
  "aegis-reach",
  "aegis-registry",
  "aegis-sbom",
@@ -99,6 +100,13 @@ dependencies = [
  "serde",
  "serde_json",
  "ureq",
+]
+
+[[package]]
+name = "aegis-pkgbuild"
+version = "0.30.0-rc.1"
+dependencies = [
+ "regex",
 ]
 
 [[package]]

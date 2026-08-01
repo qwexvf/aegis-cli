@@ -56,6 +56,9 @@ jobs:
           # sbom emitters + registry fetchers.
           cargo build -p aegis-sbom --no-default-features
           cargo build -p aegis-sbom --no-default-features --features cyclonedx
+          # pkgbuild has no optional deps (regex is core to every rule);
+          # build it anyway so a future feature gate cannot regress unnoticed.
+          cargo build -p aegis-pkgbuild --no-default-features
           cargo build -p aegis-registry --no-default-features
           cargo build -p aegis-registry --no-default-features --features npm
           # net: zero-transport floor + the cassette record/replay feature.

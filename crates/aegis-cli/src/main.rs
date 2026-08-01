@@ -2,6 +2,7 @@
 //! through `aegis-lockfile` and report its dependencies. More commands
 //! (enrich, ci, analyze) land as the usecase layer is ported.
 
+mod aur;
 mod commands;
 mod enrich;
 mod scan;
@@ -120,6 +121,12 @@ enum Command {
         #[command(subcommand)]
         sub: SnapshotSub,
     },
+    /// Scan an AUR package directory's PKGBUILD and .install hooks for
+    /// malware-delivery patterns — the install gate for paru/yay.
+    Aur {
+        #[command(subcommand)]
+        sub: AurSub,
+    },
     /// Explain the risk model: capabilities, their meaning, and score weight.
     Explain {
         /// A capability slug (e.g. "shell-spawn") for the risk-model doc, OR a
@@ -198,6 +205,22 @@ enum Command {
         /// Emit SARIF 2.1.0 (for GitHub Code Scanning). Overrides --json.
         #[arg(long)]
         sarif: bool,
+    },
+}
+
+/// `aegis aur` subcommands — the PKGBUILD install gate.
+#[derive(Subcommand)]
+enum AurSub {
+    /// Scan a package directory containing a PKGBUILD (and any .install
+    /// hooks). Exits 1 on a block verdict, 0 otherwise. A gate driving this
+    /// programmatically must branch on the per-package verdict in --json,
+    /// not on the exit code.
+    Scan {
+        /// Directory holding the PKGBUILD (e.g. ~/.cache/paru/clone/<pkg>).
+        dir: String,
+        /// Emit the machine-readable report paru consumes.
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -344,6 +367,9 @@ fn main() -> ExitCode {
                 out.as_deref(),
                 baseline.as_deref(),
             ),
+        },
+        Command::Aur { sub } => match sub {
+            AurSub::Scan { dir, json } => aur::run_aur_scan(&dir, json),
         },
         Command::Image {
             file,
