@@ -25,8 +25,12 @@ Status @ this snapshot:
       is a deliberate, flat, stateless, CI-first SUBSET; ~half of Go's commands
       (the aegis.lock snapshot lifecycle, local cache/audit, cloud/API) are
       intentionally absent. See COMMAND SURFACE SCOPE below for the full map.
-      Only P11 (release) remains on the porting plan,
-      and it is DEFERRED by the owner: no release until the CLI is proven solid.
+      P11 (release + cutover) is now DONE — see below.
+
+  *** CUTOVER SHIPPED (2026-08-01). github.com/qwexvf/aegis-cli `main` is this
+      Rust tree; the Go v0.29 tree is frozen on branch `old`. First Rust build
+      published as v0.30.0-rc.1 (prerelease; v0.29.1 stays "Latest" until the
+      rc is promoted). 6 targets, cosign-signed, SLSA gated on repo visibility.
   The Go aegis-cli source is local (../aegis-cli) + Go 1.26 installed, so real
   Go-vs-Rust diffs run. 3 committed parity gates:
   - analyze: `xtask analyze-parity` — 36/36 incident fixtures across ALL 13
@@ -255,14 +259,34 @@ Status @ this snapshot:
                                        installer; actions = GitHub Actions workflow;
                                        snapshot = drift detection; explain = risk
                                        model. main.rs modularized (148 lines).
-  P11 parity gate + cutover ......... GATE DONE, CUTOVER PENDING. Parity gate
-                                       shipped: 3 committed harnesses (analyze-
-                                       parity + sbom-parity + ci-parity, all
-                                       offline + in CI) prove Go==Rust for all 3
-                                       core commands. Remaining = release infra only
-                                       (cosign keyless + SLSA provenance via
-                                       sigstore-rs, CI secrets), then flip the
-                                       default. Deferred by owner — do after.
+  P11 parity gate + cutover ......... DONE (2026-08-01). Parity gate: 3
+                                       committed harnesses (analyze-parity +
+                                       sbom-parity + ci-parity, all offline + in
+                                       CI) prove Go==Rust for all 3 core commands.
+                                       CUTOVER: qwexvf/aegis-cli `main` repointed
+                                       to this tree; Go v0.29 preserved on branch
+                                       `old` (was b3f8ee4). RELEASE PIPELINE:
+                                       .github/workflows/release.yml — tag-driven,
+                                       re-runs the full CI gate against the tag,
+                                       tag-vs-Cargo.toml version check, 6 targets
+                                       (linux gnu/musl x86_64, linux gnu aarch64,
+                                       darwin x86_64/aarch64, windows msvc),
+                                       checksums, cosign keyless sign-blob, SLSA
+                                       attest-build-provenance. No secrets needed
+                                       (OIDC). Hyphenated tag → prerelease.
+                                       workflow_dispatch = build+sign dry run.
+                                       Validated by 3 dry runs then the real tag.
+                                       CAVEAT: attest-build-provenance is REFUSED
+                                       on user-owned private repos ("Feature not
+                                       available"), so the step is gated on
+                                       repository.visibility == 'public'. Going
+                                       public (or org-owned) turns provenance on
+                                       with no workflow change. Cosign is
+                                       unaffected but publishes repo name +
+                                       workflow path + tag to the public Rekor
+                                       log — inherent to keyless. See RELEASING.md.
+                                       First Rust release: v0.30.0-rc.1
+                                       (prerelease; v0.29.1 remains "Latest").
 
   Rough count: P1/P2/P3/P4/P5/P6/P7/P8/P9/P10 done or done-to-a-strong-slice
   (with documented deep follow-ups); P0/P11 documented-blocked (architectural,
@@ -284,8 +308,15 @@ Status @ this snapshot:
   Reason: CLI is blocking + thread-pool concurrent; dropping tokio keeps the
   binary small (serves the lean-build goal). Behind an HttpClient trait, swappable.
 
-- Native tree-sitter grammar crates → NO CGO / no C toolchain (the headline win).
-  .scm queries port verbatim from the Go tree.
+- Native tree-sitter grammar crates → NO CGO (the headline win). .scm queries
+  port verbatim from the Go tree.
+  CORRECTION: the earlier "no C toolchain" claim here was wrong. The grammar
+  crates still compile their vendored parser.c/scanner.c through a `cc`
+  build-dependency — it is cargo driving cc, not cgo, and it is the same cc
+  that already links the binary, so a stock rustup install suffices. But it
+  DOES mean every cross-compile target needs a C cross-compiler AND that
+  target's libc headers, not just a Rust target triple. The aarch64 release
+  build failed on exactly this until libc6-dev-arm64-cross was added.
 
 - domain crate stays dependency-free (mirrors Go's stdlib-free internal/domain);
   the CLI owns its serde wire DTOs.
@@ -640,7 +671,8 @@ CI PIPELINE (.github/workflows/ci.yml) — 3 blocking jobs:
     itself is all-in-one; leanness lives in the library crates.)
   - parity: analyze-parity + sbom-parity + ci-parity vs Go-captured goldens.
     All offline — ci-parity replays a committed HTTP cassette (no network).
-  Not in CI: release/signing (P11).
+  Release/signing lives in a separate tag-driven workflow
+  (.github/workflows/release.yml) — see P11 above and RELEASING.md.
 
 RUST-AHEAD (Rust does MORE than Go v0.29 — kept, documented):
  - Non-npm ci enrich (capabilities for pypi/crates/rubygems/go) + reachability
