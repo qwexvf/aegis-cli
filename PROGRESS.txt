@@ -10,10 +10,14 @@ Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
 Status @ this snapshot:
-  12 workspace members (11 crates + xtask parity harness) · 533 tests (all
-  green) · clippy + rustfmt clean · 166 commits.
+  12 workspace members (11 crates + xtask parity harness) · 549 tests (all
+  green) · clippy + rustfmt clean · 168 commits.
   13 CLI commands: parse / analyze / ci / run / sbom / fix / allowlist / image /
   explain / reach / hook / actions / snapshot.
+  `snapshot` is now a SUBCOMMAND GROUP — the aegis.lock lifecycle is ported:
+  save / show / diff / enrich / verify / rescan, plus `capture` (the original
+  Rust single-package fingerprint + --baseline drift mode). See SNAPSHOT
+  LIFECYCLE below.
 
   *** SCANNING-ENGINE PARITY COMPLETE (core-3: analyze/ci/sbom) + RUST AHEAD
       OF GO v0.29. This is verdict/score/capability/advisory parity on the
@@ -532,6 +536,41 @@ compare only the Go-comparable surface for non-npm (see gate note in #2 below).
    the '@' in a package spec; scoped npm splits on the last '@').
 
 -------------------------------------------------------------------------------
+ SNAPSHOT LIFECYCLE  (aegis.lock — ported from Go, was the biggest surface gap)
+-------------------------------------------------------------------------------
+crates/aegis-cli/src/snapshot.rs (CLI layer) + crates/aegis-domain/src/snapshot.rs
+(pure Snapshot / DepDelta / diff_snapshots, SNAPSHOT_SCHEMA_VERSION = 1).
+
+  save    scan the project lockfile → bare `aegis.lock` (offline, no enrich).
+  show    render it. --all includes transitives, --used-only hides confirmed
+          unused, --json for machines.
+  diff    zero args = saved lock vs a fresh lockfile re-scan; two paths = an
+          explicit two-file diff. Per-entry verdict = max(risk, drift, advisory),
+          folding provenance-risk + patch-version-drift flags and the allowlist.
+  enrich  fetch each dep's published source → AST + heuristics → advisories
+          (OSV/GHSA/EPSS/KEV) → reachability, persisted in place. IDEMPOTENT:
+          re-runs only process deps that still lack a fingerprint. Needs net.
+  verify  lint the lock for loadability + schema version (exit 0 even on a
+          schema mismatch — informational).
+  rescan  re-query advisories for every saved dep; exit 1 when a NEW advisory
+          appeared (the cron-page contract). Saves the updated lock.
+  capture (Rust extension, no Go analog) the old flat `snapshot <dir>` behavior:
+          single-package capability fingerprint, --baseline for behavioral-drift
+          detection, exit 1 on a new risky capability.
+
+BREAKING: the flat `aegis snapshot <dir> [--out --baseline]` form is gone —
+it is now `aegis snapshot capture <dir> ...`.
+
+KNOWN GAP (pre-existing, in the lockfile layer, not the lifecycle): only the
+maven + python-requirements parsers populate `Dependency.direct`; every other
+parser leaves it false. `snapshot show` therefore falls back to rendering ALL
+deps when nothing is marked direct, instead of printing an empty table. Making
+the npm/cargo/go parsers mark direct deps (root manifest ∩ lockfile) is the
+real fix and is NOT done.
+
+Not ported: `snapshot submit` (cloud/API — out of scope per the monorepo split).
+
+-------------------------------------------------------------------------------
  STILL NOT PORTED  (deferred — TUI by owner)
 -------------------------------------------------------------------------------
 4. INTERACTIVE TUI PRESENTER (P9) — NOT built, deferred by owner. JSON + SARIF
@@ -557,8 +596,10 @@ Scanning-engine parity (analyze/ci/sbom verdict+score+caps+advisories) holds
 and is gated in CI; the command SURFACE below is where the two diverge.
 
 REUSED VERB NAMES ≠ SAME BEHAVIOR (a Go-docs reader will be surprised):
-  - snapshot : Go = aegis.lock lifecycle;  Rust = capability fingerprint of a
-               dir (closest to Go `analyze --baseline`, NOT Go snapshot).
+  - snapshot : RESOLVED — Rust now has the Go aegis.lock lifecycle (save/show/
+               diff/enrich/verify/rescan). The old flat capability-fingerprint
+               behavior moved to `snapshot capture` (Rust extension, no Go
+               analog). Still absent vs Go: `snapshot submit` (cloud).
   - actions  : Go = SCAN .github/workflows for risk;  Rust = GENERATE a CI
                workflow yaml that runs `aegis ci`.
   - analyze  : Go = fetch pkg spec + scan;  Rust = scan a local dir
@@ -578,8 +619,6 @@ per the monorepo split, and that repo owns these):
 DELIBERATELY ABSENT — local Go features with no Rust equivalent yet (NOT
 cloud; these are the real "could port later" candidates, none currently
 planned):
-  - snapshot lifecycle: save / show / diff / enrich / rescan / verify
-    (Rust reuses the `snapshot` verb for capability fingerprinting instead)
   - cache (clear / list)          — Rust has no persistent decision cache
   - audit (tail)                  — Rust has no local audit log
   - doctor                        — env sanity check
@@ -644,12 +683,14 @@ RUST-AHEAD (Rust does MORE than Go v0.29 — kept, documented):
  QUICK START TOMORROW
 -------------------------------------------------------------------------------
   cd /home/qwexvf/projects/aegis/aegis-rs
-  git log --oneline | head          # 166 commits on branch port/domain-lockfile
-  cargo test --workspace            # 533 tests, all green
+  git log --oneline | head          # 168 commits on branch port/domain-lockfile
+  cargo test --workspace            # 549 tests, all green
   ./target/debug/aegis --help       # 13 cmds: parse/analyze/ci/run/sbom/fix/
                                      #   allowlist/image/explain/reach/hook/
-                                     #   actions/snapshot (flat, CI-first subset
+                                     #   actions/snapshot (CI-first subset
                                      #   — see COMMAND SURFACE SCOPE)
+  ./target/debug/aegis snapshot --help  # save/show/diff/enrich/verify/rescan/
+                                     #   capture — the aegis.lock lifecycle
   cargo run -q -p xtask -- analyze-parity   # 36/36 vs Go goldens (offline)
   cargo run -q -p xtask -- sbom-parity      # 4/4   vs Go goldens (offline)
   cargo run -q -p xtask -- ci-parity        # 6/6   replay cassette (offline)
