@@ -1,1 +1,7 @@
 /target
+
+# Incident fixtures that execute on clone — install hooks, build scripts, Go
+# init() token exfil. Purged from git history 2026-08-01 and kept local-only.
+# See examples/incidents/README.md for what was removed and why. Never commit
+# this directory, and never `git add -f` it.
+/examples/incidents-unsafe-local/
