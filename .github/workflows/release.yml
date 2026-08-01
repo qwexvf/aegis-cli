@@ -213,7 +213,14 @@ jobs:
 
       # SLSA build provenance over every artifact and the checksum file.
       # Verify later with: gh attestation verify <file> --owner qwexvf
+      #
+      # GitHub refuses to persist attestations for user-owned private repos
+      # ("Feature not available for user-owned private repositories"), so this
+      # is gated on visibility rather than left to fail the release. Making the
+      # repo public — or moving it to an org — switches provenance on with no
+      # workflow change. Cosign signing above is unaffected either way.
       - uses: actions/attest-build-provenance@v2
+        if: github.event.repository.visibility == 'public'
         with:
           subject-path: |
             dist/*.tar.gz

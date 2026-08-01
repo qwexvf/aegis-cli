@@ -1,0 +1,25 @@
+version: 2
+
+# Only the workspace manifest and the CI actions are real dependencies.
+#
+# Everything under examples/ is test data: incident fixtures pin known-bad
+# versions on purpose (that is what the parity gates assert on), and the
+# ci-parity cassettes are frozen HTTP responses. Left unscoped, Dependabot
+# treats those pins as findings and opens PRs that would break the gates.
+# `directory` here is an allowlist — nested manifests are not picked up.
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

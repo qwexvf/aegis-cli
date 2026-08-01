@@ -50,8 +50,21 @@ Per target: a `.tar.gz` (`.zip` on Windows) containing the `aegis` binary plus
 `README.md`, `LICENSE`, `CHANGELOG.md`, `SECURITY.md`.
 
 Alongside them: `checksums.txt`, a cosign keyless signature over it
-(`checksums.txt.sig` + `checksums.txt.pem`), and SLSA build provenance
-attestations covering every archive and the checksum file.
+(`checksums.txt.sig` + `checksums.txt.pem`), and — on a public repo — SLSA
+build provenance attestations covering every archive and the checksum file.
+
+Two caveats while `qwexvf/aegis-cli` is a **user-owned private repo**:
+
+- **SLSA provenance is skipped.** GitHub rejects attestations for user-owned
+  private repos, so the step is gated on `repository.visibility == 'public'`.
+  Going public — or moving the repo to an org — turns it on with no workflow
+  change. Cosign signing is unaffected.
+- **Cosign keyless publishes to a public log.** Sigstore records every
+  signature in Rekor, so the repo name, workflow path, and tag become publicly
+  visible even though the code is not. That is inherent to keyless signing. If
+  that is not acceptable, switch to a cosign key pair (`cosign sign-blob --key`)
+  with the private key in Actions secrets, and drop the identity-based
+  verification from the release notes.
 
 ## Verifying a release
 
