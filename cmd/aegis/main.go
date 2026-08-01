@@ -22,6 +22,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/domain"
 	"github.com/qwexvf/aegis-cli/internal/infra/aegisapi"
 	"github.com/qwexvf/aegis-cli/internal/infra/allowlist"
+	"github.com/qwexvf/aegis-cli/internal/infra/aursource"
 	"github.com/qwexvf/aegis-cli/internal/infra/cratesregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/depsdotdev"
 	"github.com/qwexvf/aegis-cli/internal/infra/diskcache"
@@ -38,6 +39,7 @@ import (
 	"github.com/qwexvf/aegis-cli/internal/infra/npmregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/nugetregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/osv"
+	"github.com/qwexvf/aegis-cli/internal/infra/pmwrapper"
 	"github.com/qwexvf/aegis-cli/internal/infra/pypiregistry"
 	"github.com/qwexvf/aegis-cli/internal/infra/rubygemsregistry"
 	imagescan "github.com/qwexvf/aegis-cli/internal/infra/scan/image"
@@ -188,6 +190,16 @@ func main() {
 		Env:       env,
 		Presenter: presenter,
 	})
+	// AUR install gate — scans a package's PKGBUILD (fetched from the
+	// AUR's public cgit/RPC) before paru/yay/pacman builds it. Fully
+	// offline-capable for local PKGBUILDs via `aegis aur scan ./PKGBUILD`.
+	aurFetcher := aursource.New(aursource.WithHTTPClient(httpClient))
+	aurPresenter := cli.NewAURPresenter(presenter)
+	aurGate := usecase.NewAURGate(aurFetcher, confirm, aurPresenter)
+	aurHelpers := []*pmwrapper.AURHelper{
+		pmwrapper.NewParu(), pmwrapper.NewYay(), pmwrapper.NewPacman(),
+	}
+
 	snapshot := usecase.NewSnapshot(store, scanner,
 		cli.NewEnrichLivePresenter(cli.NewSnapshotPresenter(presenter)),
 		clii.Version)
@@ -454,6 +466,10 @@ func main() {
 		Cache:              cache,
 		Audit:              audit,
 		Managers:           registeredPMs,
+		AURGate:            aurGate,
+		AURHelpers:         aurHelpers,
+		AURFetcher:         aurFetcher,
+		AURPresenter:       aurPresenter,
 		AllowlistLoader:    allowlistLoader,
 		AllowlistPresenter: cli.NewAllowlistPresenter(presenter),
 		InvocationID:       invocationID,

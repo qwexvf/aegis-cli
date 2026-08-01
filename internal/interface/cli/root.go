@@ -118,6 +118,14 @@ type Deps struct {
 	// InvocationID is stamped onto log records and HTTP X-Request-ID
 	// headers. Set by the composition root; tests may pass "".
 	InvocationID string
+
+	// AUR install gate — `aegis aur scan` plus paru/yay/pacman wrappers
+	// that scan a package's PKGBUILD before the helper builds it. When
+	// AURGate or AURPresenter is nil the subcommands are not registered.
+	AURGate      *usecase.AURGate
+	AURHelpers   []*pmwrapper.AURHelper
+	AURFetcher   usecase.AURFetcher
+	AURPresenter *presentercli.AURPresenter
 }
 
 // NewRoot returns the root cobra.Command with every subcommand wired.
@@ -214,6 +222,12 @@ func NewRoot(d Deps) *cobra.Command {
 	}
 	for _, m := range d.Managers {
 		add(pmCommand(m, d.Gate), groupGate)
+	}
+	if d.AURGate != nil && d.AURPresenter != nil {
+		add(aurCommand(d.AURFetcher, d.AURPresenter), groupInspect)
+		for _, h := range d.AURHelpers {
+			root.AddCommand(aurHelperCommand(h, d.AURGate))
+		}
 	}
 
 	root.AddCommand(completionCommand())

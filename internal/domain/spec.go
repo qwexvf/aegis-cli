@@ -43,6 +43,13 @@ const (
 	// so `--enrich` returns nothing for these deps; aegis's value here
 	// is purely static (AST capability scan + install-hook heuristics).
 	EcoNeovim Ecosystem = "neovim"
+	// EcoAUR covers Arch User Repository packages. Like EcoNeovim this is
+	// not a versioned registry namespace — an AUR package is a PKGBUILD
+	// (a bash build script) plus optional .install hooks, fetched and
+	// executed by helpers like paru/yay. OSV.dev has no AUR ecosystem, so
+	// aegis's value here is purely static: scanning the PKGBUILD bash for
+	// malware-delivery patterns before the helper runs it.
+	EcoAUR Ecosystem = "aur"
 )
 
 // AllEcosystems returns every ecosystem the CLI recognises.
