@@ -39,7 +39,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: tag matches Cargo.toml version
         run: |
           set -euo pipefail
@@ -101,7 +101,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -165,7 +165,7 @@ jobs:
             echo "asset=$name.tar.gz" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.target }}
           path: dist/${{ steps.package.outputs.asset }}
@@ -182,9 +182,9 @@ jobs:
       id-token: write # cosign keyless OIDC + attestation OIDC
       attestations: write # SLSA build provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: dist-*
@@ -219,7 +219,7 @@ jobs:
       # is gated on visibility rather than left to fail the release. Making the
       # repo public — or moving it to an org — switches provenance on with no
       # workflow change. Cosign signing above is unaffected either way.
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         if: github.event.repository.visibility == 'public'
         with:
           subject-path: |
