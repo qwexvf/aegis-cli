@@ -27,7 +27,10 @@ cargo install --path crates/aegis-cli      # from this repo
 cargo install --git https://github.com/qwexvf/aegis-cli
 ```
 
-No C toolchain required — every tree-sitter grammar is a native Rust crate.
+Needs a working C compiler — the tree-sitter grammars are Rust crates that
+compile their vendored `parser.c` through the `cc` build script. That's the
+same `cc` cargo already needs to link, so a stock `rustup` install on Linux or
+macOS is enough; there is no cgo boundary and no separate grammar toolchain.
 
 ## Commands
 
@@ -160,9 +163,10 @@ published source during `ci` and `snapshot enrich`.
 - **Blocking HTTP** (`ureq`) behind an `HttpClient` trait — mock-tested offline,
   no async coloring, small binary. Record/replay cassettes make network-shaped
   tests deterministic.
-- **13 native tree-sitter grammars** (js/ts/py/ruby/rust/go/php/csharp/java/
-  haskell/lua/gleam/dart, plus cocoapods `.podspec` via the ruby grammar) — no
-  C toolchain.
+- **13 tree-sitter grammars** (js/ts/py/ruby/rust/go/php/csharp/java/haskell/
+  lua/gleam/dart, plus cocoapods `.podspec` via the ruby grammar), each an
+  ordinary Cargo dependency — no cgo, no vendored toolchain, no build step
+  outside `cargo build`.
 
 ## Development
 
