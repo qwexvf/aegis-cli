@@ -222,6 +222,10 @@ enum AurSub {
         #[arg(long)]
         json: bool,
     },
+    /// Scan a whole transaction from a JSON payload on stdin — one process
+    /// per transaction rather than one per package. Exits 0 whenever the
+    /// scan succeeded; read the per-package verdicts from the report.
+    Gate,
 }
 
 /// `aegis snapshot` subcommands — the `aegis.lock` lifecycle.
@@ -370,6 +374,7 @@ fn main() -> ExitCode {
         },
         Command::Aur { sub } => match sub {
             AurSub::Scan { dir, json } => aur::run_aur_scan(&dir, json),
+            AurSub::Gate => aur::run_aur_gate(),
         },
         Command::Image {
             file,
