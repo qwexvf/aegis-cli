@@ -5,10 +5,10 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use aegis_domain::{
-    build_fix_plan, builtin_allow_rules, downgrade_unused, downgrade_verdict, drift_score,
-    risk_score, upgrade_command, verdict, verdict_for_advisories, Advisory, AdvisoryQuery,
-    Capability, CapabilitySet, Dependency, Fingerprint, HookPhase, InstallHook, Reachability,
-    RiskAssessment, Severity, VerdictKind, ALL_CAPABILITIES,
+    build_fix_plan, builtin_allow_rules, downgrade_unused, downgrade_verdict, risk_score,
+    upgrade_command, verdict, verdict_for_advisories, Advisory, AdvisoryQuery, Capability,
+    CapabilitySet, Dependency, Fingerprint, Reachability, RiskAssessment, Severity, VerdictKind,
+    ALL_CAPABILITIES,
 };
 use aegis_lockfile::{parse_file, DirectMap};
 use aegis_vuln::OsvClient;
@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::enrich::{advisories_by_key, ci_findings_to_sarif, cve_findings, osv_disk_cache};
 use crate::scan::{
-    collect_files, enrich_dep, fetch_and_scan_package, fetch_online_caps, fingerprint_source,
-    lockfile_deps, project_reachability, scan_source,
+    collect_files, enrich_dep, fetch_and_scan_package, fetch_online_caps, lockfile_deps,
+    project_reachability, scan_source,
 };
 use crate::util::{parse_ecosystem, parse_severity, severity_rank};
 
@@ -1844,209 +1844,6 @@ pub(crate) fn run_hook(install: bool) -> ExitCode {
 /// Print a ready-to-commit GitHub Actions workflow.
 pub(crate) fn run_actions() -> ExitCode {
     print!("{ACTIONS_WORKFLOW}");
-    ExitCode::SUCCESS
-}
-
-/// A package's behavioral fingerprint: the capabilities its code exercises, the
-/// risk score, plus the install hooks and source size the drift diff needs.
-/// Persisted so a later run can diff against it. Older baselines without
-/// `source_size_bytes` / `hooks` still load (serde defaults).
-#[derive(Serialize, Deserialize)]
-struct Snapshot {
-    ecosystem: String,
-    score: i32,
-    capabilities: Vec<String>,
-    #[serde(default)]
-    source_size_bytes: i64,
-    #[serde(default)]
-    hooks: Vec<SnapHook>,
-}
-
-/// Persisted install hook (phase + location + body hash) for drift diffing.
-#[derive(Serialize, Deserialize)]
-struct SnapHook {
-    phase: String,
-    source: String,
-    sha256: String,
-}
-
-impl Snapshot {
-    /// Rebuild the domain [`Fingerprint`] from a persisted snapshot so
-    /// `drift_score` can diff two of them.
-    fn to_fingerprint(&self) -> Fingerprint {
-        let caps: Vec<Capability> = self
-            .capabilities
-            .iter()
-            .filter_map(|c| Capability::from_name(c))
-            .collect();
-        let hooks = self
-            .hooks
-            .iter()
-            .map(|h| InstallHook {
-                phase: hook_phase_from_str(&h.phase),
-                source: h.source.clone(),
-                sha256: h.sha256.clone(),
-            })
-            .collect();
-        Fingerprint {
-            analyzed: true,
-            capabilities: CapabilitySet::new(caps),
-            env_reads: Vec::new(),
-            source_size_bytes: self.source_size_bytes,
-            hooks,
-        }
-    }
-}
-
-fn hook_phase_from_str(s: &str) -> HookPhase {
-    match s {
-        "pre-install" => HookPhase::PreInstall,
-        "build" => HookPhase::Build,
-        _ => HookPhase::PostInstall,
-    }
-}
-
-/// Fingerprint a package (or diff it against a baseline). Behavioral drift — a
-/// new capability appearing between versions — is the canonical maintainer-
-/// takeover signal (event-stream shipped `child_process`/`net` it never had).
-/// With `--baseline`, exits 1 when any *new* capability appears.
-pub(crate) fn run_snapshot(
-    dir: &str,
-    ecosystem: &str,
-    out: Option<&str>,
-    baseline: Option<&str>,
-) -> ExitCode {
-    let root = Path::new(dir);
-    if !root.is_dir() {
-        eprintln!("aegis: not a directory: {dir}");
-        return ExitCode::from(2);
-    }
-    let Some(eco) = parse_ecosystem(ecosystem) else {
-        eprintln!("aegis: unknown ecosystem: {ecosystem}");
-        return ExitCode::from(2);
-    };
-    let pkg_name = root
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-
-    let files = collect_files(root);
-    let fp = fingerprint_source(&files, &pkg_name, eco, Vec::new());
-    let assessment = risk_score(Some(&fp));
-    let snap = Snapshot {
-        ecosystem: eco.as_str().to_string(),
-        score: assessment.score,
-        capabilities: fp
-            .capabilities
-            .iter()
-            .map(|c| c.name().to_string())
-            .collect(),
-        source_size_bytes: fp.source_size_bytes,
-        hooks: fp
-            .hooks
-            .iter()
-            .map(|h| SnapHook {
-                phase: h.phase.name().to_string(),
-                source: h.source.clone(),
-                sha256: h.sha256.clone(),
-            })
-            .collect(),
-    };
-
-    // Diff mode: compare current fingerprint against the baseline's. The
-    // capability set-diff is the strict takeover gate (any NEW capability →
-    // exit 1); drift_score adds Go's weighted report — hook add/change and
-    // source-size anomaly alongside the capability additions.
-    if let Some(base_path) = baseline {
-        let base_bytes = match std::fs::read(base_path) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("aegis: cannot read baseline {base_path}: {e}");
-                return ExitCode::from(2);
-            }
-        };
-        let base: Snapshot = match serde_json::from_slice(&base_bytes) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("aegis: invalid baseline {base_path}: {e}");
-                return ExitCode::from(2);
-            }
-        };
-        let base_set: std::collections::HashSet<&str> =
-            base.capabilities.iter().map(String::as_str).collect();
-        let now_set: std::collections::HashSet<&str> =
-            snap.capabilities.iter().map(String::as_str).collect();
-        let added: Vec<&str> = snap
-            .capabilities
-            .iter()
-            .map(String::as_str)
-            .filter(|c| !base_set.contains(c))
-            .collect();
-        let removed: Vec<&str> = base
-            .capabilities
-            .iter()
-            .map(String::as_str)
-            .filter(|c| !now_set.contains(c))
-            .collect();
-
-        // Weighted drift assessment (capability-added / hook-* / size-anomaly).
-        let drift = drift_score(Some(&base.to_fingerprint()), Some(&fp));
-
-        if added.is_empty() && removed.is_empty() && drift.flags.is_empty() {
-            println!(
-                "no behavioral drift ({} capabilities)",
-                snap.capabilities.len()
-            );
-            return ExitCode::SUCCESS;
-        }
-        for c in &added {
-            println!("+ {c}  (NEW capability — possible takeover)");
-        }
-        for c in &removed {
-            println!("- {c}  (removed)");
-        }
-        // Extra drift signals beyond the raw capability set: hook changes and
-        // size anomalies drift_score surfaces (capability-added is already
-        // listed above).
-        for f in &drift.flags {
-            if f.code != "capability-added" {
-                println!("! {} (+{}): {}", f.code, f.weight, f.detail);
-            }
-        }
-        if drift.score > 0 {
-            println!("drift score: {}", drift.score);
-        }
-        // New capabilities OR a hook add/change are takeover signals → fail.
-        // Removals or a size-only anomaly alone are not.
-        let hook_drift = drift
-            .flags
-            .iter()
-            .any(|f| f.code.starts_with("install-hook"));
-        return if added.is_empty() && !hook_drift {
-            ExitCode::SUCCESS
-        } else {
-            ExitCode::from(1)
-        };
-    }
-
-    // Capture mode: write or print the fingerprint.
-    let json = match serde_json::to_string_pretty(&snap) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("aegis: json encode failed: {e}");
-            return ExitCode::from(2);
-        }
-    };
-    match out {
-        Some(path) => match std::fs::write(path, &json) {
-            Ok(()) => println!("wrote snapshot → {path}"),
-            Err(e) => {
-                eprintln!("aegis: cannot write {path}: {e}");
-                return ExitCode::from(2);
-            }
-        },
-        None => println!("{json}"),
-    }
     ExitCode::SUCCESS
 }
 

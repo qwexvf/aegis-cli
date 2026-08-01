@@ -107,9 +107,12 @@ impl Ecosystem {
 }
 
 /// A resolved dependency. Mirrors `domain.Dependency` (the fields the
-/// lockfile + risk layers populate; graph/advisory fields arrive with
-/// their layers).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// lockfile + risk layers populate; graph/advisory/enrichment fields arrive
+/// with their layers).
+///
+/// `PartialEq` only (no `Eq`) — the advisory list carries `f64` EPSS scores,
+/// which can't be `Eq`. Comparisons are only used in tests.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Dependency {
     pub ecosystem: Ecosystem,
     pub name: String,
@@ -123,12 +126,38 @@ pub struct Dependency {
     /// when the lockfile exposes the transitive graph. Empty otherwise.
     pub depends_on: Vec<String>,
     /// "missing" when the npm provenance lookup found no attestation;
-    /// empty when unqueried.
+    /// "attested" when it found one; empty when unqueried.
     pub provenance_status: String,
     /// SPDX license expression from the registry, when resolved (e.g.
     /// "MIT", "Apache-2.0"). Empty when unqueried or unknown — SBOM
     /// emitters render empty as the spec's `NOASSERTION`.
     pub license: String,
+    // --- enrichment (populated by `snapshot enrich`; see snapshot module) ---
+    /// `None` when never scanned; `Some` after the AST + heuristics pass
+    /// (the fingerprint may be the empty `analyzed: true` shape for a
+    /// non-fetched / non-language ecosystem — mirroring Go's "run never
+    /// retries" contract). Drives the `enrich` idempotency check.
+    pub fingerprint: Option<Fingerprint>,
+    /// `None` when no advisory lookup has run yet (enrich will run one);
+    /// `Some(empty)` when the lookup ran and found none. The nil-vs-[]
+    /// distinction drives the `enrich` + `rescan` idempotency contract.
+    pub advisories: Option<Vec<crate::Advisory>>,
+    /// How the project source imports the dep. Defaults to Unknown —
+    /// enrich classifies Used / Unused for languages with a reach parser.
+    pub reachability: crate::Reachability,
+    /// Reachable symbol/function names the project source calls (when
+    /// an advisory's affected_functions intersected the project's reach
+    /// graph). Empty unless a symbol-level reachability pass has run.
+    pub used_symbols: Vec<String>,
+    /// True when deps.dev reports the package as deprecated.
+    pub deprecated: bool,
+    /// Human-readable deprecation reason from deps.dev, when deprecated.
+    pub deprecated_reason: String,
+    /// Provenance source URI (e.g. the npm attestation's source repo),
+    /// when npm SLSA attestation resolved; empty otherwise.
+    pub provenance_source_uri: String,
+    /// Git commit the SLSA attestation pinned; empty otherwise.
+    pub provenance_commit: String,
 }
 
 impl Dependency {
@@ -150,6 +179,14 @@ impl Default for Dependency {
             depends_on: Vec::new(),
             provenance_status: String::new(),
             license: String::new(),
+            fingerprint: None,
+            advisories: None,
+            reachability: crate::Reachability::default(),
+            used_symbols: Vec::new(),
+            deprecated: false,
+            deprecated_reason: String::new(),
+            provenance_source_uri: String::new(),
+            provenance_commit: String::new(),
         }
     }
 }

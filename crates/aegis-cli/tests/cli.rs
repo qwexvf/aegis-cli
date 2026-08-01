@@ -784,6 +784,7 @@ fn snapshot_detects_behavioral_drift() {
     let base = d.join("base.json");
     let out = run(&[
         "snapshot",
+        "capture",
         d.join("v1").to_str().unwrap(),
         "--out",
         base.to_str().unwrap(),
@@ -794,6 +795,7 @@ fn snapshot_detects_behavioral_drift() {
     // no drift against itself
     let out = run(&[
         "snapshot",
+        "capture",
         d.join("v1").to_str().unwrap(),
         "--baseline",
         base.to_str().unwrap(),
@@ -809,6 +811,7 @@ fn snapshot_detects_behavioral_drift() {
     );
     let out = run(&[
         "snapshot",
+        "capture",
         d.join("v2").to_str().unwrap(),
         "--baseline",
         base.to_str().unwrap(),
@@ -817,6 +820,55 @@ fn snapshot_detects_behavioral_drift() {
     assert!(out.stdout.contains("shell-spawn"), "{}", out.stdout);
     assert!(out.stdout.contains("NEW capability"), "{}", out.stdout);
     let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn snapshot_lifecycle_save_show_verify_diff() {
+    // Offline aegis.lock lifecycle: save writes the lock, verify lints it,
+    // show renders it, diff against a re-scan is clean, and a changed
+    // lockfile shows up as an upgrade.
+    let d = tmp("snaplife");
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21"}}}"#,
+    );
+    let dir = d.to_str().unwrap();
+
+    let out = run(&["snapshot", "save", dir]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(d.join("aegis.lock").is_file());
+
+    let out = run(&["snapshot", "verify", dir]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("schema v1"), "{}", out.stdout);
+
+    // No parser marks npm deps direct yet, so the default view falls back to
+    // showing everything rather than an empty table.
+    let out = run(&["snapshot", "show", dir, "--json"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("lodash"), "{}", out.stdout);
+
+    let out = run(&["snapshot", "diff", dir]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("no changes"), "{}", out.stdout);
+
+    // Bump the lockfile → diff reports the upgrade against the saved lock.
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.20"}}}"#,
+    );
+    let out = run(&["snapshot", "diff", dir]);
+    assert!(out.stdout.contains("4.17.20"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn snapshot_subcommand_required() {
+    // The bare verb is a subcommand group now — no positional dir form.
+    let out = run(&["snapshot"]);
+    assert_eq!(out.code, 2);
 }
 
 #[test]

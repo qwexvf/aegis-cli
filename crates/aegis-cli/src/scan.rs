@@ -310,7 +310,7 @@ pub(crate) fn reachability_eligible(eco: Ecosystem) -> bool {
 /// Fetch a dependency's published source from its registry. Returns the file
 /// map (relative path, bytes) or an `Err` for ecosystems without a fetcher /
 /// on any transport failure.
-fn fetch_source(
+pub(crate) fn fetch_source(
     http: &dyn aegis_net::HttpClient,
     dep: &Dependency,
 ) -> Result<Vec<(String, Vec<u8>)>, String> {
@@ -384,11 +384,7 @@ pub(crate) fn fetch_and_scan_package(
         ecosystem: eco,
         name: name.to_string(),
         version: version.to_string(),
-        integrity: String::new(),
-        direct: false,
-        depends_on: Vec::new(),
-        provenance_status: String::new(),
-        license: String::new(),
+        ..Default::default()
     };
     let http = aegis_net::default_client();
     let files = fetch_source(&http, &dep)?;
@@ -626,11 +622,7 @@ mod tests {
             ecosystem: eco,
             name: name.to_string(),
             version: String::new(),
-            integrity: String::new(),
-            direct: false,
-            depends_on: Vec::new(),
-            provenance_status: String::new(),
-            license: String::new(),
+            ..Default::default()
         }
     }
 

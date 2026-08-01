@@ -12,6 +12,7 @@ pub mod fix;
 pub mod reachability;
 pub mod risk;
 mod semver;
+pub mod snapshot;
 pub mod types;
 
 pub use advisory::{max_severity, Advisory, AdvisoryQuery, Severity};
@@ -27,6 +28,7 @@ pub use risk::{
     verdict, verdict_for_advisories, RiskAssessment, RiskFlag, VerdictKind,
     VERDICT_THRESHOLD_BLOCK, VERDICT_THRESHOLD_PROMPT, VERDICT_THRESHOLD_REVIEW,
 };
+pub use snapshot::{diff_snapshots, DepDelta, Snapshot, SNAPSHOT_SCHEMA_VERSION};
 pub use types::{Dependency, Ecosystem, Fingerprint, HookPhase, InstallHook};
 
 #[cfg(test)]
