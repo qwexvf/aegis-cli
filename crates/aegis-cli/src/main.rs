@@ -5,6 +5,7 @@
 mod commands;
 mod enrich;
 mod scan;
+mod snapshot;
 mod util;
 
 use std::process::ExitCode;
@@ -13,7 +14,7 @@ use clap::{Parser, Subcommand};
 
 use commands::{
     run_actions, run_allowlist, run_analyze, run_ci, run_config, run_explain, run_fix, run_hook,
-    run_image, run_parse, run_reach, run_sbom, run_snapshot,
+    run_image, run_parse, run_reach, run_sbom,
 };
 
 #[derive(Parser)]
@@ -112,21 +113,12 @@ enum Command {
     },
     /// Print a GitHub Actions workflow that runs `aegis ci` on every push.
     Actions {},
-    /// Capture a package's capability fingerprint, or diff it against a
-    /// baseline to detect behavioral drift between versions (takeover signal).
+    /// Snapshot lifecycle: save / show / diff / enrich / verify / rescan plus
+    /// `capture` (the Rust-specific single-package fingerprint mode). Run
+    /// `aegis snapshot help` for the per-subcommand detail.
     Snapshot {
-        /// Package source directory to fingerprint.
-        dir: String,
-        /// Ecosystem for heuristics.
-        #[arg(long, default_value = "npm")]
-        ecosystem: String,
-        /// Write the fingerprint JSON to this file (else print it).
-        #[arg(long)]
-        out: Option<String>,
-        /// Compare against this baseline fingerprint; exit 1 if new risky
-        /// capabilities appeared.
-        #[arg(long)]
-        baseline: Option<String>,
+        #[command(subcommand)]
+        sub: SnapshotSub,
     },
     /// Explain the risk model: capabilities, their meaning, and score weight.
     Explain {
@@ -209,6 +201,93 @@ enum Command {
     },
 }
 
+/// `aegis snapshot` subcommands — the `aegis.lock` lifecycle.
+#[derive(Subcommand)]
+enum SnapshotSub {
+    /// Scan the project lockfile and write a bare `aegis.lock` (no enrichment,
+    /// no network). The save is fast — fingerprints arrive via `enrich`.
+    Save {
+        /// Project directory. Defaults to the current working directory.
+        #[arg(default_value = ".")]
+        dir: String,
+    },
+    /// Render the saved snapshot. By default direct deps only; `--all`
+    /// includes transitives, `--used-only` hides deps confirmed unused.
+    Show {
+        /// Project directory.
+        #[arg(default_value = ".")]
+        dir: String,
+        /// Include transitive deps, not just direct.
+        #[arg(long)]
+        all: bool,
+        /// Hide deps confirmed unused (Unknown rows remain visible).
+        #[arg(long)]
+        used_only: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Diff two snapshots: zero args = saved `aegis.lock` vs a fresh re-scan
+    /// of the project lockfile; two file paths = explicit two-file diff.
+    /// Per-entry verdicts (verdict=safe/review/prompt/block) are advisory.
+    Diff {
+        /// Project directory (used when neither `a` nor `b` given).
+        #[arg(default_value = ".")]
+        dir: String,
+        /// First snapshot file path (two-file mode).
+        #[arg(name = "A")]
+        a: Option<String>,
+        /// Second snapshot file path (two-file mode).
+        #[arg(name = "B")]
+        b: Option<String>,
+    },
+    /// Enrich the saved snapshot in place: fetch each dep's published source,
+    /// AST + heuristics scan it, fold in advisories (OSV+GHSA+EPSS+KEV), and
+    /// classify reachability. Idempotent — re-runs only process newly-saved
+    /// deps. Needs network.
+    Enrich {
+        /// Project directory.
+        #[arg(default_value = ".")]
+        dir: String,
+    },
+    /// Lint the saved snapshot for loadability + schema version. Exits 0 even
+    /// on a schema mismatch (informational; re-run `snapshot save` to update).
+    Verify {
+        /// Project directory.
+        #[arg(default_value = ".")]
+        dir: String,
+    },
+    /// Re-query the advisory feed for every saved dep; exit 1 when any new
+    /// advisory appeared (the cron-page contract). Saves the updated snapshot.
+    Rescan {
+        /// Project directory.
+        #[arg(default_value = ".")]
+        dir: String,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// (Rust extension) Capture a single package's capability fingerprint,
+    /// or diff it against a `--baseline` to detect behavioral drift between
+    /// versions (the maintainer-takeover signal). Exits 1 when a new risky
+    /// capability appears. This is the original `snapshot <dir>` behavior
+    /// before the verb grew the `aegis.lock` lifecycle subcommands.
+    Capture {
+        /// Package source directory to fingerprint.
+        dir: String,
+        /// Ecosystem for heuristics (default npm).
+        #[arg(long, default_value = "npm")]
+        ecosystem: String,
+        /// Write the fingerprint JSON to this file (else print it).
+        #[arg(long)]
+        out: Option<String>,
+        /// Compare against this baseline fingerprint; exit 1 if new risky
+        /// capabilities appeared.
+        #[arg(long)]
+        baseline: Option<String>,
+    },
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
@@ -240,12 +319,32 @@ fn main() -> ExitCode {
         } => run_reach(&dir, &package, function.as_deref(), transitive, json),
         Command::Hook { install } => run_hook(install),
         Command::Actions {} => run_actions(),
-        Command::Snapshot {
-            dir,
-            ecosystem,
-            out,
-            baseline,
-        } => run_snapshot(&dir, &ecosystem, out.as_deref(), baseline.as_deref()),
+        Command::Snapshot { sub } => match sub {
+            SnapshotSub::Save { dir } => snapshot::run_snapshot_save(&dir),
+            SnapshotSub::Show {
+                dir,
+                all,
+                used_only,
+                json,
+            } => snapshot::run_snapshot_show(&dir, all, used_only, json),
+            SnapshotSub::Diff { dir, a, b } => {
+                snapshot::run_snapshot_diff(&dir, a.as_deref(), b.as_deref())
+            }
+            SnapshotSub::Enrich { dir } => snapshot::run_snapshot_enrich(&dir),
+            SnapshotSub::Verify { dir } => snapshot::run_snapshot_verify(&dir),
+            SnapshotSub::Rescan { dir, json } => snapshot::run_snapshot_rescan(&dir, json),
+            SnapshotSub::Capture {
+                dir,
+                ecosystem,
+                out,
+                baseline,
+            } => snapshot::run_snapshot_capture(
+                &dir,
+                &ecosystem,
+                out.as_deref(),
+                baseline.as_deref(),
+            ),
+        },
         Command::Image {
             file,
             reference,
