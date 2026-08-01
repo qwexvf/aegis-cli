@@ -1,0 +1,270 @@
+name: release
+
+# Cut a release:
+#   1. bump `version` in the workspace Cargo.toml + add the CHANGELOG section
+#   2. git tag v0.X.Y && git push origin v0.X.Y
+#
+# The tag is the trigger. `verify` re-runs the full CI gate against the tagged
+# commit so a red build can never ship; `build` cross-compiles every target;
+# `publish` signs, attests, and creates the GitHub Release.
+#
+# A tag containing '-' (v0.30.0-rc.1) publishes as a prerelease.
+on:
+  push:
+    tags:
+      - "v*"
+  # Dry run against a branch: builds + signs but never creates a release.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and sign only — do not publish a release"
+        type: boolean
+        default: true
+
+# Never cancel an in-flight release; a re-pushed tag runs alongside so we can
+# pick the green one.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Nothing ships from a red commit. Same three gates as ci.yml, re-run against
+  # the tagged tree rather than trusting the branch run.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - name: parity gates
+        run: |
+          set -euo pipefail
+          cargo run -q -p xtask -- analyze-parity
+          cargo run -q -p xtask -- sbom-parity
+          cargo run -q -p xtask -- ci-parity
+
+  # The tag must match the version in Cargo.toml, or the published binary
+  # reports a version nobody can find.
+  check-version:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - name: tag matches Cargo.toml version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::tag v$tag does not match Cargo.toml version $manifest"
+            exit 1
+          fi
+          echo "version $manifest"
+
+  build:
+    needs: [verify]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            # Static build — runs on any glibc-less distro (alpine, distroless).
+            packages: musl-tools
+            linker: musl-gcc
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            packages: gcc-aarch64-linux-gnu
+            linker: aarch64-linux-gnu-gcc
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # The tree-sitter grammar crates compile vendored parser.c through `cc`,
+      # so every cross target needs a C cross-compiler, not just a Rust target.
+      - name: install cross toolchain
+        if: matrix.packages != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
+
+      - name: configure cross linker
+        if: matrix.linker != ''
+        shell: bash
+        run: |
+          t=$(echo "${{ matrix.target }}" | tr 'a-z-' 'A-Z_')
+          echo "CARGO_TARGET_${t}_LINKER=${{ matrix.linker }}" >> "$GITHUB_ENV"
+          echo "CC_${{ matrix.target }}=${{ matrix.linker }}" >> "$GITHUB_ENV"
+
+      - name: build
+        run: cargo build --release --locked --target ${{ matrix.target }} -p aegis-cli
+
+      # Smoke-test what we are about to ship, but only where the runner can
+      # actually execute it: aarch64-linux is cross-compiled, and the macOS
+      # runners are arm64 without Rosetta so they cannot run the x86_64 build.
+      - name: smoke test
+        if: matrix.target != 'aarch64-unknown-linux-gnu' && matrix.target != 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="target/${{ matrix.target }}/release/aegis"
+          [ "${{ matrix.os }}" = "windows-latest" ] && bin="$bin.exe"
+          "$bin" --version
+          "$bin" explain > /dev/null
+
+      - name: package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="aegis-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "target/${{ matrix.target }}/release/aegis.exe" "dist/$name/"
+          else
+            cp "target/${{ matrix.target }}/release/aegis" "dist/$name/"
+          fi
+          cp README.md LICENSE CHANGELOG.md SECURITY.md "dist/$name/"
+          cd dist
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            7z a -tzip "$name.zip" "$name" > /dev/null
+            echo "asset=$name.zip" >> "$GITHUB_OUTPUT"
+          else
+            tar -czf "$name.tar.gz" "$name"
+            echo "asset=$name.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/${{ steps.package.outputs.asset }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [build, check-version]
+    # check-version is skipped on workflow_dispatch; don't let that block a dry run.
+    if: always() && needs.build.result == 'success' && needs.check-version.result != 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release + upload assets
+      id-token: write # cosign keyless OIDC + attestation OIDC
+      attestations: write # SLSA build provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: dist-*
+          merge-multiple: true
+
+      - name: checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum ./*.tar.gz ./*.zip > checksums.txt
+          cat checksums.txt
+
+      - uses: sigstore/cosign-installer@v3
+
+      # Keyless: the signature is bound to this workflow's OIDC identity, so a
+      # verifier can prove the artifact came from this repo's release job and
+      # not from a maintainer's laptop.
+      - name: cosign sign checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes \
+            --output-signature checksums.txt.sig \
+            --output-certificate checksums.txt.pem \
+            checksums.txt
+
+      # SLSA build provenance over every artifact and the checksum file.
+      # Verify later with: gh attestation verify <file> --owner qwexvf
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+
+      - name: release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          {
+            echo "## Install"
+            echo
+            echo '```sh'
+            echo "cargo install --git https://github.com/qwexvf/aegis-cli --tag ${GITHUB_REF_NAME}"
+            echo '```'
+            echo
+            echo "Or download a binary below."
+            echo
+            echo "## Verify"
+            echo
+            echo '```sh'
+            echo "# checksums"
+            echo "sha256sum -c checksums.txt --ignore-missing"
+            echo
+            echo "# cosign keyless signature over the checksum file"
+            echo "cosign verify-blob checksums.txt \\"
+            echo "  --signature checksums.txt.sig \\"
+            echo "  --certificate checksums.txt.pem \\"
+            echo "  --certificate-identity-regexp 'https://github.com/qwexvf/aegis-cli/.github/workflows/release.yml@.*' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo
+            echo "# SLSA build provenance"
+            echo "gh attestation verify aegis-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu.tar.gz --owner qwexvf"
+            echo '```'
+            echo
+            echo "## Changes"
+            echo
+            echo "See [CHANGELOG.md](https://github.com/qwexvf/aegis-cli/blob/main/CHANGELOG.md)."
+          } > notes.md
+
+      - name: publish release
+        if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          prerelease=""
+          case "${GITHUB_REF_NAME}" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file notes.md \
+            $prerelease \
+            dist/*.tar.gz dist/*.zip \
+            dist/checksums.txt dist/checksums.txt.sig dist/checksums.txt.pem

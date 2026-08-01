@@ -19,8 +19,9 @@ through documentation.
 
 ## Local setup
 
-Requires a recent stable Rust toolchain. No C toolchain is needed —
-every tree-sitter grammar is a native Rust crate.
+Requires a recent stable Rust toolchain and a working C compiler (the
+tree-sitter grammar crates compile vendored `parser.c` via `cc` — the
+same `cc` cargo already uses to link).
 
 ```sh
 cargo build

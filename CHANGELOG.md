@@ -8,11 +8,13 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
-## Unreleased — Rust rewrite
+## [0.30.0-rc.1](https://github.com/qwexvf/aegis-cli/compare/v0.29.1...v0.30.0-rc.1) (2026-08-01)
 
-`main` now carries a clean-room Rust implementation, replacing the Go tree. No
-binaries have been published from it yet; build from source with
-`cargo install --git https://github.com/qwexvf/aegis-cli`.
+`main` now carries a clean-room Rust implementation, replacing the Go tree.
+
+Release candidate: the scanning engine is at gated parity with Go v0.29 and
+ahead of it in places, but this is the first build published from the Rust tree
+and the command surface changed. Pin `v0.29.1` if you need the Go behavior.
 
 ### Changed
 
