@@ -2,9 +2,11 @@
 //! through `aegis-lockfile` and report its dependencies. More commands
 //! (enrich, ci, analyze) land as the usecase layer is ported.
 
+mod allowlist;
 mod aur;
 mod cache;
 mod commands;
+mod doctor;
 mod enrich;
 mod hook;
 mod scan;
@@ -83,9 +85,13 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Show the built-in capability-suppression allowlist rules.
+    /// Manage capability suppressions. Two writable scopes: `user`
+    /// ($XDG_CONFIG_HOME/aegis/allowlist.toml) and `project` (aegis.toml).
     Allowlist {
-        /// Emit machine-readable JSON.
+        #[command(subcommand)]
+        sub: Option<AllowlistSub>,
+        /// Emit machine-readable JSON. With no subcommand, dumps the builtin
+        /// rules — kept for compatibility with the previous behaviour.
         #[arg(long)]
         json: bool,
     },
@@ -126,6 +132,17 @@ enum Command {
     Cache {
         #[command(subcommand)]
         sub: CacheSub,
+    },
+    /// Check that the environment can run a scan: cache writability,
+    /// allowlist validity, advisory-feed reachability, git, GITHUB_TOKEN.
+    /// Exits 1 on any failure; warnings alone exit 0.
+    Doctor {
+        /// Skip the network reachability check.
+        #[arg(long)]
+        offline: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
     /// Generate a shell completion script.
     ///
@@ -229,6 +246,53 @@ enum Command {
         #[arg(long)]
         sarif: bool,
     },
+}
+
+/// `aegis allowlist` subcommands.
+#[derive(Subcommand)]
+enum AllowlistSub {
+    /// Show every rule: builtin, user, and project.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Add a suppression. `--reason` is required — an unexplained
+    /// suppression is indistinguishable from a mistake later.
+    Add {
+        /// Package name, or "*" for every package in the ecosystem.
+        name: String,
+        #[arg(long, default_value = "npm")]
+        ecosystem: String,
+        /// Capability slug to suppress. Omit for any.
+        #[arg(long)]
+        capability: Option<String>,
+        /// Semver range. Omit for any version.
+        #[arg(long, default_value = "")]
+        version: String,
+        /// Why this is acceptable. Required.
+        #[arg(long, default_value = "")]
+        reason: String,
+        #[arg(long, default_value = "user")]
+        scope: String,
+    },
+    /// Remove suppressions matching a package (and optionally a capability).
+    Remove {
+        name: String,
+        #[arg(long, default_value = "npm")]
+        ecosystem: String,
+        /// Only remove the rule for this capability.
+        #[arg(long)]
+        capability: Option<String>,
+        #[arg(long, default_value = "user")]
+        scope: String,
+    },
+    /// Show which rules suppress a given package.
+    Test {
+        /// `<ecosystem>/<name>@<version>`, e.g. `npm/lodash@4.17.21`.
+        spec: String,
+    },
+    /// Validate the user and project allowlist files. Exits 1 on a problem.
+    Verify,
 }
 
 /// `aegis cache` subcommands.
@@ -381,7 +445,33 @@ fn main() -> ExitCode {
             json,
             sarif,
         } => run_config(&config, json, sarif),
-        Command::Allowlist { json } => run_allowlist(json),
+        Command::Allowlist { sub, json } => match sub {
+            None => run_allowlist(json),
+            Some(AllowlistSub::List { json }) => allowlist::run_list(json),
+            Some(AllowlistSub::Add {
+                name,
+                ecosystem,
+                capability,
+                version,
+                reason,
+                scope,
+            }) => allowlist::run_add(
+                &name,
+                &ecosystem,
+                capability.as_deref(),
+                &version,
+                &reason,
+                &scope,
+            ),
+            Some(AllowlistSub::Remove {
+                name,
+                ecosystem,
+                capability,
+                scope,
+            }) => allowlist::run_remove(&name, &ecosystem, capability.as_deref(), &scope),
+            Some(AllowlistSub::Test { spec }) => allowlist::run_test(&spec),
+            Some(AllowlistSub::Verify) => allowlist::run_verify(),
+        },
         Command::Explain {
             capability,
             ecosystem,
@@ -422,6 +512,7 @@ fn main() -> ExitCode {
                 baseline.as_deref(),
             ),
         },
+        Command::Doctor { offline, json } => doctor::run_doctor(offline, json),
         Command::Cache { sub } => match sub {
             CacheSub::List { json } => cache::run_cache_list(json),
             CacheSub::Clear { pool } => cache::run_cache_clear(pool.as_deref()),
