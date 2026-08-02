@@ -12,6 +12,7 @@ mod hook;
 mod scan;
 mod snapshot;
 mod util;
+mod workflow;
 
 use std::process::ExitCode;
 
@@ -126,8 +127,12 @@ enum Command {
         #[arg(long, conflicts_with = "install")]
         uninstall: bool,
     },
-    /// Print a GitHub Actions workflow that runs `aegis ci` on every push.
-    Actions {},
+    /// Print a GitHub Actions workflow that runs `aegis ci` on every push,
+    /// or with `scan`, inspect existing workflows for risk.
+    Actions {
+        #[command(subcommand)]
+        sub: Option<ActionsSub>,
+    },
     /// Inspect or clear the on-disk advisory caches (CISA KEV, OSV documents).
     Cache {
         #[command(subcommand)]
@@ -245,6 +250,23 @@ enum Command {
         /// Emit SARIF 2.1.0 (for GitHub Code Scanning). Overrides --json.
         #[arg(long)]
         sarif: bool,
+    },
+}
+
+/// `aegis actions` subcommands.
+#[derive(Subcommand)]
+enum ActionsSub {
+    /// Scan workflow files for unpinned action refs, script injection,
+    /// over-broad permissions, and suspicious run steps.
+    Scan {
+        /// Directory of workflow files. Defaults to .github/workflows.
+        dir: Option<String>,
+        /// Exit 1 when a finding reaches this severity.
+        #[arg(long, default_value = "high")]
+        fail_on: String,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -485,7 +507,12 @@ fn main() -> ExitCode {
             json,
         } => run_reach(&dir, &package, function.as_deref(), transitive, json),
         Command::Hook { install, uninstall } => hook::run_hook(install, uninstall),
-        Command::Actions {} => run_actions(),
+        Command::Actions { sub } => match sub {
+            None => run_actions(),
+            Some(ActionsSub::Scan { dir, fail_on, json }) => {
+                workflow::run_actions_scan(dir.as_deref(), &fail_on, json)
+            }
+        },
         Command::Snapshot { sub } => match sub {
             SnapshotSub::Save { dir } => snapshot::run_snapshot_save(&dir),
             SnapshotSub::Show {
