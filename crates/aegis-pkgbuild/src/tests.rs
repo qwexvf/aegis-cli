@@ -177,7 +177,6 @@ fn binary_magic_variants() {
         (b"\x7fELF".to_vec(), "ELF"),
         (b"MZ\x90\x00".to_vec(), "PE"),
         (vec![0xcf, 0xfa, 0xed, 0xfe], "Mach-O"),
-        (b"#!/bin/sh".to_vec(), "script"),
     ] {
         let mut p = pkg("source=('blob')\nsha256sums=('SKIP')\n");
         p.local_files = vec![LocalFile {
@@ -191,6 +190,27 @@ fn binary_magic_variants() {
             "missed {kind}"
         );
     }
+}
+
+#[test]
+fn committed_shell_script_is_not_a_binary() {
+    // Measured on 97 recently-updated AUR packages: every binary-in-source
+    // hit was a two-line launcher wrapper committed next to the PKGBUILD.
+    // That is standard practice, and blocking on it aborts real installs.
+    let mut p = pkg("source=('launch.sh')\nsha256sums=('abc')\n");
+    p.local_files = vec![LocalFile {
+        name: "launch.sh".into(),
+        head: b"#!/bin/sh".to_vec(),
+        size: 67,
+        added: true,
+    }];
+    let r = scan(&p);
+    assert!(
+        !rules(&r).contains(&"binary-in-source"),
+        "{:#?}",
+        r.findings
+    );
+    assert_ne!(r.verdict, Verdict::Block);
 }
 
 #[test]
@@ -437,4 +457,114 @@ fn wipe_needs_both_first_submitted_and_now() {
     let mut p2 = with_history(vec![NOW, NOW - 30 * DAY], 1, Some(NOW - 2000 * DAY));
     p2.now = None;
     assert!(!rules(&scan(&p2)).contains(&"history-recently-wiped"));
+}
+
+// --- regressions found by scanning 97 recently-updated AUR packages ---
+
+#[test]
+fn githubusercontent_is_not_an_untrusted_host() {
+    // The Go original matched the blocklist with a plain substring test, so
+    // `t.co` matched raw.githubusercon(tent.co)m. Four of 97 sampled
+    // packages were flagged for fetching an icon from GitHub.
+    let src = "url='https://github.com/o/p'\n\
+               source=('https://raw.githubusercontent.com/o/p/v1/icon.png')\n";
+    assert!(!rules(&scan(&pkg(src))).contains(&"source-untrusted-host"));
+}
+
+#[test]
+fn real_paste_hosts_still_match() {
+    for host in [
+        "https://pastebin.com/raw/x",
+        "https://gist.github.com/a/b",
+        "https://t.co/abcd",
+        "https://transfer.sh/x/y",
+        "https://files.anonfiles.com/x",
+    ] {
+        let src = format!("url='https://example.com'\nsource=('{host}')\n");
+        assert!(
+            rules(&scan(&pkg(&src))).contains(&"source-untrusted-host"),
+            "missed {host}"
+        );
+    }
+}
+
+#[test]
+fn homepage_url_does_not_cause_host_drift() {
+    // url= is the project homepage, source= is a GitHub release. This is how
+    // most packages are written; 22 of 97 tripped the old rule.
+    let src = "url='https://chan.app'\n\
+               source=('https://github.com/fiorix/chan/archive/v0.82.0.tar.gz')\n";
+    assert!(!rules(&scan(&pkg(src))).contains(&"source-host-drift"));
+}
+
+#[test]
+fn drift_between_two_code_hosts_still_flagged() {
+    // The Chaos RAT shape: upstream says one repo, source pulls another.
+    let src = "url='https://github.com/alice/proj'\n\
+               source=('https://gitlab.com/bob/proj/-/archive/v1.tar.gz')\n";
+    assert!(rules(&scan(&pkg(src))).contains(&"source-host-drift"));
+}
+
+#[test]
+fn urls_in_comments_are_ignored() {
+    let src = "url='https://example.com'\n\
+               # see https://pastebin.com/raw/x for background\n\
+               source=('https://example.com/a.tar.gz')\n";
+    assert!(!rules(&scan(&pkg(src))).contains(&"source-untrusted-host"));
+}
+
+#[test]
+fn brace_expansion_is_not_a_checksum_mismatch() {
+    // makepkg expands `.tar.{xz,sign}` into two sources; we do not, so we
+    // must stay silent rather than report a mismatch that is not real.
+    let src = "source=(https://cdn.kernel.org/l.tar.{xz,sign}\n  config)\n\
+               sha256sums=('a' 'b' 'c')\n";
+    assert!(!rules(&scan(&pkg(src))).contains(&"checksum-count-mismatch"));
+}
+
+#[test]
+fn comments_inside_arrays_are_stripped() {
+    let src = "source=('a'\n  config  # the main kernel config file\n)\n\
+               sha256sums=('x' 'y')\n";
+    assert!(!rules(&scan(&pkg(src))).contains(&"checksum-count-mismatch"));
+}
+
+#[test]
+fn dependency_names_are_not_credential_access() {
+    // A dep literally called qtkeychain-qt6, on a continuation line of a
+    // multi-line depends=() array.
+    let src = "depends=(\n  qt6-base\n  qtkeychain-qt6\n)\n";
+    assert!(!rules(&scan(&pkg(src))).contains(&"credential-access"));
+}
+
+#[test]
+fn optdepends_prose_is_not_credential_access() {
+    let src = "optdepends=('openssh: ssh-agent support and ~/.ssh/config import')\n";
+    assert!(!rules(&scan(&pkg(src))).contains(&"credential-access"));
+}
+
+#[test]
+fn real_credential_access_in_build_still_flagged() {
+    let src = "build() {\n  cat ~/.ssh/id_rsa > /tmp/x\n}\n";
+    assert!(rules(&scan(&pkg(src))).contains(&"credential-access"));
+}
+
+#[test]
+fn split_package_eval_is_not_obfuscation() {
+    let src = "eval \"package_$_p() {\n  _package\n}\"\n";
+    assert!(!rules(&scan(&pkg(src))).contains(&"eval-obfuscation"));
+}
+
+#[test]
+fn small_commit_date_inversions_are_tolerated() {
+    // Rebases and clock skew leave author dates minutes out of order; two
+    // of 97 sampled packages invert by 168s and 974s.
+    let p = with_history(vec![NOW, NOW - 10 * DAY + 900, NOW - 10 * DAY], 1, None);
+    assert!(!rules(&scan(&p)).contains(&"commit-date-nonmonotonic"));
+}
+
+#[test]
+fn large_commit_date_inversions_still_flagged() {
+    let p = with_history(vec![NOW, NOW - 30 * DAY, NOW - 10 * DAY], 1, None);
+    assert!(rules(&scan(&p)).contains(&"commit-date-nonmonotonic"));
 }

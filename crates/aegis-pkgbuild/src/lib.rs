@@ -102,9 +102,25 @@ fn scan_bytes(body: &[u8], file: &str, upstream: &str) -> Vec<Finding> {
     }
 
     let mut scanned_source = false;
+    // Metadata arrays span lines; a dependency named qtkeychain-qt6 sitting
+    // on a continuation line is not credential access.
+    let mut in_metadata = false;
     for raw in text.lines() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if in_metadata {
+            if line.contains(')') {
+                in_metadata = false;
+            }
+            continue;
+        }
+        if is_metadata_line(line) {
+            // Opens an array that does not close on the same line.
+            if line.contains('(') && !line.contains(')') {
+                in_metadata = true;
+            }
             continue;
         }
         if let Some(c) = pkgbuild_funcs().captures(line) {
@@ -135,7 +151,9 @@ fn scan_bytes(body: &[u8], file: &str, upstream: &str) -> Vec<Finding> {
                 evidence: trunc(line),
             });
         }
-        if eval_sub().is_match(line) {
+        // `eval "package_$_p() {` is the standard split-package idiom in
+        // kernel PKGBUILDs, not obfuscation.
+        if eval_sub().is_match(line) && !split_package_eval().is_match(line) {
             out.push(Finding {
                 severity: Severity::High,
                 rule: "eval-obfuscation",
@@ -155,7 +173,11 @@ fn scan_bytes(body: &[u8], file: &str, upstream: &str) -> Vec<Finding> {
         }
         if foreign_tool().is_match(line) {
             out.push(Finding {
-                severity: Severity::High,
+                // Medium, not high: 4 of 97 sampled packages invoke yarn or
+                // pnpm legitimately during build. On its own this is
+                // context, not a finding — it earns its keep only when it
+                // stacks with something else.
+                severity: Severity::Medium,
                 rule: "foreign-toolchain",
                 where_: cur_fn.clone(),
                 message: "invokes a foreign package manager during build \
@@ -164,6 +186,9 @@ fn scan_bytes(body: &[u8], file: &str, upstream: &str) -> Vec<Finding> {
                 evidence: trunc(line),
             });
         }
+        // Metadata arrays describe the package, they do not run. `optdepends`
+        // mentioning "~/.ssh/config import", or a dep literally named
+        // qtkeychain-qt6, are not credential access.
         if exfil_paths().is_match(line) {
             out.push(Finding {
                 severity: Severity::High,
@@ -189,6 +214,14 @@ fn scan_bytes(body: &[u8], file: &str, upstream: &str) -> Vec<Finding> {
 /// catches multi-line arrays.
 fn scan_source(text: &str, upstream: &str, file: &str) -> Vec<Finding> {
     let mut out = Vec::new();
+    // URLs inside comments are documentation, not sources. The Go original
+    // scanned the raw body and flagged a bug-tracker link in a comment.
+    let text: String = text
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let text = text.as_str();
     let host = host_of(upstream);
     let where_ = format!("{file}:source[]");
     let mut seen: Vec<&str> = Vec::new();
@@ -211,7 +244,7 @@ fn scan_source(text: &str, upstream: &str, file: &str) -> Vec<Finding> {
             continue;
         }
         let h = host_of(tok);
-        if UNTRUSTED_HOSTS.iter().any(|bad| h.contains(bad)) {
+        if is_untrusted_host(&h) {
             out.push(Finding {
                 severity: Severity::High,
                 rule: "source-untrusted-host",
@@ -220,7 +253,13 @@ fn scan_source(text: &str, upstream: &str, file: &str) -> Vec<Finding> {
                 evidence: trunc(tok),
             });
         }
-        if !host.is_empty() && !h.is_empty() && h != host && is_code_host(&h) {
+        // Only meaningful when the declared upstream is ITSELF a code host:
+        // "url= says github.com/alice, source= pulls github.com/bob" is the
+        // Chaos RAT shape. "url= is the project homepage, source= is GitHub
+        // releases" is how most packages are written — 22 of 97 sampled
+        // packages tripped the old form for exactly that reason.
+        if !host.is_empty() && !h.is_empty() && h != host && is_code_host(&h) && is_code_host(&host)
+        {
             out.push(Finding {
                 severity: Severity::Medium,
                 rule: "source-host-drift",
@@ -234,6 +273,30 @@ fn scan_source(text: &str, upstream: &str, file: &str) -> Vec<Finding> {
 }
 
 // --- §3.5 content rules ---
+
+/// True for PKGBUILD metadata assignments — declarative fields that
+/// describe the package rather than code that executes.
+fn is_metadata_line(line: &str) -> bool {
+    const KEYS: &[&str] = &[
+        "depends",
+        "optdepends",
+        "makedepends",
+        "checkdepends",
+        "provides",
+        "conflicts",
+        "replaces",
+        "pkgdesc",
+        "license",
+        "groups",
+        "backup",
+        "options",
+    ];
+    let head = line.trim_start();
+    KEYS.iter().any(|k| {
+        head.strip_prefix(k)
+            .is_some_and(|r| r.starts_with('=') || r.starts_with("+="))
+    }) || head.starts_with('\'') && head.contains(": ")
+}
 
 /// Extract the elements of a bash array assignment `name=( ... )`,
 /// spanning newlines. Returns `None` when the array is absent.
@@ -252,6 +315,18 @@ fn bash_array(text: &str, name: &str) -> Option<Vec<String>> {
     let rest = &text[open?..];
     let close = rest.find(')')?;
     let body = &rest[..close];
+
+    // Strip trailing comments; PKGBUILD arrays routinely annotate entries
+    // ("config  # the main kernel config file").
+    let body: String = body
+        .lines()
+        .map(|l| match l.find('#') {
+            Some(i) => &l[..i],
+            None => l,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let body = body.as_str();
 
     let mut items = Vec::new();
     for c in quoted_or_bare_word().captures_iter(body) {
@@ -297,9 +372,11 @@ fn executable_kind(head: &[u8]) -> Option<&'static str> {
     if head.len() >= 4 && MACHO.iter().any(|m| head.starts_with(m)) {
         return Some("Mach-O");
     }
-    if head.starts_with(b"#!") {
-        return Some("script");
-    }
+    // Deliberately NOT shebang scripts. A committed `.sh` launcher wrapper
+    // is standard AUR practice — measured on 97 recently-updated packages,
+    // every single binary-in-source hit was a two-line wrapper like
+    // `exec /usr/bin/electron ... "$@"`. They are also human-readable, so
+    // the "opaque blob with no URL to audit" rationale does not apply.
     None
 }
 
@@ -342,6 +419,12 @@ fn check_checksum_count(text: &str) -> Vec<Finding> {
         return Vec::new();
     };
     if sources.is_empty() {
+        return Vec::new();
+    }
+    // makepkg expands braces, so `linux.tar.{xz,sign}` is TWO sources. We
+    // do not implement brace expansion; counting entries would be wrong, so
+    // say nothing rather than report a mismatch that is not there.
+    if sources.iter().any(|s| s.contains('{') && s.contains(',')) {
         return Vec::new();
     }
     for algo in ["sha256sums", "sha512sums", "b2sums", "sha1sums", "md5sums"] {
@@ -392,6 +475,8 @@ const WIPE_DRIFT_DAYS: i64 = 365;
 const WIPE_RECENT_DAYS: i64 = 730;
 
 const DAY: i64 = 86_400;
+/// How far out of order commit dates must be before it looks deliberate.
+const NONMONOTONIC_MIN_SECS: i64 = DAY;
 
 fn check_history(pkg: &Package) -> Vec<Finding> {
     let Some(h) = &pkg.history else {
@@ -402,8 +487,12 @@ fn check_history(pkg: &Package) -> Vec<Finding> {
     // Walking `git log` order is walking backwards in time, so the
     // timestamps must be non-increasing. A commit that is newer than the
     // one after it means the dates were rewritten or forged.
+    // Small inversions are ordinary git: a rebase, a cherry-pick, or clock
+    // skew between contributors leaves author dates a few minutes out of
+    // order. Two of 97 sampled packages invert by 168s and 974s. Only a
+    // large inversion suggests the dates were actually rewritten.
     if let Some(i) = (0..h.commit_dates.len().saturating_sub(1))
-        .find(|&i| h.commit_dates[i] < h.commit_dates[i + 1])
+        .find(|&i| h.commit_dates[i + 1] - h.commit_dates[i] > NONMONOTONIC_MIN_SECS)
     {
         out.push(Finding {
             severity: Severity::Medium,

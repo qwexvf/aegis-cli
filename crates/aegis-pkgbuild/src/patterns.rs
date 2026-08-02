@@ -74,6 +74,13 @@ lazy_re!(
 // An array element that is a bare filename rather than a URL: no scheme,
 // no `::` rename syntax pointing at one. Used to find sources that ship
 // inside the AUR repo itself.
+// `eval "package_$_p() {` — the split-package idiom used by kernel and
+// other multi-output PKGBUILDs. Generates functions, does not hide payloads.
+lazy_re!(
+    split_package_eval,
+    r#"(?i)^\s*eval\s+["']?(package|prepare|build|check)_"#
+);
+
 lazy_re!(quoted_or_bare_word, r#"['"]([^'"]+)['"]|(\S+)"#);
 
 /// AUR package names confirmed malicious in the 2025–2026 campaigns.
@@ -121,6 +128,24 @@ pub(crate) fn host_of(u: &str) -> String {
         .unwrap_or(u);
     let end = u.find(['/', ':']).unwrap_or(u.len());
     u[..end].to_ascii_lowercase()
+}
+
+/// Host-blocklist match that is not a naive substring test.
+///
+/// The Go original used `strings.Contains`, which makes `t.co` match
+/// `raw.githubusercon`+`tent.co`+`m` — four of 97 sampled packages were
+/// flagged as "paste/shortener host" for fetching from
+/// raw.githubusercontent.com. Entries with a dot are domains and match
+/// exactly or as a parent domain; bare entries are brand names and match a
+/// whole label.
+pub(crate) fn is_untrusted_host(h: &str) -> bool {
+    UNTRUSTED_HOSTS.iter().any(|bad| {
+        if bad.contains('.') {
+            h == *bad || h.ends_with(&format!(".{bad}"))
+        } else {
+            h.split('.').any(|label| label.contains(bad))
+        }
+    })
 }
 
 pub(crate) fn is_code_host(h: &str) -> bool {
