@@ -322,3 +322,119 @@ fn evidence_truncation_is_char_safe() {
     let r = scan(&pkg(&src));
     assert_eq!(r.verdict, Verdict::Block);
 }
+
+// --- git history integrity ---
+//
+// Thresholds calibrated against 35 real AUR clones; the values below are
+// taken from that sample so a future tweak has to face the real data.
+
+const NOW: i64 = 1_785_400_000; // 2026-07-30, fixed so tests never drift
+const DAY: i64 = 86_400;
+
+fn with_history(dates: Vec<i64>, roots: usize, first_submitted: Option<i64>) -> Package {
+    let mut p = pkg("pkgname=x\n");
+    p.history = Some(GitHistory {
+        commit_dates: dates,
+        root_count: roots,
+    });
+    p.first_submitted = first_submitted;
+    p.now = Some(NOW);
+    p
+}
+
+#[test]
+fn nonmonotonic_commit_dates_flagged() {
+    // git log order is newest-first, so this must be descending.
+    let p = with_history(vec![NOW, NOW - 10 * DAY, NOW - 5 * DAY], 1, None);
+    assert!(rules(&scan(&p)).contains(&"commit-date-nonmonotonic"));
+}
+
+#[test]
+fn monotonic_history_is_clean() {
+    let p = with_history(vec![NOW, NOW - 5 * DAY, NOW - 10 * DAY], 1, None);
+    assert!(!rules(&scan(&p)).contains(&"commit-date-nonmonotonic"));
+}
+
+#[test]
+fn spliced_history_flagged() {
+    let p = with_history(vec![NOW, NOW - DAY], 2, None);
+    assert!(rules(&scan(&p)).contains(&"multiple-root-commits"));
+}
+
+#[test]
+fn recently_wiped_history_flagged() {
+    // AUR says 2020; git only goes back 30 days.
+    let p = with_history(vec![NOW, NOW - 30 * DAY], 1, Some(NOW - 2000 * DAY));
+    let r = scan(&p);
+    assert!(rules(&r).contains(&"history-recently-wiped"));
+    assert_eq!(r.verdict, Verdict::Warn);
+}
+
+#[test]
+fn aur4_migration_shape_is_not_flagged() {
+    // The dominant false positive in the sample: 11 of 35 clones have a
+    // history that starts years after FirstSubmitted because the 2015
+    // AUR3→AUR4 migration reset it. Old oldest-commit ⇒ not a wipe.
+    let p = with_history(
+        vec![NOW, NOW - 4070 * DAY],
+        1,
+        Some(NOW - (4070 + 2035) * DAY),
+    );
+    assert!(!rules(&scan(&p)).contains(&"history-recently-wiped"));
+}
+
+#[test]
+fn history_predating_first_submitted_is_not_flagged() {
+    // Imported upstream history: oldest commit *precedes* FirstSubmitted.
+    // Negative drift is benign, not a wipe.
+    let p = with_history(vec![NOW, NOW - 2723 * DAY], 1, Some(NOW - 400 * DAY));
+    assert!(!rules(&scan(&p)).contains(&"history-recently-wiped"));
+}
+
+#[test]
+fn pgadmin4_history_was_not_tampered() {
+    // The real attack passed every integrity check: the maintainer had
+    // legitimate push access, so nothing about the history is wrong. This
+    // documents the boundary — history rules and content rules cover
+    // different threats.
+    let mut p = pgadmin_malicious();
+    p.history = Some(GitHistory {
+        commit_dates: vec![NOW - DAY, NOW - 113 * DAY, NOW - 756 * DAY],
+        root_count: 1,
+    });
+    p.first_submitted = Some(NOW - 755 * DAY);
+    p.now = Some(NOW);
+    let r = scan(&p);
+    let got = rules(&r);
+    for absent in [
+        "commit-date-nonmonotonic",
+        "multiple-root-commits",
+        "history-recently-wiped",
+    ] {
+        assert!(!got.contains(&absent), "history rule fired: {absent}");
+    }
+    // Still blocked — by the content rules.
+    assert_eq!(scan(&p).verdict, Verdict::Block);
+}
+
+#[test]
+fn absent_history_is_silent() {
+    let r = scan(&pkg("pkgname=x\n"));
+    for rule in [
+        "commit-date-nonmonotonic",
+        "multiple-root-commits",
+        "history-recently-wiped",
+    ] {
+        assert!(!rules(&r).contains(&rule));
+    }
+}
+
+#[test]
+fn wipe_needs_both_first_submitted_and_now() {
+    // Missing either side must not guess.
+    let p = with_history(vec![NOW, NOW - 30 * DAY], 1, None);
+    assert!(!rules(&scan(&p)).contains(&"history-recently-wiped"));
+    let mut p2 = with_history(vec![NOW, NOW - 30 * DAY], 1, Some(NOW - 2000 * DAY));
+    p2.now = None;
+    assert!(!rules(&scan(&p2)).contains(&"history-recently-wiped"));
+}

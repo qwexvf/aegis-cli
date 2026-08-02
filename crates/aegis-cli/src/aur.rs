@@ -69,6 +69,16 @@ struct BatchPackage {
     /// "aur" (default) or "pkgbuild" for a -B / pkgbuild-repo target.
     #[serde(default)]
     kind: Option<String>,
+    /// Commit author timestamps, newest first (`git log --format=%at`).
+    #[serde(default)]
+    commit_dates: Option<Vec<i64>>,
+    /// `git rev-list --max-parents=0 HEAD | wc -l`.
+    #[serde(default)]
+    root_count: Option<usize>,
+    /// Unix time to measure "recent" against. The caller supplies it so
+    /// the scanner has no clock of its own and stays reproducible.
+    #[serde(default)]
+    now: Option<i64>,
     // --- accepted, not yet used by any rule ---
     #[serde(default)]
     maintainer: Option<String>,
@@ -81,7 +91,7 @@ struct BatchPackage {
     #[serde(default)]
     out_of_date: Option<u64>,
     #[serde(default)]
-    first_submitted: Option<u64>,
+    first_submitted: Option<i64>,
     #[serde(default)]
     last_modified: Option<u64>,
 }
@@ -145,6 +155,16 @@ fn scan_batch_entry(entry: &BatchPackage) -> ScanResult {
         }
     }
 
+    // Only build a history when the caller actually supplied one; the
+    // integrity rules stay silent rather than guessing from a default.
+    let history = entry
+        .commit_dates
+        .as_ref()
+        .map(|dates| aegis_pkgbuild::GitHistory {
+            commit_dates: dates.clone(),
+            root_count: entry.root_count.unwrap_or(1),
+        });
+
     let pkg = Package {
         upstream: aegis_pkgbuild::parse_upstream_url(&pkgbuild),
         name,
@@ -152,6 +172,9 @@ fn scan_batch_entry(entry: &BatchPackage) -> ScanResult {
         install: read_install_hooks(path),
         prev_pkgbuild: entry.prev_pkgbuild.as_ref().map(|s| s.as_bytes().to_vec()),
         local_files,
+        history,
+        first_submitted: entry.first_submitted,
+        now: entry.now,
     };
     let _ = &entry.kind; // reserved: -B targets are out of scope for v1
     scan(&pkg)
@@ -198,6 +221,11 @@ pub(crate) fn run_aur_scan(dir: &str, json: bool) -> ExitCode {
         install: read_install_hooks(path),
         prev_pkgbuild: None,
         local_files: read_local_files(path),
+        // A standalone scan has no AUR metadata and no caller-supplied
+        // clock, so the history rules stay silent. `aur gate` carries them.
+        history: None,
+        first_submitted: None,
+        now: None,
     };
 
     let res = scan(&pkg);

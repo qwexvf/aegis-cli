@@ -24,7 +24,7 @@ mod types;
 
 use patterns::*;
 use types::trunc;
-pub use types::{Finding, LocalFile, Package, ScanResult, Severity, Verdict};
+pub use types::{Finding, GitHistory, LocalFile, Package, ScanResult, Severity, Verdict};
 
 pub use patterns::package_denied;
 
@@ -57,6 +57,7 @@ pub fn scan(pkg: &Package) -> ScanResult {
     findings.extend(check_checksum_count(&text));
     findings.extend(check_binary_in_source(&text, &pkg.local_files));
     findings.extend(check_local_binary_added(&pkg.local_files));
+    findings.extend(check_history(pkg));
 
     let verdict = ScanResult::derive_verdict(&findings);
     ScanResult {
@@ -363,6 +364,101 @@ fn check_checksum_count(text: &str) -> Vec<Finding> {
         }
     }
     Vec::new()
+}
+
+// --- git history integrity ---
+//
+// These work on a FIRST install, with no stored state, because they check
+// the attacker-writable git history against a server-side value the
+// attacker does not control (`FirstSubmitted`) or against internal
+// consistency the attacker has to actively fake.
+//
+// They detect repository *takeover* — force-pushed or fabricated history —
+// not a malicious commit pushed by a legitimate maintainer. The
+// pgadmin4-server compromise trips none of them, because its history was
+// never touched. Content rules cover that case; these cover a different one.
+//
+// Thresholds are calibrated against 35 real AUR clones: every rule below
+// fires on 0 of them. See `tests::history_*`.
+
+/// How far the oldest commit may sit after `FirstSubmitted` before the
+/// history looks truncated.
+const WIPE_DRIFT_DAYS: i64 = 365;
+/// …and how recent that oldest commit must be for the truncation to look
+/// deliberate rather than historical. The AUR3→AUR4 migration (2015) reset
+/// history for many old packages while `FirstSubmitted` kept the original
+/// date; 11 of the 35 sampled clones look "truncated" for that reason
+/// alone. Requiring the oldest commit to be recent excludes all of them.
+const WIPE_RECENT_DAYS: i64 = 730;
+
+const DAY: i64 = 86_400;
+
+fn check_history(pkg: &Package) -> Vec<Finding> {
+    let Some(h) = &pkg.history else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+
+    // Walking `git log` order is walking backwards in time, so the
+    // timestamps must be non-increasing. A commit that is newer than the
+    // one after it means the dates were rewritten or forged.
+    if let Some(i) = (0..h.commit_dates.len().saturating_sub(1))
+        .find(|&i| h.commit_dates[i] < h.commit_dates[i + 1])
+    {
+        out.push(Finding {
+            severity: Severity::Medium,
+            rule: "commit-date-nonmonotonic",
+            where_: "git".into(),
+            message: "commit timestamps move backwards through history — the dates were \
+                      rewritten or forged"
+                .into(),
+            evidence: format!(
+                "commit {} is dated before its own parent ({} < {})",
+                i,
+                h.commit_dates[i],
+                h.commit_dates[i + 1]
+            ),
+        });
+    }
+
+    if h.root_count > 1 {
+        out.push(Finding {
+            severity: Severity::Medium,
+            rule: "multiple-root-commits",
+            where_: "git".into(),
+            message: "repository has more than one root commit — two histories were \
+                      spliced together"
+                .into(),
+            evidence: format!("{} root commits", h.root_count),
+        });
+    }
+
+    // The strong one: the AUR says this package has existed since X, but
+    // the git history only goes back to Y, and Y is recent. Someone
+    // force-pushed over the history.
+    if let (Some(first), Some(now), Some(&oldest)) =
+        (pkg.first_submitted, pkg.now, h.commit_dates.last())
+    {
+        let drift_days = (oldest - first) / DAY;
+        let oldest_age_days = (now - oldest) / DAY;
+        if drift_days > WIPE_DRIFT_DAYS && oldest_age_days < WIPE_RECENT_DAYS {
+            out.push(Finding {
+                severity: Severity::High,
+                rule: "history-recently-wiped",
+                where_: "git".into(),
+                message: "git history starts long after the AUR says the package was \
+                          submitted, and starts recently — the history was force-pushed \
+                          over. FirstSubmitted is server-side and cannot be forged by \
+                          the maintainer"
+                    .into(),
+                evidence: format!(
+                    "oldest commit is {drift_days} days after FirstSubmitted, and only \
+                     {oldest_age_days} days old"
+                ),
+            });
+        }
+    }
+    out
 }
 
 /// A non-text file appeared in the package repo since the previous

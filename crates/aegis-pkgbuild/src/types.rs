@@ -68,6 +68,19 @@ pub struct LocalFile {
     pub added: bool,
 }
 
+/// The package repository's git history, as far as the integrity rules
+/// care about it. The caller runs the git commands; this crate only does
+/// arithmetic on the result.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GitHistory {
+    /// Commit author timestamps in `git log` order — newest first. Walking
+    /// this list is walking backwards in time, so it must be descending.
+    pub commit_dates: Vec<i64>,
+    /// Number of root commits (`git rev-list --max-parents=0 HEAD`).
+    /// More than one means two histories were spliced together.
+    pub root_count: usize,
+}
+
 /// The raw, fetched content of one AUR package.
 ///
 /// `upstream` is the `url=` field when known — the scanner uses it as the
@@ -83,6 +96,14 @@ pub struct Package {
     pub upstream: String,
     pub prev_pkgbuild: Option<Vec<u8>>,
     pub local_files: Vec<LocalFile>,
+    pub history: Option<GitHistory>,
+    /// AUR RPC `FirstSubmitted`. Server-side and not writable by the
+    /// package maintainer, which is exactly what makes it useful: the git
+    /// history *is* writable, so disagreement between the two is evidence.
+    pub first_submitted: Option<i64>,
+    /// Unix time to measure "recent" against. Supplied by the caller so
+    /// this crate stays clock-free and its tests stay deterministic.
+    pub now: Option<i64>,
 }
 
 /// Scanner output for one package.
