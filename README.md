@@ -44,6 +44,7 @@ macOS is enough; there is no cgo boundary and no separate grammar toolchain.
 | `sbom <lockfile>` | CycloneDX 1.5 / SPDX 2.3 SBOM |
 | `image <tarball>` / `image --ref <repo:tag>` | scan an OCI image (3 tiers) |
 | `snapshot <sub>` | `aegis.lock` lifecycle — see [Snapshots](#snapshots) |
+| `aur <sub>` | AUR / PKGBUILD install gate — see [AUR packages](#aur-packages) |
 | `reach <dir> <pkg>` | is a dependency imported (reachable) in JS/TS/Py/Go/PHP source? |
 | `allowlist` | list built-in capability-suppression rules |
 | `explain [capability\|pkg@ver]` | the risk model, or a published package's capabilities |
@@ -131,6 +132,61 @@ aegis snapshot capture ./pkg-v2 --baseline baseline.json
 #   + shell-spawn  (NEW capability — possible takeover)   → exit 1
 ```
 
+## AUR packages
+
+Arch's AUR ships build recipes, not binaries: installing a package runs a
+`PKGBUILD` as your user and a `.install` hook **as root**. `aegis aur` scans
+both, plus the package the build produces.
+
+```sh
+aegis aur scan ~/.cache/paru/clone/some-pkg     # one package, human output
+aegis aur scan <dir> --json                     # machine-readable
+aegis aur gate < request.json                   # a whole transaction, one process
+aegis aur inspect ./some-pkg-1.0-1-x86_64.pkg.tar.zst
+```
+
+Three layers, because each sees what the others cannot:
+
+- **PKGBUILD text** — privilege escalation in a build function, a committed
+  binary in `source=()` (matched on magic bytes, not file extension), source
+  and checksum arrays that disagree, paste/shortener hosts, download-and-exec.
+- **git history** — works on a *first* install with no stored state, by
+  checking the attacker-writable history against the AUR's server-side
+  `FirstSubmitted`: a force-pushed history, forged commit dates, spliced roots.
+- **the built package** — pacman hooks (root code on every future transaction),
+  setuid bits, `sudoers.d` and `ld.so.preload` drop-ins, PAM modules, files
+  landing in a home directory. A build can fetch a payload from a perfectly
+  legitimate host; whatever it produces still has to appear here.
+
+Calibrated against real data rather than intuition: 1200 packages from
+`/var/cache/pacman/pkg` (96.8% clean, no CRITICAL rule fires on any of them),
+the 41 `.INSTALL` scripts those ship, and 116 freshly cloned AUR packages.
+
+### Using it with an AUR helper
+
+There is a paru fork wired to call this before anything from a PKGBUILD runs —
+after the sources are fetched, before the first `makepkg` stage — and again on
+the built package before `pacman -U`:
+[github.com/qwexvf/paru](https://github.com/qwexvf/paru).
+
+```ini
+# ~/.config/paru/paru.conf, under [options]
+AegisGate    = warn      # off | warn | block
+AegisBin     = aegis
+AegisTimeout = 30
+```
+
+The gate **fails open**: a missing binary, a timeout, or unparseable output
+lets the install continue and reports how many packages went unscanned. A
+package the scanner did not report on counts as unscanned, never as clean.
+
+### What it will not catch
+
+Line-based text rules lose to obfuscation split across lines, and a build that
+exfiltrates without leaving anything in the package is invisible to all three
+layers. This is a filter that raises the cost of a careless attack and informs
+the review you were going to do anyway — not a guarantee. See the open issues.
+
 ## What it detects
 
 Behavioral capabilities (AST + heuristics): shell-spawn, dynamic-eval, net-egress,
@@ -143,6 +199,9 @@ version-unpublished / maintainer-changed, provenance-missing, and more —
 
 Known vulnerabilities: OSV.dev + GitHub GHSA (with `GITHUB_TOKEN`), enriched with
 EPSS exploit-probability and CISA KEV; feeds cached on disk (24h/7d TTL).
+
+PKGBUILD-specific rules are listed under [AUR packages](#aur-packages) — they
+run against build recipes rather than published package source.
 
 Ecosystems: npm (package-lock/yarn/pnpm/bun), PyPI (poetry/uv/pipfile/
 requirements), crates, Go, RubyGems, Composer, NuGet, Maven (pom+gradle), Hex
@@ -171,9 +230,9 @@ published source during `ci` and `snapshot enrich`.
 ## Development
 
 ```sh
-cargo test --workspace                    # 549 tests
+cargo test --workspace                    # 617 tests
 cargo clippy --workspace --all-targets -- -D warnings
-cargo run -q -p xtask -- analyze-parity   # 36/36 vs Go goldens (offline)
+cargo run -q -p xtask -- analyze-parity   # 27/27 vs Go goldens (offline)
 cargo run -q -p xtask -- sbom-parity      # 4/4   vs Go goldens (offline)
 cargo run -q -p xtask -- ci-parity        # 6/6   cassette replay (offline)
 ```
@@ -206,7 +265,8 @@ the command surface differs:
 | `cache`, `audit`, `doctor`, `completion`, `hook uninstall` | *not ported* |
 
 Rust adds commands Go has no analog for: `parse`, `run` (aegis.toml task
-runner), `reach`, `snapshot capture`, and `explain`'s capability-catalog mode.
+runner), `reach`, `snapshot capture`, `aur` (the PKGBUILD install gate), and
+`explain`'s capability-catalog mode.
 
 ## Security
 
