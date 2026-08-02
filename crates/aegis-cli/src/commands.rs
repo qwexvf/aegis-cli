@@ -278,6 +278,19 @@ pub(crate) fn run_ci(
             _ => {}
         }
     }
+    // Record every scored dependency before filtering — the audit log is
+    // most useful for the ones that did NOT trip the gate, since those are
+    // the ones nobody sees in the output.
+    for f in &findings {
+        let mut e = crate::audit::Entry::new("ci");
+        e.ecosystem = f.ecosystem.clone();
+        e.package = f.name.clone();
+        e.version = f.version.clone();
+        e.decision = f.verdict.clone();
+        e.source = file.to_string();
+        crate::audit::write(&e);
+    }
+
     let gated: Vec<CiFinding> = findings
         .into_iter()
         .filter(|f| VerdictKind::parse(&f.verdict).is_some_and(|v| v >= fail_on_v))
@@ -913,6 +926,15 @@ pub(crate) fn run_analyze(
         }
     }
     let v = verdict(&assessment, &RiskAssessment::default());
+
+    {
+        let mut e = crate::audit::Entry::new("analyze");
+        e.ecosystem = eco.as_str().to_string();
+        e.package = pkg_name.clone();
+        e.decision = v.name().to_string();
+        e.source = dir.to_string();
+        crate::audit::write(&e);
+    }
 
     if sarif {
         let loc = format!("{}/{pkg_name}", eco.as_str());

@@ -123,6 +123,13 @@ pub(crate) fn run_aur_gate() -> ExitCode {
     };
 
     let results: Vec<ScanResult> = req.packages.iter().map(scan_batch_entry).collect();
+    for r in &results {
+        let mut e = crate::audit::Entry::new("aur");
+        e.ecosystem = "aur".into();
+        e.package = r.package.clone();
+        e.decision = r.verdict.name().to_string();
+        crate::audit::write(&e);
+    }
     let report = Report {
         results: results.iter().map(result_json).collect(),
     };
@@ -229,6 +236,14 @@ pub(crate) fn run_aur_scan(dir: &str, json: bool) -> ExitCode {
     };
 
     let res = scan(&pkg);
+    {
+        let mut e = crate::audit::Entry::new("aur");
+        e.ecosystem = "aur".into();
+        e.package = res.package.clone();
+        e.decision = res.verdict.name().to_string();
+        e.source = dir.to_string();
+        crate::audit::write(&e);
+    }
     if json {
         if let Err(e) = print_json(&res) {
             eprintln!("aegis: json encode failed: {e}");

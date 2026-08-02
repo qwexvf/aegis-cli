@@ -3,6 +3,7 @@
 //! (enrich, ci, analyze) land as the usecase layer is ported.
 
 mod allowlist;
+mod audit;
 mod aur;
 mod cache;
 mod commands;
@@ -132,6 +133,12 @@ enum Command {
     Actions {
         #[command(subcommand)]
         sub: Option<ActionsSub>,
+    },
+    /// Inspect the local audit log — an append-only record of what was
+    /// scanned and what the verdict was.
+    Audit {
+        #[command(subcommand)]
+        sub: AuditSub,
     },
     /// Inspect or clear the on-disk advisory caches (CISA KEV, OSV documents).
     Cache {
@@ -315,6 +322,20 @@ enum AllowlistSub {
     },
     /// Validate the user and project allowlist files. Exits 1 on a problem.
     Verify,
+}
+
+/// `aegis audit` subcommands.
+#[derive(Subcommand)]
+enum AuditSub {
+    /// Show the most recent entries, oldest first.
+    Tail {
+        /// How many to show. 0 shows everything.
+        #[arg(short = 'n', long, default_value_t = 20)]
+        count: usize,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// `aegis cache` subcommands.
@@ -540,6 +561,9 @@ fn main() -> ExitCode {
             ),
         },
         Command::Doctor { offline, json } => doctor::run_doctor(offline, json),
+        Command::Audit { sub } => match sub {
+            AuditSub::Tail { count, json } => audit::run_audit_tail(count, json),
+        },
         Command::Cache { sub } => match sub {
             CacheSub::List { json } => cache::run_cache_list(json),
             CacheSub::Clear { pool } => cache::run_cache_clear(pool.as_deref()),

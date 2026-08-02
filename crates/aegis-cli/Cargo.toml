@@ -23,7 +23,7 @@ aegis-pkgbuild = { path = "../aegis-pkgbuild" }
 aegis-image = { path = "../aegis-image" }
 aegis-reach = { path = "../aegis-reach" }
 aegis-net = { path = "../aegis-net", features = ["cassette"] }
-time = { version = "0.3", features = ["formatting"] }
+time = { version = "0.3", features = ["formatting", "parsing"] }
 clap = { version = "4", features = ["derive"] }
 rayon = "1"
 toml = "0.8"
