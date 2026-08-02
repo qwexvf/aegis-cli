@@ -85,6 +85,7 @@ fn scan_bytes(body: &[u8], file: &str, upstream: &str) -> Vec<Finding> {
     if body.is_empty() {
         return Vec::new();
     }
+    let root_context = file == ".install";
     let text = String::from_utf8_lossy(body).into_owned();
     let mut out = Vec::new();
     let mut cur_fn = file.to_string();
@@ -142,7 +143,12 @@ fn scan_bytes(body: &[u8], file: &str, upstream: &str) -> Vec<Finding> {
         // root, so there is no legitimate reason for a PKGBUILD to
         // escalate. Flagged at top level too, not just inside functions —
         // top-level code runs when the file is sourced, which is worse.
-        if privilege_escalation().is_match(line) {
+        // Only meaningful in the PKGBUILD, which makepkg runs as an
+        // unprivileged user. A .install hook is ALREADY root, so `su "$user"
+        // -c ...` there is dropping privileges, not gaining them —
+        // profile-sync-daemon does exactly that and was the only false
+        // positive across 41 real .INSTALL scripts.
+        if !root_context && privilege_escalation().is_match(line) {
             out.push(Finding {
                 severity: Severity::Critical,
                 rule: "privilege-escalation-in-build",
@@ -200,6 +206,14 @@ fn scan_bytes(body: &[u8], file: &str, upstream: &str) -> Vec<Finding> {
                 evidence: trunc(line),
             });
         }
+        // Root-context rules. pacman runs .install AS ROOT, so things that
+        // are ordinary in package() are not ordinary here. Every pattern
+        // below occurs zero times across the 41 .INSTALL scripts shipped by
+        // 1200 official repo packages.
+        if root_context {
+            out.extend(check_install_hook(line, &cur_fn));
+        }
+
         // The URL scan walks the whole body, so run it once rather than
         // per source line. (The Go original re-scans per match, producing
         // duplicate findings for multi-line arrays.)
@@ -207,6 +221,111 @@ fn scan_bytes(body: &[u8], file: &str, upstream: &str) -> Vec<Finding> {
             scanned_source = true;
             out.extend(scan_source(&text, upstream, file));
         }
+    }
+    out
+}
+
+/// True when the line only prints to the terminal — no redirect, no pipe,
+/// no command substitution — so its content is advice, not action.
+fn is_pure_output(line: &str) -> bool {
+    let t = line.trim_start();
+    let is_print = t.starts_with("echo ")
+        || t.starts_with("echo\t")
+        || t.starts_with("printf ")
+        || t.starts_with("print ");
+    is_print && !t.contains('>') && !t.contains('|') && !t.contains("$(") && !t.contains('`')
+}
+
+/// Rules that apply only inside a `.install` hook, which pacman executes as
+/// root at install time.
+///
+/// `install -Dm755 x y` in `package()` is how every package works; the same
+/// line in `post_install` is dropping an executable onto a live system
+/// outside pacman's file tracking. Context is the whole point of these.
+fn check_install_hook(line: &str, where_: &str) -> Vec<Finding> {
+    let mut out = Vec::new();
+    // Post-install scripts routinely PRINT instructions:
+    //   echo "systemctl enable --now foo.service"
+    // Four of nine .install scripts in a 116-package AUR sample did exactly
+    // that. Text that is only written to the terminal does not run. A
+    // redirect or a pipe means it is not just output, so those still count.
+    if is_pure_output(line) {
+        return out;
+    }
+    let mut hit = |severity: Severity, rule: &'static str, message: &str| {
+        out.push(Finding {
+            severity,
+            rule,
+            where_: where_.to_string(),
+            message: message.to_string(),
+            evidence: trunc(line),
+        });
+    };
+
+    if ih_network().is_match(line) {
+        hit(
+            Severity::Critical,
+            "install-hook-network",
+            "fetches from the network at install time, as root",
+        );
+    }
+    if ih_sudoers().is_match(line) {
+        hit(
+            Severity::Critical,
+            "install-hook-sudoers",
+            "touches sudoers from an install hook",
+        );
+    }
+    if ih_ld_preload().is_match(line) {
+        hit(
+            Severity::Critical,
+            "install-hook-ld-preload",
+            "writes /etc/ld.so.preload — injects into every process",
+        );
+    }
+    if ih_authorized_keys().is_match(line) {
+        hit(
+            Severity::Critical,
+            "install-hook-authorized-keys",
+            "touches an SSH authorized_keys file",
+        );
+    }
+    if ih_setuid().is_match(line) {
+        hit(
+            Severity::High,
+            "install-hook-setuid",
+            "makes a file setuid from an install hook",
+        );
+    }
+    if ih_persistence().is_match(line) {
+        hit(
+            Severity::High,
+            "install-hook-persistence",
+            "writes to a shell-startup, cron, or systemd path — persistence \
+             outside the package lifecycle",
+        );
+    }
+    if ih_priv_group().is_match(line) {
+        hit(
+            Severity::High,
+            "install-hook-privileged-group",
+            "adds an account to a privileged group",
+        );
+    }
+    if is_exec_drop(line) {
+        hit(
+            Severity::High,
+            "install-hook-drops-executable",
+            "installs an executable from an install hook, outside pacman's \
+             file tracking",
+        );
+    }
+    if is_system_enable(line) {
+        hit(
+            Severity::Medium,
+            "install-hook-enables-unit",
+            "enables a system unit — Arch policy leaves that to the admin",
+        );
     }
     out
 }

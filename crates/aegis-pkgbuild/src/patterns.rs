@@ -83,6 +83,66 @@ lazy_re!(
 
 lazy_re!(quoted_or_bare_word, r#"['"]([^'"]+)['"]|(\S+)"#);
 
+// --- .install root-context rules ---
+//
+// These apply ONLY to .install hook bodies, which pacman runs AS ROOT.
+// `install -Dm755` in package() is ordinary; the same line in post_install
+// is not. Base rates below are measured across the 41 .INSTALL scripts
+// shipped by 1200 official repo packages — every one of these patterns
+// occurs ZERO times, which is what makes them safe to weight heavily.
+
+// Fetching anything at install time. 0/41.
+lazy_re!(
+    ih_network,
+    r"(?i)\b(curl|wget|ncat|ftp|scp|rsync)\s|\bnc\s+-|\bpython3?\s+-c\s.{0,40}urllib|\bgit\s+clone\b"
+);
+// Granting sudo rights. 0/41.
+lazy_re!(ih_sudoers, r"(?i)/etc/sudoers|\bvisudo\b");
+// Injecting into every process. 0/41.
+lazy_re!(ih_ld_preload, r"(?i)/etc/ld\.so\.preload");
+// SSH key persistence. 0/41.
+lazy_re!(ih_authorized_keys, r"(?i)authorized_keys");
+// Making something setuid after the fact. 0/41.
+lazy_re!(ih_setuid, r"(?i)\bchmod\s+(u?\+s\b|[24][0-7]{3}\b)");
+// Shell-startup and scheduler persistence. 0/41.
+lazy_re!(
+    ih_persistence,
+    r"(?i)/etc/profile\.d/|\.bashrc|\.zshrc|\.bash_profile|\bcrontab\b|/etc/cron\.|/etc/systemd/system/"
+);
+// Adding an account to a privileged group. 0/41.
+lazy_re!(
+    ih_priv_group,
+    r"(?i)\b(usermod|gpasswd)\b.*\b(wheel|sudo|root|adm|docker)\b"
+);
+// Dropping an executable file. `install -d` (make a directory) is the only
+// form that occurs in the sample, so an explicit executable mode is the
+// signal. 0/41.
+lazy_re!(
+    ih_drop_exec,
+    r"(?i)\binstall\s+[^\n]*-[A-Za-z]*m[A-Za-z]*\s*[0-7]?[0-7][0-7][157]\b|\bchmod\s+\+x\b"
+);
+// Enabling a system unit. Arch policy says packages must not; 0/41 do it
+// system-wide (--global and --user forms are legitimate and excluded).
+//
+// The regex crate has no look-around, so the carve-out lives in
+// `is_system_enable` rather than in the pattern.
+lazy_re!(ih_enable_unit_raw, r"(?i)\bsystemctl\b.*\benable\b");
+
+/// True when the line installs an executable FILE, not a directory.
+///
+/// `install -d -o root -g root -m 755 some/dir` creates a directory and is
+/// perfectly ordinary — it was the only false positive left across the 41
+/// real .INSTALL scripts. Lowercase `-d` is the directory-only flag;
+/// `-Dm755` (capital D, "make leading dirs") still installs a file.
+pub(crate) fn is_exec_drop(line: &str) -> bool {
+    ih_drop_exec().is_match(line) && !line.split_whitespace().any(|t| t == "-d")
+}
+
+/// True for a system-wide `systemctl enable`.
+pub(crate) fn is_system_enable(line: &str) -> bool {
+    ih_enable_unit_raw().is_match(line) && !line.contains("--global") && !line.contains("--user")
+}
+
 /// AUR package names confirmed malicious in the 2025–2026 campaigns.
 /// Exact-match here is a hard block regardless of current content — a
 /// reverted PKGBUILD can still have a poisoned `.install` in a stale cache.
@@ -152,4 +212,52 @@ pub(crate) fn is_code_host(h: &str) -> bool {
     ["github", "gitlab", "bitbucket", "codeberg", "sr.ht"]
         .iter()
         .any(|c| h.contains(c))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every pattern is behind `expect("literal regex compiles")`, so an
+    /// uncompilable one is a panic the first time that rule runs rather
+    /// than a build error. The regex crate has no look-around, which is
+    /// easy to reach for by habit — this catches it at test time.
+    #[test]
+    fn every_pattern_compiles() {
+        let _ = (
+            source_line(),
+            url_assign(),
+            net_exec(),
+            eval_sub(),
+            b64_exec(),
+            hex_esc(),
+            foreign_tool(),
+            exfil_paths(),
+            bare_ip(),
+            url_token(),
+            pkgbuild_funcs(),
+            privilege_escalation(),
+            split_package_eval(),
+            quoted_or_bare_word(),
+            ih_network(),
+            ih_sudoers(),
+            ih_ld_preload(),
+            ih_authorized_keys(),
+            ih_setuid(),
+            ih_persistence(),
+            ih_priv_group(),
+            ih_drop_exec(),
+            ih_enable_unit_raw(),
+        );
+    }
+
+    #[test]
+    fn system_enable_carve_out() {
+        assert!(is_system_enable("  systemctl enable foo.service"));
+        assert!(!is_system_enable(
+            "  systemctl --global enable pipewire.socket"
+        ));
+        assert!(!is_system_enable("  systemctl --user enable foo.service"));
+        assert!(!is_system_enable("  systemctl daemon-reload"));
+    }
 }
