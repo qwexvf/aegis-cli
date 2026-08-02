@@ -19,6 +19,7 @@
 //! change, and the entire signal was `sudo "$srcdir/parser"` plus a 43 KB
 //! ELF committed into the package repo. See `tests::pgadmin4_*`.
 
+mod builtpkg;
 mod patterns;
 mod types;
 
@@ -26,6 +27,7 @@ use patterns::*;
 use types::trunc;
 pub use types::{Finding, GitHistory, LocalFile, Package, ScanResult, Severity, Verdict};
 
+pub use builtpkg::{inspect_package, PkgEntry};
 pub use patterns::package_denied;
 
 /// Statically scan an AUR package's PKGBUILD and `.install` hooks.

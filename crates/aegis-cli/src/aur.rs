@@ -266,35 +266,80 @@ fn read_install_hooks(dir: &Path) -> Vec<u8> {
     out
 }
 
-/// Files sitting in the package directory, with just enough leading bytes
-/// for the magic-number check. Skips the PKGBUILD itself and the git dir.
+/// Files in the package directory, with just enough leading bytes for the
+/// magic-number check. Skips the PKGBUILD itself and the git dir.
+///
+/// Recursive: a committed payload can sit in a subdirectory
+/// (`tools/helper`) as easily as at the top level, and a non-recursive walk
+/// simply does not see it. Names are relative to `dir` so they match what
+/// `git ls-tree -r` reports and what `source=()` refers to.
 fn read_local_files(dir: &Path) -> Vec<LocalFile> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut out: Vec<LocalFile> = entries
-        .flatten()
-        .filter_map(|e| {
-            let p = e.path();
-            let name = p.file_name()?.to_string_lossy().into_owned();
-            if !p.is_file() || name == "PKGBUILD" || name.starts_with(".git") {
-                return None;
-            }
-            let meta = std::fs::metadata(&p).ok()?;
-            let bytes = std::fs::read(&p).ok()?;
-            Some(LocalFile {
-                name,
-                head: bytes.into_iter().take(MAGIC_BYTES).collect(),
-                size: meta.len(),
-                // `added` needs the previous revision, which only the paru
-                // gate has. Standalone scans cannot know, so stay quiet
-                // rather than guess — local-binary-added is a diff rule.
-                added: false,
-            })
-        })
-        .collect();
+    let mut out = Vec::new();
+    walk_local_files(dir, dir, 0, &mut out);
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out
+}
+
+/// Depth cap so a symlink loop or a pathological tree cannot hang the gate.
+const MAX_DEPTH: usize = 8;
+
+fn walk_local_files(root: &Path, dir: &Path, depth: usize, out: &mut Vec<LocalFile>) {
+    if depth > MAX_DEPTH {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        let Some(name) = p.file_name().map(|s| s.to_string_lossy().into_owned()) else {
+            continue;
+        };
+        if name.starts_with(".git") {
+            continue;
+        }
+        // Do not follow symlinks — the target may live outside the package.
+        let Ok(meta) = std::fs::symlink_metadata(&p) else {
+            continue;
+        };
+        if meta.is_dir() {
+            walk_local_files(root, &p, depth + 1, out);
+            continue;
+        }
+        if !meta.is_file() {
+            continue;
+        }
+        let rel = p
+            .strip_prefix(root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .into_owned();
+        if rel == "PKGBUILD" {
+            continue;
+        }
+        // Only the first bytes are needed; a committed blob may be large.
+        let Ok(bytes) = read_head(&p, MAGIC_BYTES) else {
+            continue;
+        };
+        out.push(LocalFile {
+            name: rel,
+            head: bytes,
+            size: meta.len(),
+            // `added` needs the previous revision, which only the paru gate
+            // has. Standalone scans cannot know, so stay quiet rather than
+            // guess — local-binary-added is a diff rule.
+            added: false,
+        });
+    }
+}
+
+fn read_head(p: &Path, n: usize) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(p)?;
+    let mut buf = vec![0u8; n];
+    let read = f.read(&mut buf)?;
+    buf.truncate(read);
+    Ok(buf)
 }
 
 fn print_json(res: &ScanResult) -> Result<(), serde_json::Error> {
@@ -321,4 +366,77 @@ fn print_text(res: &ScanResult) {
             println!("    {}", f.evidence);
         }
     }
+}
+
+// --- G4: built-package inspection ---
+//
+// Runs after makepkg and before `pacman -U`. Text analysis of the PKGBUILD
+// cannot see what the build actually produced; this can.
+
+/// `aegis aur inspect <pkg.tar.zst>` — inspect a built pacman package.
+pub(crate) fn run_pkg_inspect(file: &str, json: bool) -> ExitCode {
+    let entries = match read_pkg_entries(Path::new(file)) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("aegis: {file}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let name = Path::new(file)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let res = aegis_pkgbuild::inspect_package(&name, &entries);
+
+    if json {
+        if let Err(e) = print_json(&res) {
+            eprintln!("aegis: json encode failed: {e}");
+            return ExitCode::from(2);
+        }
+    } else {
+        print_text(&res);
+    }
+    match res.verdict {
+        Verdict::Block => ExitCode::from(1),
+        _ => ExitCode::SUCCESS,
+    }
+}
+
+/// Read the tar member list out of a pacman package.
+///
+/// Only the headers are needed — never the file bodies — so this streams
+/// and does not extract anything to disk.
+fn read_pkg_entries(path: &Path) -> Result<Vec<aegis_pkgbuild::PkgEntry>, String> {
+    let f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let name = path.to_string_lossy();
+    let reader: Box<dyn std::io::Read> = if name.ends_with(".zst") {
+        Box::new(
+            ruzstd::decoding::StreamingDecoder::new(std::io::BufReader::new(f))
+                .map_err(|e| format!("zstd: {e}"))?,
+        )
+    } else if name.ends_with(".gz") {
+        Box::new(flate2::read::GzDecoder::new(f))
+    } else if name.ends_with(".tar") {
+        Box::new(f)
+    } else {
+        // .xz needs a C liblzma; pacman has defaulted to zstd since 2020.
+        return Err("unsupported compression (expected .zst, .gz or .tar)".into());
+    };
+
+    let mut archive = tar::Archive::new(reader);
+    let mut out = Vec::new();
+    for entry in archive.entries().map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let header = entry.header();
+        out.push(aegis_pkgbuild::PkgEntry {
+            path: entry
+                .path()
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .into_owned(),
+            mode: header.mode().unwrap_or(0),
+            size: header.size().unwrap_or(0),
+        });
+    }
+    Ok(out)
 }

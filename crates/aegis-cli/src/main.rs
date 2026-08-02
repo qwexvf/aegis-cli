@@ -222,6 +222,17 @@ enum AurSub {
         #[arg(long)]
         json: bool,
     },
+    /// Inspect a BUILT package (.pkg.tar.zst) before `pacman -U` installs it:
+    /// pacman hooks, setuid bits, sudoers drop-ins, ld.so.preload, files
+    /// outside the managed prefixes. Sees what the build produced, which the
+    /// PKGBUILD text cannot show.
+    Inspect {
+        /// Path to the built package.
+        file: String,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Scan a whole transaction from a JSON payload on stdin — one process
     /// per transaction rather than one per package. Exits 0 whenever the
     /// scan succeeded; read the per-package verdicts from the report.
@@ -375,6 +386,7 @@ fn main() -> ExitCode {
         Command::Aur { sub } => match sub {
             AurSub::Scan { dir, json } => aur::run_aur_scan(&dir, json),
             AurSub::Gate => aur::run_aur_gate(),
+            AurSub::Inspect { file, json } => aur::run_pkg_inspect(&file, json),
         },
         Command::Image {
             file,
