@@ -5,7 +5,8 @@
 Goal: clean-room rewrite of aegis-cli (Go, ~59k LOC, v0.29) into Rust, to full
 feature parity, then flip the default. Go stays frozen at v0.29 until parity.
 
-Location : /home/qwexvf/projects/aegis/aegis-rs  (own standalone git repo)
+Location : this repository (standalone; the Go tree it replaced lives on the
+           release tags v0.29.1 and earlier)
 Branch   : port/domain-lockfile
 Plan     : ~/.claude/plans/twinkly-scribbling-gadget.md
 
@@ -735,7 +736,6 @@ RUST-AHEAD (Rust does MORE than Go v0.29 — kept, documented):
 -------------------------------------------------------------------------------
  QUICK START TOMORROW
 -------------------------------------------------------------------------------
-  cd /home/qwexvf/projects/aegis/aegis-rs
   git log --oneline | head          # 168 commits on branch port/domain-lockfile
   cargo test --workspace            # 549 tests, all green
   ./target/debug/aegis --help       # 13 cmds: parse/analyze/ci/run/sbom/fix/
@@ -747,5 +747,5 @@ RUST-AHEAD (Rust does MORE than Go v0.29 — kept, documented):
   cargo run -q -p xtask -- analyze-parity   # 27/27 vs Go goldens (offline)
   cargo run -q -p xtask -- sbom-parity      # 4/4   vs Go goldens (offline)
   cargo run -q -p xtask -- ci-parity        # 6/6   replay cassette (offline)
-  # Go source to port from: /home/qwexvf/projects/aegis/aegis-cli/internal/...
+  # Go source to port from: a checkout of tag v0.29.1 (internal/...)
 ===============================================================================
