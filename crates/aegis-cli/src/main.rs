@@ -3,19 +3,22 @@
 //! (enrich, ci, analyze) land as the usecase layer is ported.
 
 mod aur;
+mod cache;
 mod commands;
 mod enrich;
+mod hook;
 mod scan;
 mod snapshot;
 mod util;
 
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 
 use commands::{
-    run_actions, run_allowlist, run_analyze, run_ci, run_config, run_explain, run_fix, run_hook,
-    run_image, run_parse, run_reach, run_sbom,
+    run_actions, run_allowlist, run_analyze, run_ci, run_config, run_explain, run_fix, run_image,
+    run_parse, run_reach, run_sbom,
 };
 
 #[derive(Parser)]
@@ -105,15 +108,35 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Print (or install) a git pre-commit hook that scans staged lockfiles.
+    /// Print, install, or remove a git pre-commit hook that scans staged
+    /// lockfiles. Detects lefthook and husky before falling back to
+    /// .git/hooks, and brackets its entry in managed markers so it never
+    /// clobbers a hook you already have.
     Hook {
-        /// Write the hook to .git/hooks/pre-commit (and chmod +x) instead of
-        /// printing it to stdout.
+        /// Write the step into the project's hook config.
         #[arg(long)]
         install: bool,
+        /// Remove the aegis step, leaving the rest of the hook intact.
+        #[arg(long, conflicts_with = "install")]
+        uninstall: bool,
     },
     /// Print a GitHub Actions workflow that runs `aegis ci` on every push.
     Actions {},
+    /// Inspect or clear the on-disk advisory caches (CISA KEV, OSV documents).
+    Cache {
+        #[command(subcommand)]
+        sub: CacheSub,
+    },
+    /// Generate a shell completion script.
+    ///
+    ///   bash: source <(aegis completion bash)
+    ///   zsh:  aegis completion zsh > "${fpath[1]}/_aegis"
+    ///   fish: aegis completion fish > ~/.config/fish/completions/aegis.fish
+    Completion {
+        /// Shell to generate for.
+        #[arg(value_enum)]
+        shell: Shell,
+    },
     /// Snapshot lifecycle: save / show / diff / enrich / verify / rescan plus
     /// `capture` (the Rust-specific single-package fingerprint mode). Run
     /// `aegis snapshot help` for the per-subcommand detail.
@@ -205,6 +228,22 @@ enum Command {
         /// Emit SARIF 2.1.0 (for GitHub Code Scanning). Overrides --json.
         #[arg(long)]
         sarif: bool,
+    },
+}
+
+/// `aegis cache` subcommands.
+#[derive(Subcommand)]
+enum CacheSub {
+    /// Show each cache pool: entry count, size, how many are past their TTL.
+    List {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete cached entries. Safe — they are refetched on demand.
+    Clear {
+        /// Only this pool (`kev` or `osv`). Omit to clear everything.
+        pool: Option<String>,
     },
 }
 
@@ -355,7 +394,7 @@ fn main() -> ExitCode {
             transitive,
             json,
         } => run_reach(&dir, &package, function.as_deref(), transitive, json),
-        Command::Hook { install } => run_hook(install),
+        Command::Hook { install, uninstall } => hook::run_hook(install, uninstall),
         Command::Actions {} => run_actions(),
         Command::Snapshot { sub } => match sub {
             SnapshotSub::Save { dir } => snapshot::run_snapshot_save(&dir),
@@ -383,6 +422,16 @@ fn main() -> ExitCode {
                 baseline.as_deref(),
             ),
         },
+        Command::Cache { sub } => match sub {
+            CacheSub::List { json } => cache::run_cache_list(json),
+            CacheSub::Clear { pool } => cache::run_cache_clear(pool.as_deref()),
+        },
+        Command::Completion { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+            ExitCode::SUCCESS
+        }
         Command::Aur { sub } => match sub {
             AurSub::Scan { dir, json } => aur::run_aur_scan(&dir, json),
             AurSub::Gate => aur::run_aur_gate(),
