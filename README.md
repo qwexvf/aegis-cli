@@ -46,10 +46,14 @@ macOS is enough; there is no cgo boundary and no separate grammar toolchain.
 | `snapshot <sub>` | `aegis.lock` lifecycle — see [Snapshots](#snapshots) |
 | `aur <sub>` | AUR / PKGBUILD install gate — see [AUR packages](#aur-packages) |
 | `reach <dir> <pkg>` | is a dependency imported (reachable) in JS/TS/Py/Go/PHP source? |
-| `allowlist` | list built-in capability-suppression rules |
+| `allowlist <sub>` | manage capability suppressions — see [Allowlist](#allowlist) |
 | `explain [capability\|pkg@ver]` | the risk model, or a published package's capabilities |
-| `hook [--install]` | git pre-commit hook that scans staged lockfiles |
-| `actions` | generate a GitHub Actions workflow (runs `ci`, uploads SARIF) |
+| `hook [--install\|--uninstall]` | git pre-commit hook that scans staged lockfiles |
+| `actions` / `actions scan` | generate a workflow, or audit existing ones for risk |
+| `audit tail` | the local decision log — what was scanned, and what the verdict was |
+| `cache list` / `cache clear` | the on-disk advisory caches (CISA KEV, OSV documents) |
+| `doctor` | check the environment can run a scan; exits 1 on a real problem |
+| `completion <shell>` | shell completion script (bash, zsh, fish, powershell, elvish) |
 
 Most reporting commands take `--json`; `ci`, `analyze`, and `run` also take
 `--sarif` (SARIF 2.1.0 for GitHub Code Scanning). Exit codes: `0` clean, `1`
@@ -131,6 +135,38 @@ aegis snapshot capture ./pkg-v1 --out baseline.json
 aegis snapshot capture ./pkg-v2 --baseline baseline.json
 #   + shell-spawn  (NEW capability — possible takeover)   → exit 1
 ```
+
+## Allowlist
+
+Some capabilities are legitimate for a given package: a build tool really
+does spawn a shell, a template engine really does call `Function()`. An
+allowlist records that decision so it stops showing up as a finding.
+
+```sh
+aegis allowlist list                     # builtin + user + project
+aegis allowlist add lodash --capability dynamic-eval \
+    --reason "template compiler, reviewed 2026-08"
+aegis allowlist test npm/lodash@4.17.21  # which rules match, and why
+aegis allowlist verify                   # both files parse and compile
+aegis allowlist remove lodash --capability dynamic-eval
+```
+
+Three layers, applied in order:
+
+| layer | where | scope |
+|---|---|---|
+| builtin | compiled in | curated, ships with the binary |
+| user | `$XDG_CONFIG_HOME/aegis/allowlist.toml` | every project on the machine |
+| project | `aegis.toml` | committed, shared with the team |
+
+`--reason` is required. A suppression nobody explained is
+indistinguishable from a mistake six months later, and the point of an
+allowlist is that somebody decided the risk was acceptable.
+
+Rules are validated before they are written, so an unknown capability or
+a malformed semver range cannot land on disk and quietly break every
+later scan. Editing `aegis.toml` preserves the rest of the file — your
+`[[task]]` entries survive.
 
 ## AUR packages
 
@@ -230,7 +266,7 @@ published source during `ci` and `snapshot enrich`.
 ## Development
 
 ```sh
-cargo test --workspace                    # 617 tests
+cargo test --workspace                    # 657 tests
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -q -p xtask -- analyze-parity   # 27/27 vs Go goldens (offline)
 cargo run -q -p xtask -- sbom-parity      # 4/4   vs Go goldens (offline)
@@ -254,19 +290,44 @@ The Rust CLI is flat, stateless-by-default, and CI-first. Scanning behavior
 (verdicts, scores, capabilities, advisories) is at parity and gated in CI, but
 the command surface differs:
 
+**Renamed or reshaped**
+
 | Go v0.29 | Rust |
 |---|---|
 | `analyze <spec>` (fetch by name) | `explain <name@version>` |
 | `analyze <spec> --local <dir>` | `analyze <dir>` |
-| `actions scan` (scan workflows for risk) | *not ported* — `actions` **generates** a workflow |
-| `allowlist add/remove/test/verify` | *not ported* — `allowlist` dumps the built-in rules read-only |
-| `snapshot save/show/diff/enrich/verify/rescan` | same |
-| `snapshot submit`, `cloud`, `admin`, `recheck`, `allowlist sync` | *not ported* — cloud-coupled, out of scope |
-| `cache`, `audit`, `doctor`, `completion`, `hook uninstall` | *not ported* |
+| `hook install` / `uninstall` | `hook --install` / `--uninstall` |
+| `image scan` | `image` (the subcommand level was flattened away) |
+| `version` | `--version` |
 
-Rust adds commands Go has no analog for: `parse`, `run` (aegis.toml task
-runner), `reach`, `snapshot capture`, `aur` (the PKGBUILD install gate), and
-`explain`'s capability-catalog mode.
+**Same command, same behaviour**
+
+`allowlist` (`add`/`remove`/`list`/`test`/`verify`), `actions scan`, `audit
+tail`, `cache` (`list`/`clear`), `doctor`, `completion`, `snapshot`
+(`save`/`show`/`diff`/`enrich`/`verify`/`rescan`), `ci`, `fix`, `sbom`,
+`explain`.
+
+Some of these differ in what they operate on rather than what they do.
+Go's `cache` managed a decision cache the Rust port deliberately does not
+keep; the Rust one manages the advisory feed cache instead. Go's `doctor`
+checked the Cloud API; the Rust one checks the feeds and the allowlist.
+
+**Not ported — cloud-coupled, and out of scope by design**
+
+`admin`, `admin gen-key`, `cloud`, `cloud analyze`, `recheck`,
+`snapshot submit`, `allowlist sync`. The CLI talks to Aegis Cloud over
+HTTP only, and that side lives in a different repository.
+
+**Not ported — declined**
+
+The interactive TUI. JSON, SARIF, CycloneDX and SPDX already feed
+dashboards and GitHub code scanning, which is what a CI-first scanner
+needs.
+
+**Rust-only**
+
+`parse`, `run` (an `aegis.toml` task runner), `reach`, `snapshot capture`,
+`aur` (the PKGBUILD install gate), and `explain`'s capability-catalog mode.
 
 ## Security
 
