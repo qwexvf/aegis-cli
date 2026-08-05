@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use aegis_ast::{scanner_for, Findings, LanguageScanner};
+use aegis_ast::{scanner_for, Evidence, Findings, LanguageScanner};
 use aegis_domain::{
     risk_score, Capability, CapabilitySet, Dependency, Ecosystem, Fingerprint, HookPhase,
     InstallHook, RiskAssessment,
@@ -82,6 +82,23 @@ pub(crate) fn scan_source(
     (fp.capabilities, assessment)
 }
 
+/// Like [`scan_source`], but also returns where each capability was observed.
+///
+/// Evidence costs a snippet allocation per capability hit, so it is opt-in:
+/// `ci` and `snapshot` scan whole dependency trees and do not want it, while
+/// `explain` looks at one package and is the thing a human — or a public
+/// package report — needs to be able to cite.
+pub(crate) fn scan_source_with_evidence(
+    files: &[(String, Vec<u8>)],
+    pkg_name: &str,
+    eco: Ecosystem,
+    extra_caps: Vec<aegis_domain::Capability>,
+) -> (Fingerprint, RiskAssessment, Vec<Evidence>) {
+    let (fp, evidence) = fingerprint_inner(files, pkg_name, eco, extra_caps, true);
+    let assessment = risk_score(Some(&fp));
+    (fp, assessment, evidence)
+}
+
 /// Build the full [`Fingerprint`] for a package's source (capabilities, install
 /// hooks, source size, env reads). `scan_source` wraps this + `risk_score`;
 /// `snapshot` needs the whole fingerprint for behavioral-drift diffing.
@@ -91,6 +108,19 @@ pub(crate) fn fingerprint_source(
     eco: Ecosystem,
     extra_caps: Vec<aegis_domain::Capability>,
 ) -> Fingerprint {
+    fingerprint_inner(files, pkg_name, eco, extra_caps, false).0
+}
+
+/// Shared implementation. `collect_evidence` turns on per-capability
+/// file/line/snippet capture in the AST layer; the returned vector is empty
+/// when it is off.
+fn fingerprint_inner(
+    files: &[(String, Vec<u8>)],
+    pkg_name: &str,
+    eco: Ecosystem,
+    extra_caps: Vec<aegis_domain::Capability>,
+    collect_evidence: bool,
+) -> (Fingerprint, Vec<Evidence>) {
     // Compile one scanner per distinct extension once; share it read-only
     // across the rayon pool; scan every file concurrently; merge.
     let mut scanners: HashMap<String, Option<Arc<dyn LanguageScanner>>> = HashMap::new();
@@ -109,7 +139,7 @@ pub(crate) fn fingerprint_source(
     let findings = files
         .par_iter()
         .map(|(rel, bytes)| {
-            let mut f = Findings::new(false);
+            let mut f = Findings::new(collect_evidence);
             if let Some(ext) = rel.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()) {
                 if let Some(Some(scanner)) = scanners.get(&ext) {
                     scanner.analyze_file(rel, bytes, &mut f);
@@ -139,13 +169,16 @@ pub(crate) fn fingerprint_source(
         caps.push(Capability::InstallHookExec);
     }
 
-    Fingerprint {
-        analyzed: true,
-        capabilities: CapabilitySet::new(caps),
-        env_reads: findings.env_reads().to_vec(),
-        source_size_bytes: source_bytes,
-        hooks,
-    }
+    (
+        Fingerprint {
+            analyzed: true,
+            capabilities: CapabilitySet::new(caps),
+            env_reads: findings.env_reads().to_vec(),
+            source_size_bytes: source_bytes,
+            hooks,
+        },
+        findings.evidence().to_vec(),
+    )
 }
 
 /// Directories that hold dependency installs or build output, not user
@@ -373,7 +406,7 @@ pub(crate) fn fetch_and_scan_package(
     eco: Ecosystem,
     name: &str,
     version: &str,
-) -> Result<(CapabilitySet, RiskAssessment), String> {
+) -> Result<ScannedPackage, String> {
     if !is_enriched_ecosystem(eco) {
         return Err(format!(
             "explain: no source fetcher for ecosystem {}",
@@ -390,9 +423,32 @@ pub(crate) fn fetch_and_scan_package(
     let files = fetch_source(&http, &dep)?;
     let allow = aegis_domain::AllowSet::new(aegis_domain::builtin_allow_rules())
         .unwrap_or_else(|_| aegis_domain::AllowSet::empty());
-    let (caps, assessment) = scan_source(&files, name, eco, Vec::new());
+    // Evidence on: `explain` is the per-package view, and its output is what a
+    // public package report cites. Without file/line/snippet a report says
+    // "this package can spawn a shell" with nothing to check it against.
+    let (fp, assessment, evidence) = scan_source_with_evidence(&files, name, eco, Vec::new());
     let assessment = aegis_domain::apply_allowlist(&assessment, &allow, eco, name, version);
-    Ok((caps, assessment))
+    Ok(ScannedPackage {
+        capabilities: fp.capabilities,
+        env_reads: fp.env_reads,
+        hooks: fp.hooks,
+        assessment,
+        evidence,
+    })
+}
+
+/// Everything `explain` learned about one published package.
+///
+/// Replaces the earlier `(CapabilitySet, RiskAssessment)` pair: a public report
+/// needs the observations (`env_reads`, `hooks`, `evidence`) alongside the
+/// judgement, and threading four more tuple positions through would not survive
+/// the next addition.
+pub(crate) struct ScannedPackage {
+    pub(crate) capabilities: CapabilitySet,
+    pub(crate) env_reads: Vec<String>,
+    pub(crate) hooks: Vec<aegis_domain::InstallHook>,
+    pub(crate) assessment: RiskAssessment,
+    pub(crate) evidence: Vec<Evidence>,
 }
 
 /// Map the heuristics' manifest hooks onto domain [`InstallHook`]s. Phase

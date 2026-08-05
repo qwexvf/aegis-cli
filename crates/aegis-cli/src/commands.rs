@@ -1503,6 +1503,33 @@ struct ExplainPackageView {
     verdict: String,
     score: i32,
     capabilities: Vec<CapabilityDoc>,
+    /// Where each capability was observed. This is what makes a claim
+    /// checkable: "spawns a shell" is an assertion, "spawns a shell at
+    /// lib/index.js:42, `child_process.exec(cmd)`" is a citation.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    evidence: Vec<EvidenceView>,
+    /// Environment variables the source reads. Credential names here are the
+    /// signal worth having.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    env_reads: Vec<String>,
+    /// Declared install-time scripts.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    hooks: Vec<HookView>,
+}
+
+/// One observation: capability, file, line, and the source that triggered it.
+#[derive(Serialize)]
+struct EvidenceView {
+    capability: String,
+    file: String,
+    line: usize,
+    snippet: String,
+}
+
+#[derive(Serialize)]
+struct HookView {
+    phase: String,
+    source: String,
 }
 
 /// Split a package spec into (name, version). The version is after the LAST
@@ -1525,17 +1552,23 @@ fn explain_package(spec: &str, ecosystem: &str, json: bool) -> ExitCode {
         return ExitCode::from(2);
     };
 
-    let (caps, assessment) = match fetch_and_scan_package(eco, name, version) {
+    let scanned = match fetch_and_scan_package(eco, name, version) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("aegis: {e}");
             return ExitCode::from(2);
         }
     };
+    let assessment = scanned.assessment;
     // List the full capability set (like Go), while score/verdict come from the
     // allowlisted assessment — so an allowlist-suppressed capability shows but
     // doesn't inflate the score.
-    let mut docs: Vec<CapabilityDoc> = caps.iter().copied().map(capability_doc).collect();
+    let mut docs: Vec<CapabilityDoc> = scanned
+        .capabilities
+        .iter()
+        .copied()
+        .map(capability_doc)
+        .collect();
     docs.sort_by(|a, b| {
         b.weight
             .cmp(&a.weight)
@@ -1551,6 +1584,38 @@ fn explain_package(spec: &str, ecosystem: &str, json: bool) -> ExitCode {
             verdict: v.name().to_string(),
             score: assessment.score,
             capabilities: docs,
+            // Sorted so two runs over the same tarball produce byte-identical
+            // output — the corpus diffs this, and a HashMap-ordered list would
+            // read as drift every night.
+            evidence: {
+                let mut e: Vec<EvidenceView> = scanned
+                    .evidence
+                    .iter()
+                    .map(|x| EvidenceView {
+                        capability: x.capability.name().to_string(),
+                        file: x.path.clone(),
+                        line: x.line,
+                        snippet: x.snippet.clone(),
+                    })
+                    .collect();
+                e.sort_by(|a, b| {
+                    (&a.file, a.line, &a.capability).cmp(&(&b.file, b.line, &b.capability))
+                });
+                e
+            },
+            env_reads: {
+                let mut v = scanned.env_reads.clone();
+                v.sort();
+                v
+            },
+            hooks: scanned
+                .hooks
+                .iter()
+                .map(|h| HookView {
+                    phase: format!("{:?}", h.phase).to_lowercase(),
+                    source: h.source.clone(),
+                })
+                .collect(),
         };
         match serde_json::to_string_pretty(&view) {
             Ok(s) => println!("{s}"),
