@@ -254,12 +254,33 @@ fn word_in(hay: &str, needle: &str) -> bool {
     false
 }
 
-/// Pre-order walk. Mirrors `walkAST`.
-fn walk(node: Node, f: &mut impl FnMut(Node)) {
-    f(node);
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk(child, f);
+/// Pre-order walk. Mirrors `walkAST`, but iterative.
+///
+/// Recursion here was a stack overflow — one frame per level of AST nesting,
+/// and nesting depth is attacker-controlled. `@babel/traverse@8.0.4` and
+/// `@babel/types@8.0.4` (both scanned by nearly every JS project) crashed the
+/// scanner outright on a 512 KiB thread stack; a hand-written file can nest
+/// arbitrarily deep. A tree cursor walks the same order in constant stack.
+fn walk(root: Node, f: &mut impl FnMut(Node)) {
+    let mut cursor = root.walk();
+    'descend: loop {
+        f(cursor.node());
+        if cursor.goto_first_child() {
+            continue;
+        }
+        // Leaf: climb until a node has a next sibling, stopping at the root so
+        // a subtree walk never escapes upward into the rest of the tree.
+        loop {
+            if cursor.node() == root {
+                return;
+            }
+            if cursor.goto_next_sibling() {
+                continue 'descend;
+            }
+            if !cursor.goto_parent() {
+                return;
+            }
+        }
     }
 }
 
