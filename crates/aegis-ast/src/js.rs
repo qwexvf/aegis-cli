@@ -27,6 +27,29 @@ mod tests {
         f.capabilities()
     }
 
+    /// Depth of AST nesting is attacker-controlled, so the taint walk must not
+    /// recurse. `@babel/traverse@8.0.4` and `@babel/types@8.0.4` — dependencies
+    /// of nearly every JS project — aborted the scanner with
+    /// `fatal runtime error: stack overflow` on a rayon worker; a hand-written
+    /// file can nest far deeper than a bundler ever would. Scanning happens on
+    /// pool threads, so the small stack here is the realistic case, not a
+    /// contrived one.
+    #[test]
+    fn deep_nesting_does_not_overflow_a_small_stack() {
+        const DEPTH: usize = 20_000;
+        let src = format!("const a = {}1{};", "[".repeat(DEPTH), "]".repeat(DEPTH));
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(move || {
+                let s = scanner().unwrap();
+                let mut f = Findings::new(false);
+                s.analyze_file("deep.js", src.as_bytes(), &mut f);
+            })
+            .unwrap()
+            .join()
+            .expect("scanning a deeply nested file must not overflow the stack");
+    }
+
     #[test]
     fn detects_eval() {
         assert!(scan("eval('x')").contains(&Capability::DynamicEval));

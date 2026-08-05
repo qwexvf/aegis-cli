@@ -305,25 +305,51 @@ fn language_for(path: &str) -> Option<Language> {
     }
 }
 
-/// Recursively walk the tree, converting import containers into records.
+/// Pre-order walk in constant stack space.
+///
+/// The per-language walkers below used to recurse, one frame per level of AST
+/// nesting — and nesting depth comes from the package under analysis, so a
+/// deeply nested file (generated bundles reach it without trying; a crafted one
+/// can go as deep as it likes) overflowed the stack and aborted the process.
+/// A tree cursor visits the same nodes in the same order without recursing.
+fn preorder(root: Node, f: &mut impl FnMut(Node)) {
+    let mut cursor = root.walk();
+    'descend: loop {
+        f(cursor.node());
+        if cursor.goto_first_child() {
+            continue;
+        }
+        // Leaf: climb until a node has a next sibling, stopping at the root so
+        // a subtree walk never escapes upward into the rest of the tree.
+        loop {
+            if cursor.node() == root {
+                return;
+            }
+            if cursor.goto_next_sibling() {
+                continue 'descend;
+            }
+            if !cursor.goto_parent() {
+                return;
+            }
+        }
+    }
+}
+
+/// Walk the tree, converting import containers into records.
 fn walk(node: Node, body: &[u8], out: &mut Vec<Import>) {
-    match node.kind() {
+    preorder(node, &mut |n| match n.kind() {
         "import_statement" => {
-            if let Some(imp) = parse_import_statement(node, body) {
+            if let Some(imp) = parse_import_statement(n, body) {
                 out.push(imp);
             }
         }
         "call_expression" => {
-            if let Some(imp) = parse_call_expression(node, body) {
+            if let Some(imp) = parse_call_expression(n, body) {
                 out.push(imp);
             }
         }
         _ => {}
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk(child, body, out);
-    }
+    });
 }
 
 /// Turn an `import_statement` node into one [`Import`].
@@ -434,27 +460,22 @@ fn is_relative_python(raw: &str) -> bool {
     raw.starts_with('.')
 }
 
-/// Recursively walk a Python tree, converting import containers into
-/// records.
+/// Walk a Python tree, converting import containers into records.
 fn walk_python(node: Node, body: &[u8], out: &mut Vec<Import>) {
-    match node.kind() {
-        "import_statement" => parse_py_import_statement(node, body, out),
+    preorder(node, &mut |n| match n.kind() {
+        "import_statement" => parse_py_import_statement(n, body, out),
         "import_from_statement" => {
-            if let Some(imp) = parse_py_import_from(node, body) {
+            if let Some(imp) = parse_py_import_from(n, body) {
                 out.push(imp);
             }
         }
         "call" => {
-            if let Some(imp) = parse_py_dynamic_call(node, body) {
+            if let Some(imp) = parse_py_dynamic_call(n, body) {
                 out.push(imp);
             }
         }
         _ => {}
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk_python(child, body, out);
-    }
+    });
 }
 
 /// Handle `import a, b as c, d.e` — each `dotted_name` / `aliased_import`
@@ -601,19 +622,17 @@ pub fn dep_key_go(raw: &str) -> String {
     raw.to_string()
 }
 
-/// Recursively walk a Go tree, converting `import_spec` nodes into
-/// records. Handles bare, aliased, dot (`.`), and blank (`_`) imports —
-/// all are static; the alias itself is dropped for this slice.
+/// Walk a Go tree, converting `import_spec` nodes into records. Handles
+/// bare, aliased, dot (`.`), and blank (`_`) imports — all are static; the
+/// alias itself is dropped for this slice.
 fn walk_go(node: Node, body: &[u8], out: &mut Vec<Import>) {
-    if node.kind() == "import_spec" {
-        if let Some(imp) = parse_go_import_spec(node, body) {
-            out.push(imp);
+    preorder(node, &mut |n| {
+        if n.kind() == "import_spec" {
+            if let Some(imp) = parse_go_import_spec(n, body) {
+                out.push(imp);
+            }
         }
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk_go(child, body, out);
-    }
+    });
 }
 
 /// Turn an `import_spec` node into one [`Import`]. Reads the `path` field
@@ -655,25 +674,21 @@ pub fn dep_key_php(_raw: &str) -> String {
     String::new()
 }
 
-/// Recursively walk a PHP tree, converting `use` declarations and
-/// include/require expressions into records.
+/// Walk a PHP tree, converting `use` declarations and include/require
+/// expressions into records.
 fn walk_php(node: Node, body: &[u8], out: &mut Vec<Import>) {
-    match node.kind() {
-        "namespace_use_declaration" => parse_php_use_decl(node, body, out),
+    preorder(node, &mut |n| match n.kind() {
+        "namespace_use_declaration" => parse_php_use_decl(n, body, out),
         "include_expression"
         | "include_once_expression"
         | "require_expression"
         | "require_once_expression" => {
-            if let Some(imp) = parse_php_include(node, body) {
+            if let Some(imp) = parse_php_include(n, body) {
                 out.push(imp);
             }
         }
         _ => {}
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk_php(child, body, out);
-    }
+    });
 }
 
 /// Handle `use Foo\Bar;`, `use Foo\Bar as B;`, and the group form
@@ -823,19 +838,16 @@ fn is_relative_ruby(raw: &str) -> bool {
     raw.starts_with("./") || raw.starts_with("../") || raw.starts_with('/')
 }
 
-/// Recursively walk a Ruby tree, converting `require`/`require_relative`/
-/// `load`/`gem`/`autoload` calls with a literal string argument into
-/// records.
+/// Walk a Ruby tree, converting `require`/`require_relative`/`load`/`gem`/
+/// `autoload` calls with a literal string argument into records.
 fn walk_ruby(node: Node, body: &[u8], out: &mut Vec<Import>) {
-    if node.kind() == "call" {
-        if let Some(imp) = parse_ruby_require(node, body) {
-            out.push(imp);
+    preorder(node, &mut |n| {
+        if n.kind() == "call" {
+            if let Some(imp) = parse_ruby_require(n, body) {
+                out.push(imp);
+            }
         }
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk_ruby(child, body, out);
-    }
+    });
 }
 
 /// Extract the string-literal argument from a require-family call.
@@ -2839,6 +2851,37 @@ mod tests {
 
     fn extract(src: &str) -> Vec<Import> {
         extract_imports(src.as_bytes())
+    }
+
+    /// Same class of bug as the JS taint walk: nesting depth comes from the
+    /// package under analysis, so an import walk that recursed could be made to
+    /// abort the process. Every language shares `preorder`, so covering one
+    /// grammar plus a nested-import assertion is enough to pin the behaviour.
+    #[test]
+    fn deep_nesting_does_not_overflow_a_small_stack() {
+        const DEPTH: usize = 20_000;
+        let src = format!(
+            "import 'lodash';\nconst a = {}1{};",
+            "[".repeat(DEPTH),
+            "]".repeat(DEPTH)
+        );
+        let imps = std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(move || extract_imports(src.as_bytes()))
+            .unwrap()
+            .join()
+            .expect("extracting imports from a deeply nested file must not overflow");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "lodash");
+    }
+
+    /// An import nested inside blocks must still be found — the iterative walk
+    /// has to descend, not just scan top-level statements.
+    #[test]
+    fn nested_import_is_still_found() {
+        let imps = extract("function f() { if (x) { require('lodash'); } }");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].module, "lodash");
     }
 
     #[test]
