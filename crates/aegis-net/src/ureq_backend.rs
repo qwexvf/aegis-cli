@@ -7,9 +7,14 @@ use crate::{Header, HttpClient, HttpError, HttpResponse};
 /// Default outbound User-Agent, mirroring httpx's stamping.
 const USER_AGENT: &str = concat!("aegis-cli/", env!("CARGO_PKG_VERSION"));
 
-/// Cap on response body size read into memory (mirrors
-/// `httpx.MaxJSONResponseBytes`): 32 MiB.
-const MAX_RESPONSE_BYTES: u64 = 32 * 1024 * 1024;
+/// Cap on response body size read into memory.
+///
+/// Was 32 MiB, inherited from `httpx.MaxJSONResponseBytes` where it only ever
+/// guarded JSON. The same client now fetches source archives, and real packages
+/// exceed it: pillow's sdist is 44.8 MiB, `aws-sdk-go`'s module zip 34.4 MiB,
+/// `klauspost/compress` 37.4 MiB. 128 MiB clears the largest artifact in the
+/// corpus with room to spare while still bounding any single response.
+const MAX_RESPONSE_BYTES: u64 = 128 * 1024 * 1024;
 
 pub struct UreqClient {
     agent: ureq::Agent,
@@ -126,16 +131,40 @@ fn into_response(result: Result<ureq::Response, ureq::Error>) -> Result<HttpResp
                 .map(|v| (name.to_ascii_lowercase(), v.to_string()))
         })
         .collect();
-    let mut body = Vec::new();
-    resp.into_reader()
-        .take(MAX_RESPONSE_BYTES)
-        .read_to_end(&mut body)
-        .map_err(|e| HttpError(format!("read body: {e}")))?;
+    let body = read_capped(resp.into_reader())?;
     Ok(HttpResponse {
         status,
         body,
         headers,
     })
+}
+
+/// Read a body, refusing to return a partial one.
+///
+/// `take(cap).read_to_end()` stops at the cap and reports success, so an
+/// oversized response used to arrive as a 200 with a silently truncated body.
+/// Downstream then blamed the wrong layer — a clipped module zip surfaced as
+/// `invalid Zip archive: Could not find EOCD` and a clipped sdist as
+/// `tar entry: unexpected end of file`, neither of which mentions a size limit.
+///
+/// Worse than the confusing message: a truncated archive still parses up to the
+/// cut, so capabilities living past it are invisible and the package can score
+/// clean on partial evidence. Reading one byte past the cap is what makes
+/// "too large" distinguishable from "exactly the cap", and it is reported as an
+/// error so no caller can mistake a fragment for the whole artifact.
+fn read_capped(reader: impl std::io::Read) -> Result<Vec<u8>, HttpError> {
+    let mut body = Vec::new();
+    reader
+        .take(MAX_RESPONSE_BYTES + 1)
+        .read_to_end(&mut body)
+        .map_err(|e| HttpError(format!("read body: {e}")))?;
+    if body.len() as u64 > MAX_RESPONSE_BYTES {
+        return Err(HttpError(format!(
+            "response exceeds the {} MiB body cap",
+            MAX_RESPONSE_BYTES / (1024 * 1024)
+        )));
+    }
+    Ok(body)
 }
 
 impl HttpClient for UreqClient {
@@ -227,6 +256,31 @@ mod tests {
         assert_eq!(interleave_families(vec![v4(1)]), vec![v4(1)]);
         assert_eq!(interleave_families(vec![v6(1), v4(1)]), vec![v6(1), v4(1)]);
         assert!(interleave_families(Vec::new()).is_empty());
+    }
+
+    /// A body at exactly the cap is whole, so it must come back intact.
+    #[test]
+    fn body_at_the_cap_is_returned() {
+        let body = vec![b'x'; MAX_RESPONSE_BYTES as usize];
+        let got = read_capped(std::io::Cursor::new(body)).expect("at the cap is not over it");
+        assert_eq!(got.len() as u64, MAX_RESPONSE_BYTES);
+    }
+
+    /// The bug this exists for: one byte over the cap used to return Ok with a
+    /// truncated body, so a clipped archive was scanned as if it were complete.
+    #[test]
+    fn oversized_body_errors_instead_of_truncating() {
+        let body = vec![b'x'; MAX_RESPONSE_BYTES as usize + 1];
+        let err = read_capped(std::io::Cursor::new(body)).expect_err("must not truncate");
+        assert!(err.0.contains("body cap"), "{}", err.0);
+    }
+
+    /// Real artifacts that the old 32 MiB cap clipped: pillow 44.8 MiB,
+    /// aws-sdk-go 34.4 MiB, klauspost/compress 37.4 MiB.
+    #[test]
+    fn cap_admits_the_largest_artifacts_in_the_corpus() {
+        let pillow_sdist: u64 = 47_025_035;
+        assert!(pillow_sdist < MAX_RESPONSE_BYTES);
     }
 
     /// The connect budget must be bounded independently of the total, or one
