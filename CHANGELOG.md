@@ -8,6 +8,45 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
+## Unreleased
+
+Found by pointing the CLI at 592 real packages in Firecracker microVMs
+([aegis-corpus](https://github.com/qwexvf/aegis-corpus)). Two of these hid
+findings rather than announcing themselves, which is the argument for running a
+soak at all.
+
+### Fixed
+
+* **Stack overflow on deeply nested source.** The JS taint walk and all five
+  reachability import walkers recursed once per level of AST nesting, and nesting
+  depth comes from the package being scanned — `@babel/traverse@8.0.4` and
+  `@babel/types@8.0.4`, transitive dependencies of most JavaScript projects,
+  aborted the scanner with `fatal runtime error: stack overflow`. A crafted
+  package could trigger it deliberately, so this is a denial of service rather
+  than only a crash. Both walks are now iterative, in constant stack space.
+* **Silently truncated response bodies.** `take(cap).read_to_end()` stops at the
+  cap and reports success, so any response over 32 MiB arrived as a 200 with a
+  clipped body — and a truncated archive still parses up to the cut, so a package
+  could score clean on partial evidence. Three corpus packages sat just over it
+  and each failed with an error naming the wrong layer (`Could not find EOCD`,
+  `tar entry: unexpected end of file`). Oversized responses are now an error, and
+  the cap is 128 MiB: it came from `httpx.MaxJSONResponseBytes`, where it only
+  ever guarded JSON, while the same client now fetches source archives.
+* **Connect budget spent on unreachable addresses.** ureq has no Happy Eyeballs
+  and halves its remaining budget per attempt, so on a host with blackholed IPv6
+  the budget was consumed geometrically on dead addresses and the working IPv4 was
+  never reached — at any timeout, surfacing as ureq's generic
+  `timed out reading response`. `timeout_connect` is now set explicitly and the
+  resolver alternates address families.
+
+### Added
+
+* **`explain --json` carries evidence, env reads and install hooks.** The AST
+  layer already collected per-capability file/line/snippet; nothing could reach
+  it. A published package report can now cite `lib/index.js:42` rather than
+  asserting a verdict. Opt-in, so `ci`, `analyze` and `snapshot` keep the cheap
+  path.
+
 ## [0.30.0-rc.1](https://github.com/qwexvf/aegis-cli/compare/v0.29.1...v0.30.0-rc.1) (2026-08-01)
 
 `main` now carries a clean-room Rust implementation, replacing the Go tree.
