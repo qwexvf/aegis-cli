@@ -73,11 +73,31 @@ pub fn check_typosquat(pkg: &NormalizedPackage) -> Vec<Capability> {
         return Vec::new(); // it IS a top package, not a squat
     }
     for top_name in top {
-        if levenshtein(compare, top_name) <= 2 {
+        if levenshtein(compare, top_name) <= max_distance(compare, top_name) {
             return vec![Capability::TyposquatRisk];
         }
     }
     Vec::new()
+}
+
+/// How close is close enough to call a name a squat, by length.
+///
+/// A flat distance of 2 is wrong for short names. `mypy` is distance 2 from both
+/// `numpy` and `sympy`, so the corpus soak flagged mypy — a top-downloaded type
+/// checker — as a possible typosquat, at weight 40. Among four-letter names,
+/// distance 2 is most of the alphabet; among fifteen-letter ones it is a
+/// convincing forgery.
+///
+/// This is a mitigation, not the fix. The real defect is that the lists are
+/// 128-367 entries while the capability documents itself as "top-1000": the rule
+/// therefore reads "popular package we did not list" as "squat", and every name
+/// missing from the list is a candidate. Ship real top-1000 data and this
+/// threshold matters much less.
+fn max_distance(a: &str, b: &str) -> usize {
+    match a.len().min(b.len()) {
+        0..=5 => 1,
+        _ => 2,
+    }
 }
 
 /// Classic DP edit distance. Mirrors `levenshtein`.
@@ -136,6 +156,23 @@ mod tests {
     fn real_top_package_is_not_flagged() {
         assert!(check_typosquat(&pkg("lodash", Ecosystem::Npm)).is_empty());
         assert!(check_typosquat(&pkg("express", Ecosystem::Npm)).is_empty());
+    }
+
+    /// Short names need a tighter bound. `mypy` is distance 2 from both `numpy`
+    /// and `sympy`, and the corpus soak duly flagged a top-downloaded type
+    /// checker as a possible squat, at weight 40. Distance 2 across four letters
+    /// is not a resemblance.
+    #[test]
+    fn short_names_need_a_closer_match() {
+        assert!(
+            check_typosquat(&pkg("mypy", Ecosystem::PyPI)).is_empty(),
+            "mypy is not a typosquat of numpy"
+        );
+        // Distance 1 on a short name is still a squat: numpy -> numpi.
+        assert_eq!(
+            check_typosquat(&pkg("numpi", Ecosystem::PyPI)),
+            vec![Capability::TyposquatRisk]
+        );
     }
 
     #[test]
