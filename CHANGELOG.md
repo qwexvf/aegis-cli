@@ -8,7 +8,7 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
-## Unreleased
+## [0.30.0-rc.2](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.1...v0.30.0-rc.2) (2026-08-06)
 
 Found by pointing the CLI at 592 real packages in Firecracker microVMs
 ([aegis-corpus](https://github.com/qwexvf/aegis-corpus)). Two of these hid
