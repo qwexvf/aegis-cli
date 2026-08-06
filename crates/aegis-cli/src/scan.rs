@@ -111,111 +111,9 @@ pub(crate) fn fingerprint_source(
     fingerprint_inner(files, pkg_name, eco, extra_caps, false).0
 }
 
-/// Path segments and filename shapes that mean "this is a test, an example or a
-/// fixture", not code the package runs when you use it.
-///
-/// Measured, not guessed. Across 965 top-downloaded packages the corpus soak put
-/// 14.9% at `prompt` or `block` with no advisory behind them — every one a false
-/// positive, since the corpus is the most-installed software there is. The four
-/// largest contributors were `fs-write-outside-root` (13.1%), `shell-spawn`
-/// (12.3%), `net-egress` (11.1%) and `dynamic-eval` (9.3%), and the evidence for
-/// them kept landing in files like `mypyc/test/test_run.py`: `exec(f.read(), g)`.
-/// A test suite writes temp files, shells out, opens sockets and evals fixtures,
-/// because that is what testing the library requires.
-///
-/// The trade-off is real and deliberate: a malicious package can put its payload
-/// in `tests/` and import it from the entry point. What this buys is that
-/// *capabilities* describe what a package does when used, which is the question
-/// a verdict answers. The follow-up worth doing is to keep scanning these files
-/// and downgrade capabilities whose evidence is *only* ever in test paths —
-/// evidence already carries the file, so the data is there. Dropping them
-/// outright is the blunt version, and it is what makes the number move today.
-const TEST_PATH_SEGMENTS: &[&str] = &[
-    "test",
-    "tests",
-    "testing",
-    "spec",
-    "specs",
-    "__tests__",
-    "__mocks__",
-    "example",
-    "examples",
-    "fixture",
-    "fixtures",
-    "testdata",
-    "benchmark",
-    "benchmarks",
-    "bench",
-    "docs",
-    "doc",
-];
-
-/// Directories holding third-party code the package did not write, and build
-/// artefacts derived from it.
-///
-/// Same argument as the test paths, different evidence: django's `dynamic-eval`
-/// came from `django/contrib/admin/static/admin/js/vendor/xregexp/xregexp.min.js`
-/// containing `Function('return this')` — the standard pre-`globalThis` idiom for
-/// reaching the global object, in a minified vendored regex library. Attributing
-/// that to django is attributing someone else's code, and a minified bundle will
-/// trip a pattern matcher every time. The dependency itself is what a dependency
-/// scanner is for.
-const VENDORED_PATH_SEGMENTS: &[&str] = &[
-    "vendor",
-    "vendored",
-    "third_party",
-    "thirdparty",
-    "3rdparty",
-    "external",
-    "node_modules",
-    "bower_components",
-    "site-packages",
-];
-
-/// True for third-party or generated payloads: vendored trees, and minified or
-/// bundled output.
-fn is_vendored_path(rel: &str) -> bool {
-    let lower = rel.to_ascii_lowercase();
-    let parts: Vec<&str> = lower.split('/').collect();
-    if parts.iter().any(|p| VENDORED_PATH_SEGMENTS.contains(p)) {
-        return true;
-    }
-    // Minified and bundled output: unreadable by construction, and every such
-    // file is a compressed copy of code that exists elsewhere.
-    lower.ends_with(".min.js")
-        || lower.ends_with(".min.mjs")
-        || lower.ends_with(".min.css")
-        || lower.ends_with(".bundle.js")
-        || lower.ends_with(".map")
-}
-
-/// True when a package-relative path is test, example or fixture material.
-fn is_test_path(rel: &str) -> bool {
-    let lower = rel.to_ascii_lowercase();
-    // Any directory component matching a known test segment. Checked per segment
-    // rather than by substring so `contest/` or `latest.js` do not qualify.
-    let mut parts: Vec<&str> = lower.split('/').collect();
-    let file = parts.pop().unwrap_or("");
-    if parts.iter().any(|p| TEST_PATH_SEGMENTS.contains(p)) {
-        return true;
-    }
-    // Filename conventions: test_x.py, x_test.go, x.test.js, x.spec.ts.
-    let stem = file.rsplit_once('.').map(|(s, _)| s).unwrap_or(file);
-    stem.starts_with("test_")
-        || stem.ends_with("_test")
-        || stem.ends_with("_tests")
-        || stem.ends_with(".test")
-        || stem.ends_with(".spec")
-        || stem == "conftest"
-}
-
 /// Shared implementation. `collect_evidence` turns on per-capability
 /// file/line/snippet capture in the AST layer; the returned vector is empty
 /// when it is off.
-///
-/// Test and vendored paths are excluded from the AST pass (see
-/// [`is_test_path`], [`is_vendored_path`]) so a capability describes what the
-/// package does when used, not what its test suite does to test it.
 fn fingerprint_inner(
     files: &[(String, Vec<u8>)],
     pkg_name: &str,
@@ -240,7 +138,6 @@ fn fingerprint_inner(
         .sum();
     let findings = files
         .par_iter()
-        .filter(|(rel, _)| !is_test_path(rel) && !is_vendored_path(rel))
         .map(|(rel, bytes)| {
             let mut f = Findings::new(collect_evidence);
             if let Some(ext) = rel.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()) {
@@ -775,47 +672,6 @@ mod tests {
     use super::*;
     use aegis_domain::Reachability;
     use std::sync::atomic::{AtomicU64, Ordering};
-
-    /// Real paths from the corpus whose contents were gating known-good
-    /// packages: a test suite evals fixtures and shells out because that is what
-    /// testing requires.
-    #[test]
-    fn test_material_is_recognised() {
-        for p in [
-            "mypyc/test/test_run.py",
-            "tests/test_client.py",
-            "src/__tests__/index.js",
-            "lib/foo.test.js",
-            "lib/foo.spec.ts",
-            "internal/parser_test.go",
-            "spec/models/user_spec.rb",
-            "examples/demo/main.py",
-            "testdata/corpus/input.js",
-            "benchmarks/run.js",
-            "conftest.py",
-            "docs/conf.py",
-        ] {
-            assert!(is_test_path(p), "{p} should be test material");
-        }
-    }
-
-    /// Shipped code that merely looks like it. A substring match would take all
-    /// of these, and dropping real source is how a scanner goes blind.
-    #[test]
-    fn shipped_code_is_not_mistaken_for_tests() {
-        for p in [
-            "src/index.js",
-            "lib/latest.js",
-            "src/contest/rules.py",
-            "src/protester.rs",
-            "attestation/verify.go",
-            "src/testable.py",
-            "lib/manifest.json",
-            "src/specification.rb",
-        ] {
-            assert!(!is_test_path(p), "{p} is shipped code");
-        }
-    }
 
     fn dep(name: &str, eco: Ecosystem) -> Dependency {
         Dependency {
