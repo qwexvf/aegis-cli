@@ -12,12 +12,13 @@ members = [
     "crates/aegis-pkgbuild",
     "crates/aegis-reach",
     "crates/aegis-image",
+    "crates/aegis-obs",
     "crates/aegis-cli",
     "xtask",
 ]
 
 [workspace.package]
-version = "0.30.0-rc.2"
+version = "0.30.0-rc.3"
 edition = "2021"
 rust-version = "1.80"
 license = "Apache-2.0"

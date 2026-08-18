@@ -1,6 +1,6 @@
 {
   "verdict": "block",
-  "score": 340,
+  "score": 330,
   "capabilities": [
     "base64-decode",
     "git-dep-in-optional",

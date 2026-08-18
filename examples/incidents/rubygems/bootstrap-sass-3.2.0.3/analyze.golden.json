@@ -1,6 +1,6 @@
 {
   "verdict": "review",
-  "score": 45,
+  "score": 27,
   "capabilities": [
     "base64-decode",
     "dynamic-eval"

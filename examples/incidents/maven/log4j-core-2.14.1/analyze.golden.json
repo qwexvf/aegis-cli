@@ -1,6 +1,6 @@
 {
   "verdict": "review",
-  "score": 35,
+  "score": 23,
   "capabilities": [
     "dynamic-eval",
     "net-egress"

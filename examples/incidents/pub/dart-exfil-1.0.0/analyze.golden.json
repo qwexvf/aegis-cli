@@ -1,6 +1,6 @@
 {
   "verdict": "block",
-  "score": 150,
+  "score": 138,
   "capabilities": [
     "env-read",
     "install-hook-suspicious",

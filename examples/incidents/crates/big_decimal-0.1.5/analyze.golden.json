@@ -1,6 +1,6 @@
 {
   "verdict": "prompt",
-  "score": 75,
+  "score": 70,
   "capabilities": [
     "binary-dropper",
     "typosquat-risk"

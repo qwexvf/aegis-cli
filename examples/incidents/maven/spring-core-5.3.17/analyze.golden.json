@@ -1,6 +1,6 @@
 {
   "verdict": "review",
-  "score": 50,
+  "score": 31,
   "capabilities": [
     "dynamic-eval",
     "fs-write-outside-root",

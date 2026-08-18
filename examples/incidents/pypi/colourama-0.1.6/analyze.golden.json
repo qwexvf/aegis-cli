@@ -1,6 +1,6 @@
 {
   "verdict": "prompt",
-  "score": 70,
+  "score": 63,
   "capabilities": [
     "net-egress",
     "shell-spawn",

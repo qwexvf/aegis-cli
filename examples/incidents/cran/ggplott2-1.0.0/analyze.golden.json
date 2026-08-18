@@ -1,6 +1,6 @@
 {
   "verdict": "block",
-  "score": 220,
+  "score": 225,
   "capabilities": [
     "install-hook-suspicious",
     "obfuscated-payload",

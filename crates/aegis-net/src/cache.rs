@@ -9,7 +9,19 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, SystemTime};
+
+// Process-wide hit/miss tally across every DiskCache instance — the run
+// dashboard reports a run-level cache ratio, so per-instance granularity
+// isn't needed.
+static HITS: AtomicU32 = AtomicU32::new(0);
+static MISSES: AtomicU32 = AtomicU32::new(0);
+
+/// (hits, misses) accumulated by all disk caches in this process.
+pub fn stats() -> (u32, u32) {
+    (HITS.load(Ordering::Relaxed), MISSES.load(Ordering::Relaxed))
+}
 
 /// A directory-backed cache keyed by arbitrary strings. Entries expire
 /// by file mtime when a TTL is set (`None` = never expire).
@@ -30,6 +42,16 @@ impl DiskCache {
     /// Load a cached entry, or None on miss / expiry / any read error.
     /// All failure modes degrade to "miss" so the caller re-fetches.
     pub fn get(&self, key: &str) -> Option<Vec<u8>> {
+        let data = self.get_inner(key);
+        if data.is_some() {
+            HITS.fetch_add(1, Ordering::Relaxed);
+        } else {
+            MISSES.fetch_add(1, Ordering::Relaxed);
+        }
+        data
+    }
+
+    fn get_inner(&self, key: &str) -> Option<Vec<u8>> {
         let path = self.path(key);
         let meta = fs::metadata(&path).ok()?;
         if let Some(ttl) = self.ttl {

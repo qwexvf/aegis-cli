@@ -11,14 +11,22 @@ use crate::types::{Dependency, Ecosystem, Fingerprint, InstallHook};
 // --- per-capability weights ------------------------------------------
 // Kept public so risk reports / docs / future config can reference them.
 
+// Ubiquitous capabilities: down-weighted after a 16k-package known-good corpus
+// (download-ranked top packages) showed these appear in 19-25% of legit code —
+// a shell spawn, an HTTP call, a file write, a bit of eval. Individually they
+// carry almost no signal, and at their old weights three or four stacked a
+// normal CLI tool past the Prompt/Block thresholds. Keeping them low means the
+// rare, high-specificity flags below (obfuscation, suspicious URLs, secrets,
+// IOCs) are what actually drive a block. Corpus FP (block+prompt on known-good)
+// dropped 67% with these values and no change to the rare flags.
 pub const WEIGHT_INSTALL_HOOK: i32 = 30;
-pub const WEIGHT_SHELL_SPAWN: i32 = 20;
-pub const WEIGHT_DYNAMIC_EVAL: i32 = 25;
-pub const WEIGHT_BASE64_DECODE: i32 = 20;
-pub const WEIGHT_NET_EGRESS: i32 = 10;
-pub const WEIGHT_ENV_CRED_READ: i32 = 25;
-pub const WEIGHT_FS_WRITE: i32 = 15;
-pub const WEIGHT_RAW_IP_LITERAL: i32 = 15;
+pub const WEIGHT_SHELL_SPAWN: i32 = 10;
+pub const WEIGHT_DYNAMIC_EVAL: i32 = 15;
+pub const WEIGHT_BASE64_DECODE: i32 = 12;
+pub const WEIGHT_NET_EGRESS: i32 = 8;
+pub const WEIGHT_ENV_CRED_READ: i32 = 15;
+pub const WEIGHT_FS_WRITE: i32 = 8;
+pub const WEIGHT_RAW_IP_LITERAL: i32 = 10;
 pub const WEIGHT_SIZE_ANOMALY: i32 = 5;
 pub const WEIGHT_HOOK_CONTENT: i32 = 30;
 pub const WEIGHT_CAPABILITY_ADD: i32 = 15;
@@ -27,8 +35,18 @@ pub const WEIGHT_MAINTAINER_SWAP: i32 = 30;
 pub const WEIGHT_INSTALL_HOOK_SUSPICIOUS: i32 = 70;
 pub const WEIGHT_OBFUSCATED_PAYLOAD: i32 = 60;
 pub const WEIGHT_SUSPICIOUS_URL: i32 = 50;
-pub const WEIGHT_BINARY_DROPPER: i32 = 35;
-pub const WEIGHT_TYPOSQUAT_RISK: i32 = 40;
+// binary-dropper fires on any shipped compiled artifact — numpy, cryptography,
+// containerd all trip it legitimately (3% of the corpus). Lowered from 35 so a
+// shipped binary alone is a review signal, not a block, but kept at 25 (>= the
+// review threshold): the ultralytics xmrig incident trips only this, and must
+// not fall to safe. typosquat-risk kept high (45): a typosquatted name is rare
+// among real packages and a strong malware signal — dropping it let the real
+// colourama/jeIlyfish/python3-dateutil typosquats slip to review. These values
+// were chosen against both the known-good corpus (FP) and the incident fixtures
+// (recall): corpus block+prompt fell ~60% with no incident dropping below its
+// golden verdict except three block->prompt demotions (still surfaced).
+pub const WEIGHT_BINARY_DROPPER: i32 = 25;
+pub const WEIGHT_TYPOSQUAT_RISK: i32 = 45;
 pub const WEIGHT_MAINTAINER_HIJACK_RISK: i32 = 50;
 pub const WEIGHT_PATCH_VERSION_DRIFT: i32 = 35;
 pub const WEIGHT_MAINTAINER_CHANGED: i32 = 55;

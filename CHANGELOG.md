@@ -8,7 +8,29 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
-## [0.30.0-rc.2](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.1...v0.30.0-rc.2) (2026-08-06)
+## [0.30.0-rc.3](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.2...v0.30.0-rc.3) (2026-08-19)
+
+Risk-score tuning driven by a 16k-package known-good corpus (download-ranked top
+packages across npm, PyPI, crates, Go, RubyGems, scanned in the
+[aegis-corpus](https://github.com/qwexvf/aegis-corpus) soak).
+
+### Changed
+
+* **Cut false positives ~60% without losing recall.** The ubiquitous
+  capabilities — `shell-spawn`, `dynamic-eval`, `base64-decode`, `net-egress`,
+  `fs-write-outside-root`, `env-cred-read`, `raw-ip-literal` — were down-weighted
+  after the corpus showed each appears in 19–25% of legitimate packages, where
+  three or four stacked pushed a normal CLI tool past the Prompt/Block
+  thresholds. Block is now driven by the rare, high-specificity flags
+  (obfuscation, suspicious URLs, secrets, IOCs). `binary-dropper` and
+  `typosquat-risk` were re-tuned against the incident fixtures so the real
+  ultralytics/xmrig and colourama/jeIlyfish/python3-dateutil cases keep their
+  verdicts. Validated on both axes: corpus block+prompt on known-good fell from
+  ~7% to ~3%, and all 27 incident fixtures stay at or above their prior verdict
+  except three `block`→`prompt` demotions (still surfaced). Weights kept in step
+  with the Go reference on the frozen `old` branch.
+
+
 
 Found by pointing the CLI at 592 real packages in Firecracker microVMs
 ([aegis-corpus](https://github.com/qwexvf/aegis-corpus)). Two of these hid

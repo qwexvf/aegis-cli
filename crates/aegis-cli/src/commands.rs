@@ -131,6 +131,7 @@ pub(crate) fn run_ci(
     offline: bool,
     json: bool,
     sarif: bool,
+    dash: bool,
 ) -> ExitCode {
     // fail-on is a VERDICT threshold (safe|review|prompt|block), matching Go.
     let Some(fail_on_v) = VerdictKind::parse(fail_on) else {
@@ -213,10 +214,30 @@ pub(crate) fn run_ci(
     let reach = project_reachability(project_dir);
     let unused_suppress = std::env::var_os("AEGIS_UNUSED_SUPPRESS").is_some();
 
+    // Run observability: every ci run appends an NDJSON run log; --dash also
+    // renders it live. Zero effect on scan behaviour.
+    let obs = crate::dash::RunObs::start(
+        aegis_obs::RunKind::Ci,
+        deps.len(),
+        rayon::current_num_threads(),
+        std::collections::BTreeMap::from([("source".to_string(), file.to_string())]),
+        dash,
+    );
+    let bus = obs.bus();
+
     // Per-dep enrich in parallel (each does its own network fetch).
     let mut findings: Vec<CiFinding> = deps
         .par_iter()
         .map(|d| {
+            let worker = rayon::current_thread_index().unwrap_or(0);
+            bus.emit(aegis_obs::Event::PackageStarted {
+                ts_ms: aegis_obs::now_ms(),
+                worker,
+                pkg: d.name.clone(),
+                version: d.version.clone(),
+                eco: d.ecosystem.as_str().to_string(),
+            });
+            let pkg_start = std::time::Instant::now();
             let raw = if enriched {
                 enrich_dep(d, &allow)
             } else {
@@ -235,6 +256,22 @@ pub(crate) fn run_ci(
                 adv_v = downgrade_verdict(adv_v);
             }
             let final_v = cap_v.max(adv_v);
+            bus.emit(aegis_obs::Event::PackageFinished {
+                ts_ms: aegis_obs::now_ms(),
+                worker,
+                pkg: d.name.clone(),
+                version: d.version.clone(),
+                eco: d.ecosystem.as_str().to_string(),
+                duration_ms: pkg_start.elapsed().as_millis() as u64,
+                verdict: final_v.name().to_string(),
+                score: assessment.score as f64,
+                passed: final_v < fail_on_v,
+                cache_hits: 0,
+                cache_misses: 0,
+                bytes: 0,
+                files: 0,
+                detail: None,
+            });
             CiFinding {
                 ecosystem: d.ecosystem.as_str().to_string(),
                 name: d.name.clone(),
@@ -296,6 +333,16 @@ pub(crate) fn run_ci(
         .filter(|f| VerdictKind::parse(&f.verdict).is_some_and(|v| v >= fail_on_v))
         .collect();
     let passed = gated.is_empty();
+
+    // Close the run log (and, with --dash, wait for the TUI to be dismissed)
+    // before any normal output hits stdout.
+    let (net_hits, net_misses) = aegis_net::cache_stats();
+    obs.finish(
+        summary.total - gated.len(),
+        gated.len(),
+        net_hits,
+        net_misses,
+    );
 
     if sarif {
         // SARIF stays advisory-oriented (GitHub code-scanning surfaces CVEs).
@@ -730,7 +777,7 @@ fn declared_npm_dependencies(files: &[(String, Vec<u8>)]) -> Option<Vec<String>>
     Some(deps.keys().cloned().collect())
 }
 
-pub(crate) fn run_config(config_path: &str, json: bool, sarif: bool) -> ExitCode {
+pub(crate) fn run_config(config_path: &str, json: bool, sarif: bool, dash: bool) -> ExitCode {
     let text = match std::fs::read_to_string(config_path) {
         Ok(t) => t,
         Err(e) => {
@@ -769,13 +816,61 @@ pub(crate) fn run_config(config_path: &str, json: bool, sarif: bool) -> ExitCode
         }
     };
 
+    // Run observability: NDJSON run log always, live TUI with --dash.
+    let obs = crate::dash::RunObs::start(
+        aegis_obs::RunKind::Run,
+        config.tasks.len(),
+        rayon::current_num_threads(),
+        std::collections::BTreeMap::from([("config".to_string(), config_path.to_string())]),
+        dash,
+    );
+    let bus = obs.bus();
+
     // Independent tasks run in PARALLEL (each task's source scan also fans out).
     let results: Vec<TaskResult> = config
         .tasks
         .par_iter()
-        .map(|t| run_task(t, &allow))
+        .map(|t| {
+            let worker = rayon::current_thread_index().unwrap_or(0);
+            bus.emit(aegis_obs::Event::PackageStarted {
+                ts_ms: aegis_obs::now_ms(),
+                worker,
+                pkg: t.name.clone(),
+                version: String::new(),
+                eco: t.ecosystem.clone(),
+            });
+            let task_start = std::time::Instant::now();
+            let res = run_task(t, &allow);
+            bus.emit(aegis_obs::Event::PackageFinished {
+                ts_ms: aegis_obs::now_ms(),
+                worker,
+                pkg: t.name.clone(),
+                version: String::new(),
+                eco: t.ecosystem.clone(),
+                duration_ms: task_start.elapsed().as_millis() as u64,
+                verdict: res.verdict.clone().unwrap_or_else(|| {
+                    if res.failed { "fail" } else { "ok" }.to_string()
+                }),
+                score: res.score as f64,
+                passed: !res.failed,
+                cache_hits: 0,
+                cache_misses: 0,
+                bytes: 0,
+                files: 0,
+                detail: res.error.clone(),
+            });
+            res
+        })
         .collect();
     let failed = results.iter().any(|r| r.failed);
+
+    let (net_hits, net_misses) = aegis_net::cache_stats();
+    obs.finish(
+        results.iter().filter(|r| !r.failed).count(),
+        results.iter().filter(|r| r.failed).count(),
+        net_hits,
+        net_misses,
+    );
 
     if sarif {
         // One SARIF result per (task, flag); rules deduped by capability code;
