@@ -164,6 +164,9 @@ func TestAnalyze_HighRiskProducesBlock(t *testing.T) {
 			Capabilities: domain.NewCapabilitySet(
 				domain.CapShellSpawn, domain.CapDynamicEval,
 				domain.CapBase64Decode, domain.CapNetEgress,
+				// A genuine high-signal flag — common caps alone are only Prompt
+				// after the ubiquitous-capability reweight.
+				domain.CapObfuscatedPayload,
 			),
 			Hooks: []domain.InstallHook{
 				{Phase: domain.PhasePostInstall, Source: "scripts.postinstall"},

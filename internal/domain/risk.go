@@ -23,14 +23,22 @@ import "strings"
 // signal quality improves.
 
 const (
+	// Ubiquitous capabilities: down-weighted after a 16k-package known-good
+	// corpus showed these appear in 19-25% of legit code (a shell spawn, an
+	// HTTP call, a file write, some eval). Individually near-zero signal; at the
+	// old weights three or four stacked a normal CLI tool past Prompt/Block.
+	// Values tuned against both the corpus (FP) and the incident fixtures
+	// (recall): corpus block+prompt fell ~60%, no incident dropped below its
+	// golden verdict except three block->prompt (still surfaced). Keep in step
+	// with the Rust port (aegis-rs crates/aegis-domain/src/risk.rs).
 	WeightInstallHook    = 30 // postinstall / setup.py / build.rs declared
-	WeightShellSpawn     = 20 // child_process.exec, subprocess.run, etc.
-	WeightDynamicEval    = 25 // eval, new Function, exec/compile()
-	WeightBase64Decode   = 20 // obfuscation primitive (esp. with eval/spawn)
-	WeightNetEgress      = 10 // outbound network (low — many libs do this)
-	WeightEnvCredRead    = 25 // process.env reads of credential-shaped names
-	WeightFSWrite        = 15 // fs writes outside package root
-	WeightRawIPLiteral   = 15 // string literal with raw-IP URL
+	WeightShellSpawn     = 10 // child_process.exec, subprocess.run, etc.
+	WeightDynamicEval    = 15 // eval, new Function, exec/compile()
+	WeightBase64Decode   = 12 // obfuscation primitive (esp. with eval/spawn)
+	WeightNetEgress      = 8  // outbound network (low — many libs do this)
+	WeightEnvCredRead    = 15 // process.env reads of credential-shaped names
+	WeightFSWrite        = 8  // fs writes outside package root
+	WeightRawIPLiteral   = 10 // string literal with raw-IP URL
 	WeightSizeAnomaly    = 5  // suspicious source-size delta (drift only)
 	WeightHookContent    = 30 // hook script content sha256 changed (drift only)
 	WeightCapabilityAdd  = 15 // each new capability since previous version
@@ -57,11 +65,15 @@ const (
 	// Some legitimate packages do this (esbuild ships native bins),
 	// so the weight is moderate — pair with allowlist for known
 	// good toolchains.
-	WeightBinaryDropper = 35
+	// Lowered from 35: fires on any shipped compiled artifact (numpy,
+	// cryptography, containerd all trip it). Kept at 25 (>= review) so the
+	// ultralytics xmrig incident, which trips only this, cannot fall to safe.
+	WeightBinaryDropper = 25
 	// WeightTyposquatRisk — name within edit distance 2 of a top-1000
-	// package. Confidence is heuristic, not certain; the weight pushes
-	// to Prompt rather than Block by itself.
-	WeightTyposquatRisk = 40
+	// package. Kept high (45): a typosquatted name is rare among real packages
+	// and a strong malware signal — dropping it let the real colourama /
+	// jeIlyfish / python3-dateutil typosquats slip below Prompt.
+	WeightTyposquatRisk = 45
 	// WeightMaintainerHijackRisk — fresh publish + long gap +
 	// low downloads. event-stream's compromise had exactly this
 	// shape; ua-parser-js's hijack was caught after the fact by

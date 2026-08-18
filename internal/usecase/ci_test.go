@@ -66,6 +66,7 @@ func TestCI_FailsOnBlockingFinding(t *testing.T) {
 		Capabilities: domain.NewCapabilitySet(
 			domain.CapShellSpawn, domain.CapDynamicEval,
 			domain.CapBase64Decode, domain.CapNetEgress,
+			domain.CapObfuscatedPayload,
 		),
 		Hooks: []domain.InstallHook{
 			{Phase: domain.PhasePostInstall, Source: "scripts.postinstall"},

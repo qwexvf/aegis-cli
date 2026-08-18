@@ -111,7 +111,7 @@ func TestSnapshotPresenter_SuppressedFlagShownWithMarker(t *testing.T) {
 	if !strings.Contains(out, "~ dynamic-eval") {
 		t.Errorf("expected ~ marker on suppressed flag:\n%s", out)
 	}
-	if !strings.Contains(out, "(suppressed +25, allowlisted: lodash._.template") {
+	if !strings.Contains(out, "(suppressed +15, allowlisted: lodash._.template") {
 		t.Errorf("expected (suppressed +N, allowlisted: ...) suffix:\n%s", out)
 	}
 }

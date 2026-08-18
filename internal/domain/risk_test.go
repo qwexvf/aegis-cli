@@ -96,10 +96,13 @@ func TestRiskScore_FullPostinstallExecPattern(t *testing.T) {
 	if r.Score != want {
 		t.Errorf("score = %d, want %d", r.Score, want)
 	}
-	// Should reach the prompt threshold but not block on its own —
-	// product policy requires drift OR a hook+content change to BLOCK.
-	if got := Verdict(r, RiskAssessment{}); got != VerdictPrompt {
-		t.Errorf("verdict = %s, want prompt", got)
+	// A *declared* postinstall plus common capabilities lands at Review, not
+	// Prompt, after the ubiquitous-capability reweight: a declared hook alone is
+	// weak (node-gyp and friends have one). The strong signal is hook *content* —
+	// WeightInstallHookSuspicious (70), which a real curl|sh payload trips and
+	// which still reaches Prompt/Block on its own.
+	if got := Verdict(r, RiskAssessment{}); got != VerdictReview {
+		t.Errorf("verdict = %s, want review", got)
 	}
 }
 

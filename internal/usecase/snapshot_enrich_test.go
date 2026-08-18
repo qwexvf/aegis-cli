@@ -238,6 +238,7 @@ func TestDiff_AddedDepWithFingerprintProducesVerdict(t *testing.T) {
 		Capabilities: domain.NewCapabilitySet(
 			domain.CapShellSpawn, domain.CapDynamicEval,
 			domain.CapBase64Decode, domain.CapNetEgress,
+			domain.CapObfuscatedPayload,
 		),
 		Hooks: []domain.InstallHook{{Phase: domain.PhasePostInstall, Source: "scripts.postinstall"}},
 	}
@@ -255,7 +256,7 @@ func TestDiff_AddedDepWithFingerprintProducesVerdict(t *testing.T) {
 	if len(added) != 1 {
 		t.Fatalf("expected 1 added, got %d", len(added))
 	}
-	// hook (30) + 4 caps (20+25+20+10) = 105 → block
+	// hook (30) + common caps + obfuscated-payload (60) = block
 	if added[0].Verdict != domain.VerdictBlock {
 		t.Errorf("verdict = %s, want block", added[0].Verdict)
 	}
