@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 pub mod cache;
-pub use cache::{atomic_write, stats as cache_stats, DiskCache};
+pub use cache::{atomic_write, DiskCache};
 
 /// A completed HTTP response: status code, raw body bytes, and response
 /// headers (name lowercased for case-insensitive lookup via [`header`]).

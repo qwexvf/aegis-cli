@@ -7,7 +7,6 @@ mod audit;
 mod aur;
 mod cache;
 mod commands;
-mod dash;
 mod doctor;
 mod enrich;
 mod hook;
@@ -60,9 +59,6 @@ enum Command {
         /// Emit SARIF 2.1.0 (for GitHub Code Scanning). Overrides --json.
         #[arg(long)]
         sarif: bool,
-        /// Live terminal dashboard while the scan runs.
-        #[arg(long)]
-        dash: bool,
     },
     /// Run a config (aegis.toml) of scan tasks — independent tasks run
     /// in parallel; each task's source scan also fans out across cores.
@@ -76,21 +72,6 @@ enum Command {
         /// Emit aggregate SARIF 2.1.0 across all tasks. Overrides --json.
         #[arg(long)]
         sarif: bool,
-        /// Live terminal dashboard while the scan runs.
-        #[arg(long)]
-        dash: bool,
-    },
-    /// Replay a recorded run log in the terminal dashboard.
-    Dash {
-        /// Run log to replay: a file path or "latest".
-        #[arg(long, default_value = "latest")]
-        replay: String,
-        /// Playback speed multiplier (e.g. 10 = 10x faster).
-        #[arg(long, default_value_t = 1.0)]
-        speed: f64,
-        /// Jump straight to the final state instead of playing back.
-        #[arg(long)]
-        instant: bool,
     },
     /// Suggest version bumps that resolve known CVEs in a lockfile.
     Fix {
@@ -501,19 +482,12 @@ fn main() -> ExitCode {
             offline,
             json,
             sarif,
-            dash,
-        } => run_ci(&file, &fail_on, offline, json, sarif, dash),
+        } => run_ci(&file, &fail_on, offline, json, sarif),
         Command::Run {
             config,
             json,
             sarif,
-            dash,
-        } => run_config(&config, json, sarif, dash),
-        Command::Dash {
-            replay,
-            speed,
-            instant,
-        } => dash::run_dash(&replay, speed, instant),
+        } => run_config(&config, json, sarif),
         Command::Allowlist { sub, json } => match sub {
             None => run_allowlist(json),
             Some(AllowlistSub::List { json }) => allowlist::run_list(json),

