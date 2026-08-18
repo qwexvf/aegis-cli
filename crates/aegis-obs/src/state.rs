@@ -170,7 +170,7 @@ impl DashState {
     /// N slowest finished packages, slowest first.
     pub fn slowest(&self, n: usize) -> Vec<&FinishedPkg> {
         let mut v: Vec<&FinishedPkg> = self.finished.iter().collect();
-        v.sort_by(|a, b| b.duration_ms.cmp(&a.duration_ms));
+        v.sort_by_key(|b| std::cmp::Reverse(b.duration_ms));
         v.truncate(n);
         v
     }

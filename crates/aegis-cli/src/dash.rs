@@ -48,7 +48,8 @@ impl RunObs {
     pub(crate) fn finish(self, passed: usize, failed: usize, hits: u32, misses: u32) {
         let duration_ms = self.started.elapsed().as_millis() as u64;
         let log_path = self.collector.log_path.clone();
-        self.collector.finish(duration_ms, passed, failed, hits, misses);
+        self.collector
+            .finish(duration_ms, passed, failed, hits, misses);
         if let Some(t) = self.tui {
             let _ = t.join();
             if let Some(p) = log_path {

@@ -13,9 +13,7 @@ use crate::event::Event;
 pub fn runs_dir() -> Option<PathBuf> {
     std::env::var_os("AEGIS_RUNS_DIR")
         .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".aegis").join("runs"))
-        })
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".aegis").join("runs")))
 }
 
 /// Append-only writer for one run's NDJSON log.

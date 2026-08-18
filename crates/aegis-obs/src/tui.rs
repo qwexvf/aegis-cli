@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crossterm::event::{self, Event as TermEvent, KeyCode, KeyEventKind, KeyModifiers};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -151,7 +153,9 @@ fn handle_key(key: Key, view: &mut View, state: &DashState) {
 }
 
 fn with_terminal<T>(
-    f: impl FnOnce(&mut ratatui::Terminal<ratatui::backend::CrosstermBackend<io::Stdout>>) -> io::Result<T>,
+    f: impl FnOnce(
+        &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<io::Stdout>>,
+    ) -> io::Result<T>,
 ) -> io::Result<T> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -171,10 +175,10 @@ pub fn draw(f: &mut Frame, state: &DashState, now_ms: u64, view: &View, over: bo
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),                                  // header
-            Constraint::Length(worker_panel_height(state)),         // workers + stats
-            Constraint::Min(5),                                     // event log
-            Constraint::Length(1),                                  // key hints
+            Constraint::Length(3),                          // header
+            Constraint::Length(worker_panel_height(state)), // workers + stats
+            Constraint::Min(5),                             // event log
+            Constraint::Length(1),                          // key hints
         ])
         .split(area);
     draw_header(f, rows[0], state, now_ms, over);
@@ -211,7 +215,11 @@ fn draw_header(f: &mut Frame, area: Rect, state: &DashState, now_ms: u64, over: 
         .unwrap_or_else(|| "--".into());
     let status = if over {
         Span::styled(
-            if state.failed == 0 { " COMPLETE " } else { " FAILURES " },
+            if state.failed == 0 {
+                " COMPLETE "
+            } else {
+                " FAILURES "
+            },
             Style::default()
                 .fg(Color::Black)
                 .bg(if state.failed == 0 { GREEN } else { RED })
@@ -221,7 +229,10 @@ fn draw_header(f: &mut Frame, area: Rect, state: &DashState, now_ms: u64, over: 
         Span::styled(" LIVE ", Style::default().fg(Color::Black).bg(AMBER))
     };
     let line = Line::from(vec![
-        Span::styled(" AEGIS ", Style::default().fg(GREEN).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " AEGIS ",
+            Style::default().fg(GREEN).add_modifier(Modifier::BOLD),
+        ),
         Span::styled("▓ ", Style::default().fg(DIM)),
         Span::styled(state.run_id.clone(), Style::default().fg(AMBER)),
         Span::styled(format!(" ▓ {kind} "), Style::default().fg(DIM)),
@@ -338,7 +349,10 @@ fn draw_log(f: &mut Frame, area: Rect, state: &DashState, view: &View) {
                     format!("{:<40}", truncate(&p.label, 40)),
                     Style::default().fg(if p.passed { Color::White } else { RED }),
                 ),
-                Span::styled(format!(" {:>7}", format_ms(p.duration_ms)), Style::default().fg(AMBER)),
+                Span::styled(
+                    format!(" {:>7}", format_ms(p.duration_ms)),
+                    Style::default().fg(AMBER),
+                ),
                 Span::raw(format!("  score {:>5.2}  ", p.score)),
                 Span::styled(
                     p.verdict.clone(),

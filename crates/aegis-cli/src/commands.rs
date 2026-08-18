@@ -848,9 +848,10 @@ pub(crate) fn run_config(config_path: &str, json: bool, sarif: bool, dash: bool)
                 version: String::new(),
                 eco: t.ecosystem.clone(),
                 duration_ms: task_start.elapsed().as_millis() as u64,
-                verdict: res.verdict.clone().unwrap_or_else(|| {
-                    if res.failed { "fail" } else { "ok" }.to_string()
-                }),
+                verdict: res
+                    .verdict
+                    .clone()
+                    .unwrap_or_else(|| if res.failed { "fail" } else { "ok" }.to_string()),
                 score: res.score as f64,
                 passed: !res.failed,
                 cache_hits: 0,
