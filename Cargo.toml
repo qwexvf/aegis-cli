@@ -12,7 +12,6 @@ members = [
     "crates/aegis-pkgbuild",
     "crates/aegis-reach",
     "crates/aegis-image",
-    "crates/aegis-obs",
     "crates/aegis-cli",
     "xtask",
 ]
