@@ -14,7 +14,7 @@ serde_json = "1"
 # Optional — pulled in only when an ecosystem that needs it is enabled,
 # so a lean build (e.g. npm-only) never compiles regex or an XML parser.
 regex = { version = "1", optional = true }
-quick-xml = { version = "0.36", features = ["serialize"], optional = true }
+quick-xml = { version = "0.41", features = ["serialize"], optional = true }
 
 # Each ecosystem parser is behind its own feature so downstream builds
 # can compile a lean binary with only the languages they use, e.g.
