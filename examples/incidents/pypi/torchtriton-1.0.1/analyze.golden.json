@@ -1,6 +1,6 @@
 {
   "verdict": "block",
-  "score": 145,
+  "score": 133,
   "capabilities": [
     "dynamic-eval",
     "net-egress",

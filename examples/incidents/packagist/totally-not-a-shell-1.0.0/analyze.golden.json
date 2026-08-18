@@ -1,6 +1,6 @@
 {
-  "verdict": "block",
-  "score": 105,
+  "verdict": "prompt",
+  "score": 85,
   "capabilities": [
     "base64-decode",
     "dynamic-eval",

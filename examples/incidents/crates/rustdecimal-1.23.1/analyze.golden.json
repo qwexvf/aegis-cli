@@ -1,6 +1,6 @@
 {
   "verdict": "block",
-  "score": 100,
+  "score": 103,
   "capabilities": [
     "net-egress",
     "suspicious-url",
