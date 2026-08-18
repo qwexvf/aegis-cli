@@ -10,11 +10,11 @@ description = "HTTP transport abstraction for aegis — a blocking HttpClient tr
 [dependencies]
 # Blocking, pure-Rust HTTP — fits a CLI (no async runtime, small binary).
 # Optional so a build can swap the transport or drop it entirely.
-ureq = { version = "2", optional = true }
+ureq = { version = "3", optional = true }
 # Cassette record/replay only — kept optional so the lean-build floor stays dep-free.
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
-base64 = { version = "0.22", optional = true }
+base64 = { version = "0.23", optional = true }
 
 [features]
 default = ["ureq-backend"]
