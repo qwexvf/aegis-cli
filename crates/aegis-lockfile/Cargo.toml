@@ -15,6 +15,7 @@ serde_json = "1"
 # so a lean build (e.g. npm-only) never compiles regex or an XML parser.
 regex = { version = "1", optional = true }
 quick-xml = { version = "0.36", features = ["serialize"], optional = true }
+serde_yaml_ng = { version = "0.10", optional = true }
 
 # Each ecosystem parser is behind its own feature so downstream builds
 # can compile a lean binary with only the languages they use, e.g.
@@ -26,6 +27,7 @@ quick-xml = { version = "0.36", features = ["serialize"], optional = true }
 default = [
     "npm", "pypi", "cargo", "go", "packagist", "nuget", "cran", "swift",
     "rubygems", "maven", "hex", "pub", "cocoapods", "cpan", "hackage",
+    "conan", "nix", "julia", "conda",
 ]
 npm = []
 pypi = []
@@ -42,5 +44,9 @@ pub = []
 cocoapods = ["dep:regex"]
 cpan = ["dep:regex"]
 hackage = ["dep:regex"]
+conan = []
+nix = []
+julia = []
+conda = ["dep:serde_yaml_ng"]
 
 [dev-dependencies]
