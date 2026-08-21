@@ -44,7 +44,12 @@ cargo build
    cargo run -q -p xtask -- sbom-parity
    cargo run -q -p xtask -- ci-parity
    ```
-   All must pass before opening the PR.
+   All must pass before opening the PR. Enable the pre-push hook once per clone
+   to run the fast subset (fmt + clippy + test) automatically on `git push`:
+   ```sh
+   git config core.hooksPath .githooks
+   ```
+   Bypass it for a single push with `git push --no-verify`.
 5. Open the PR against `main`. Squash-merge is the default.
 
 ## Architecture
