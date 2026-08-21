@@ -13,12 +13,20 @@ use aegis_domain::Capability;
 mod scanner;
 pub use scanner::GrammarScanner;
 
+#[cfg(feature = "bash")]
+pub mod bash;
+#[cfg(feature = "c")]
+pub mod c;
 #[cfg(feature = "cocoapods")]
 pub mod cocoapods;
+#[cfg(feature = "cpp")]
+pub mod cpp;
 #[cfg(feature = "csharp")]
 pub mod csharp;
 #[cfg(feature = "dart")]
 pub mod dart;
+#[cfg(feature = "elixir")]
+pub mod elixir;
 #[cfg(feature = "gleam")]
 pub mod gleam;
 #[cfg(feature = "go")]
@@ -31,6 +39,8 @@ pub mod java;
 pub mod js;
 #[cfg(feature = "js")]
 mod js_taint;
+#[cfg(feature = "kotlin")]
+pub mod kotlin;
 #[cfg(feature = "lua")]
 pub mod lua;
 #[cfg(feature = "php")]
@@ -41,6 +51,8 @@ pub mod py;
 pub mod ruby;
 #[cfg(feature = "rust")]
 pub mod rust;
+#[cfg(feature = "swift")]
+pub mod swift;
 
 /// One evidence record: where a capability was observed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -190,6 +202,30 @@ pub fn scanner_for(filename: &str) -> Option<Box<dyn LanguageScanner>> {
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         #[cfg(feature = "cocoapods")]
         "podspec" => cocoapods::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "kotlin")]
+        "kt" | "kts" => kotlin::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "swift")]
+        "swift" => swift::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "c")]
+        "c" | "h" => c::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "cpp")]
+        "cpp" | "cc" | "cxx" | "hpp" | "hh" => cpp::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "bash")]
+        "sh" | "bash" => bash::scanner()
+            .ok()
+            .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
+        #[cfg(feature = "elixir")]
+        "ex" | "exs" => elixir::scanner()
             .ok()
             .map(|s| Box::new(s) as Box<dyn LanguageScanner>),
         _ => None,
