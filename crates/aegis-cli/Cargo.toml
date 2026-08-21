@@ -38,7 +38,7 @@ regex = "1.13.1"
 # opt-in precise-reachability backend: ripple's resolved code-graph, used to
 # replace the name-based transitive caller walk. Path dep to a sibling ripple
 # checkout. git ref until the engine crate is published to crates.io.
-engine = { git = "https://github.com/qwexvf/ripple", branch = "feat/engine-external-binding", optional = true }
+engine = { git = "https://github.com/qwexvf/ripple", branch = "main", optional = true }
 
 [features]
 # `aegis reach --engine` routes the transitive walk through ripple's resolved

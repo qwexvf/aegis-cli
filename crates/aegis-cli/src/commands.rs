@@ -213,6 +213,30 @@ pub(crate) fn run_ci(
     let reach = project_reachability(project_dir);
     let unused_suppress = std::env::var_os("AEGIS_UNUSED_SUPPRESS").is_some();
 
+    // Engine-backed reachability (feature `engine-reach`): index the resolved
+    // code-graph once, up front, so each dep's four-way verdict is a couple of
+    // graph queries rather than a re-index. Off by default — the feature flag
+    // alone selects the backend, no user-facing `--engine` switch — and the
+    // default path below is byte-for-byte unchanged.
+    #[cfg(feature = "engine-reach")]
+    let engine_graph = crate::engine_reach::index_project(project_dir);
+
+    // Per-dep reachability verdict. With `engine-reach` on, TS/Python deps get
+    // the resolved-graph four-way verdict (reaches/uses/imports); everything
+    // else — and the whole default build — stays on the import-level walk.
+    let dep_reachability = |d: &Dependency| -> Reachability {
+        #[cfg(feature = "engine-reach")]
+        {
+            use aegis_domain::Ecosystem;
+            if matches!(d.ecosystem, Ecosystem::Npm | Ecosystem::PyPI) {
+                if let Some(g) = engine_graph.as_ref() {
+                    return crate::engine_reach::dep_reachability(g, &d.name);
+                }
+            }
+        }
+        reach.classify(d)
+    };
+
     // Per-dep enrich in parallel (each does its own network fetch).
     let mut findings: Vec<CiFinding> = deps
         .par_iter()
@@ -223,7 +247,7 @@ pub(crate) fn run_ci(
                 RiskAssessment::default()
             };
             let reachability = if crate::scan::reachability_eligible(d.ecosystem) {
-                reach.classify(d)
+                dep_reachability(d)
             } else {
                 Reachability::Unknown
             };
