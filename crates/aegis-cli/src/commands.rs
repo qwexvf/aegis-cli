@@ -1711,6 +1711,30 @@ impl From<&aegis_reach::ReachEntry> for ReachEntryView {
     }
 }
 
+/// Transitive callers of `package.symbol`. Built with `engine-reach`, this
+/// walks ripple's resolved code-graph (import bindings, scoping) so name
+/// collisions don't fabricate callers; otherwise it falls back to aegis-reach's
+/// name-based cross-file walk.
+#[cfg(feature = "engine-reach")]
+fn transitive_reaching(
+    root: &Path,
+    files: &[(String, Vec<u8>)],
+    package: &str,
+    symbol: &str,
+) -> Vec<aegis_reach::ReachEntry> {
+    crate::engine_reach::transitive(root, files, package, symbol)
+}
+
+#[cfg(not(feature = "engine-reach"))]
+fn transitive_reaching(
+    _root: &Path,
+    files: &[(String, Vec<u8>)],
+    package: &str,
+    symbol: &str,
+) -> Vec<aegis_reach::ReachEntry> {
+    aegis_reach::functions_reaching_transitive(package, symbol, files)
+}
+
 /// Report whether `package` is imported anywhere in the project's JS/TS source
 /// (reachability). Exit 0 = reachable (used), 1 = unreachable (unused code the
 /// risk engine can downgrade), 2 = not a directory.
@@ -1737,7 +1761,7 @@ pub(crate) fn run_reach(
         // Additive over the direct view; never narrows the `used` verdict.
         if transitive {
             let reaching = if used {
-                aegis_reach::functions_reaching_transitive(package, func, &files)
+                transitive_reaching(root, &files, package, func)
             } else {
                 Vec::new()
             };

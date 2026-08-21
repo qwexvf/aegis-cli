@@ -34,3 +34,13 @@ tar = "0.4.46"
 flate2 = "1.1.9"
 clap_complete = "4.5.67"
 regex = "1.13.1"
+
+# opt-in precise-reachability backend: ripple's resolved code-graph, used to
+# replace the name-based transitive caller walk. Path dep to a sibling ripple
+# checkout — local-only until the engine crate is published.
+engine = { path = "../../../../ripple/crates/engine", optional = true }
+
+[features]
+# `aegis reach --engine` routes the transitive walk through ripple's resolved
+# graph instead of aegis-reach's name-based one. Off by default.
+engine-reach = ["dep:engine"]

@@ -8,6 +8,8 @@ mod aur;
 mod cache;
 mod commands;
 mod doctor;
+#[cfg(feature = "engine-reach")]
+mod engine_reach;
 mod enrich;
 mod hook;
 mod scan;
@@ -109,7 +111,8 @@ enum Command {
         #[arg(long)]
         function: Option<String>,
         /// With --function: also report functions that reach the symbol
-        /// transitively through the call graph (cross-file, name-based).
+        /// transitively through the call graph. Resolved edges when built with
+        /// the `engine-reach` feature, name-based cross-file otherwise.
         #[arg(long)]
         transitive: bool,
         /// Emit machine-readable JSON.
