@@ -1,8 +1,14 @@
 # Reachability engine consolidation
 
-Status: **design accepted, not implemented**
+Status: **Phase 1 implemented** (ripple branch `feat/engine-external-binding`, commit 97fbfd9) · Phases 2–5 pending
 Driver: aegis-rs · Implementation home: ripple `engine` (+ `lang`, `resolve`, `ir`)
 Date: 2026-08-21
+
+> Phase 1 landed: `NodeKind::External`, TS + Python external-import binding, and
+> the `imports`/`uses`/`reaches` engine queries — the engine now self-seeds
+> external reachability (no aegis-reach seed borrow). Two documented gaps remain
+> for a later pass: external namespace-member calls (`import * as X … X.f()`) and
+> side-effect-only imports (`import "polyfill"`).
 
 ## Decision
 
