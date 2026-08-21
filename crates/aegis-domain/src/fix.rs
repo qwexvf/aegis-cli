@@ -242,7 +242,13 @@ pub fn upgrade_command(dep: &Dependency, target_version: &str) -> Option<String>
             }
         }
         // No known upgrade shape.
-        Ecosystem::SwiftPM | Ecosystem::Neovim | Ecosystem::Aur => return None,
+        Ecosystem::SwiftPM
+        | Ecosystem::Neovim
+        | Ecosystem::Aur
+        | Ecosystem::Conan
+        | Ecosystem::Nix
+        | Ecosystem::Julia
+        | Ecosystem::Conda => return None,
     };
     Some(cmd)
 }

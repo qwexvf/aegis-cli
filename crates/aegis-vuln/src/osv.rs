@@ -460,7 +460,14 @@ fn osv_ecosystem(eco: Ecosystem) -> Option<&'static str> {
         Ecosystem::SwiftPM => "SwiftURL",
         Ecosystem::Cran => "CRAN",
         Ecosystem::Hackage => "Hackage",
-        Ecosystem::CocoaPods | Ecosystem::Cpan | Ecosystem::Neovim | Ecosystem::Aur => return None,
+        Ecosystem::CocoaPods
+        | Ecosystem::Cpan
+        | Ecosystem::Neovim
+        | Ecosystem::Aur
+        | Ecosystem::Conan
+        | Ecosystem::Nix
+        | Ecosystem::Julia
+        | Ecosystem::Conda => return None,
     })
 }
 

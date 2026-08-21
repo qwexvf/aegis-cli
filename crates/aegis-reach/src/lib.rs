@@ -30,14 +30,31 @@
 //! - **Ruby** (`tree-sitter-ruby`): `require "x"`, `require_relative "x"`
 //!   (relative → empty dep key), `gem "x"`, `load`, `autoload`. Dep key
 //!   is the first path segment (`foo/bar` → `foo`).
+//! - **Rust** (`tree-sitter-rust`): `use a::b::C;` (incl. `use a::{b, c}`
+//!   lists and `use x as y` aliases) and `extern crate x;`. Dep key is the
+//!   first path segment / crate name; the path roots `crate`/`self`/`super`
+//!   and the prelude crates `std`/`core`/`alloc` normalize to empty.
+//! - **Java** (`tree-sitter-java`): `import a.b.C;`, `import static a.b.C.m;`,
+//!   and wildcard `import a.b.*;`. Dep key is the package prefix (a trailing
+//!   Capitalized type segment is dropped); JDK `java.`/`javax.` normalize to
+//!   empty.
 //!
 //! [`imported_dep_keys`] / [`reachability_of`] dispatch on file
 //! extension: `.js/.ts/.mjs/.cjs/.jsx/.tsx` → JS, `.py/.pyi` → Python,
-//! `.go` → Go, `.php/.phtml` → PHP, `.rb/.gemspec` → Ruby.
+//! `.go` → Go, `.php/.phtml` → PHP, `.rb/.gemspec` → Ruby, `.rs` → Rust,
+//! `.java` → Java.
 //!
 //! # Scope of this slice
 //!
-//! Imports for all five languages. Used-symbols resolution is ported
+//! **Rust and Java stay import-level only**, for the same reason Ruby does
+//! (below): a `use serde::Serialize` or `import a.b.C` binds a name, but the
+//! symbols a dep actually exposes (trait methods brought into scope, static
+//! members, re-exports) can't be correlated back to the import without
+//! project-wide type/name resolution the single-file AST can't supply. Both
+//! answer only "is this crate/package imported at all?"; a sound
+//! function-level pass is out of scope here.
+//!
+//! Imports for all seven languages. Used-symbols resolution is ported
 //! for **JavaScript / TypeScript** ([`UsedSymbol`],
 //! [`extract_used_symbols`]), **Python**
 //! ([`extract_used_symbols_python`]), **Go**
@@ -122,6 +139,10 @@ pub enum Language {
     Php,
     /// Ruby (`tree-sitter-ruby`).
     Ruby,
+    /// Rust (`tree-sitter-rust`).
+    Rust,
+    /// Java (`tree-sitter-java`).
+    Java,
 }
 
 /// Parse JS/TS source and return every import it declares.
@@ -161,6 +182,20 @@ pub fn extract_imports_ruby(source: &[u8]) -> Vec<Import> {
     extract_with(Language::Ruby, source)
 }
 
+/// Parse Rust source and return every import it declares.
+///
+/// A parse failure yields an empty vec — never panics.
+pub fn extract_imports_rust(source: &[u8]) -> Vec<Import> {
+    extract_with(Language::Rust, source)
+}
+
+/// Parse Java source and return every import it declares.
+///
+/// A parse failure yields an empty vec — never panics.
+pub fn extract_imports_java(source: &[u8]) -> Vec<Import> {
+    extract_with(Language::Java, source)
+}
+
 /// Parse `source` with the grammar for `lang` and return every import.
 ///
 /// A parse failure (or a grammar that won't load) yields an empty vec —
@@ -173,6 +208,8 @@ pub fn extract_with(lang: Language, source: &[u8]) -> Vec<Import> {
         Language::Go => tree_sitter_go::LANGUAGE.into(),
         Language::Php => tree_sitter_php::LANGUAGE_PHP.into(),
         Language::Ruby => tree_sitter_ruby::LANGUAGE.into(),
+        Language::Rust => tree_sitter_rust::LANGUAGE.into(),
+        Language::Java => tree_sitter_java::LANGUAGE.into(),
     };
     if parser.set_language(&language).is_err() {
         return Vec::new();
@@ -188,6 +225,8 @@ pub fn extract_with(lang: Language, source: &[u8]) -> Vec<Import> {
         Language::Go => walk_go(tree.root_node(), source, &mut imports),
         Language::Php => walk_php(tree.root_node(), source, &mut imports),
         Language::Ruby => walk_ruby(tree.root_node(), source, &mut imports),
+        Language::Rust => walk_rust(tree.root_node(), source, &mut imports),
+        Language::Java => walk_java(tree.root_node(), source, &mut imports),
     }
     imports
 }
@@ -300,6 +339,10 @@ fn language_for(path: &str) -> Option<Language> {
         Some(Language::Php)
     } else if [".rb", ".gemspec"].iter().any(|ext| lower.ends_with(ext)) {
         Some(Language::Ruby)
+    } else if lower.ends_with(".rs") {
+        Some(Language::Rust)
+    } else if lower.ends_with(".java") {
+        Some(Language::Java)
     } else {
         None
     }
@@ -908,6 +951,191 @@ fn ruby_string_value(node: Node, body: &[u8]) -> Option<String> {
         return Some(String::new());
     }
     None
+}
+
+// ---------------------------------------------------------------------------
+// Rust
+// ---------------------------------------------------------------------------
+
+/// Normalize a raw Rust `use` path (or `extern crate` name) to its dep key —
+/// the first path segment, i.e. the crate name. The path-relative roots
+/// (`crate`, `self`, `super`) and the implicit-prelude crates (`std`, `core`,
+/// `alloc`) resolve to empty — they're never an external registry dep.
+///
+/// ```text
+/// "serde::Serialize"     -> "serde"
+/// "tokio::sync::mpsc"    -> "tokio"
+/// "crate::foo"           -> ""   (crate-local)
+/// "self::bar"            -> ""   (module-relative)
+/// "std::collections"     -> ""   (stdlib)
+/// "{a, b}"               -> ""   (grouped, no leading path)
+/// ""                     -> ""
+/// ```
+///
+/// A crate rename in Cargo.toml (`foo = { package = "bar" }`) means the
+/// import name can differ from the published name; resolving that needs the
+/// manifest, so consumers reconcile the key against Cargo metadata.
+pub fn dep_key_rust(raw: &str) -> String {
+    let seg = rust_first_segment(raw);
+    match seg {
+        "" | "crate" | "self" | "super" | "std" | "core" | "alloc" => String::new(),
+        s => s.to_string(),
+    }
+}
+
+/// First `::`-separated segment of a Rust path, skipping a leading `::` and
+/// stopping at any path/list punctuation. `"serde::de::Visitor"` -> `"serde"`,
+/// `"foo::{a, b}"` -> `"foo"`, `"{a, b}"` -> `""`.
+fn rust_first_segment(raw: &str) -> &str {
+    let raw = raw.trim().strip_prefix("::").unwrap_or(raw.trim());
+    let end = raw
+        .find(|c: char| c == ':' || c == '{' || c == '}' || c == ',' || c.is_whitespace())
+        .unwrap_or(raw.len());
+    &raw[..end]
+}
+
+/// Walk a Rust tree, converting `use` declarations and `extern crate`
+/// statements into records. Both are static; aliases (`use x as y`) are
+/// dropped — only the crate the path roots at matters.
+fn walk_rust(node: Node, body: &[u8], out: &mut Vec<Import>) {
+    preorder(node, &mut |n| match n.kind() {
+        "use_declaration" => {
+            if let Some(imp) = parse_rust_use(n, body) {
+                out.push(imp);
+            }
+        }
+        "extern_crate_declaration" => {
+            if let Some(imp) = parse_rust_extern_crate(n, body) {
+                out.push(imp);
+            }
+        }
+        _ => {}
+    });
+}
+
+/// Turn a `use_declaration` into one [`Import`]. Reads the `argument` field
+/// (the use tree) verbatim as the module; the dep key is its first segment.
+fn parse_rust_use(node: Node, body: &[u8]) -> Option<Import> {
+    let arg = node.child_by_field_name("argument")?;
+    let module = arg.utf8_text(body).ok()?.to_string();
+    Some(Import {
+        dep_key: dep_key_rust(&module),
+        module,
+        kind: ImportKind::Static,
+        line: node.start_position().row + 1,
+    })
+}
+
+/// Turn an `extern crate foo;` declaration into one [`Import`]. The `name`
+/// field is the crate; the optional `as` alias is ignored.
+fn parse_rust_extern_crate(node: Node, body: &[u8]) -> Option<Import> {
+    let name = node.child_by_field_name("name")?;
+    let module = name.utf8_text(body).ok()?.to_string();
+    Some(Import {
+        dep_key: dep_key_rust(&module),
+        module,
+        kind: ImportKind::Static,
+        line: node.start_position().row + 1,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Java
+// ---------------------------------------------------------------------------
+
+/// Normalize a raw Java import name (the dotted type/name path, without a
+/// trailing `.*`) to its dep key — the **package prefix**. A trailing
+/// Capitalized segment is treated as the imported type and dropped
+/// (`a.b.C` -> `a.b`); an already-package path (wildcard `a.b.*`, passed as
+/// `a.b`) is kept. JDK packages (`java.` / `javax.`) resolve to empty —
+/// they're never a registry dep.
+///
+/// ```text
+/// "com.google.common.collect.Lists" -> "com.google.common.collect"
+/// "org.apache.commons.lang3"        -> "org.apache.commons.lang3" (wildcard)
+/// "java.util.List"                  -> ""   (JDK)
+/// "javax.annotation.Nullable"       -> ""   (JDK)
+/// ""                                -> ""
+/// ```
+///
+/// Java imports name packages, not Maven artifacts; the `group:artifact`
+/// coordinate needs project-side pom/gradle data, so consumers reconcile
+/// this package prefix against their dependency metadata.
+pub fn dep_key_java(raw: &str) -> String {
+    if raw.is_empty() {
+        return String::new();
+    }
+    let pkg = match raw.rfind('.') {
+        Some(i)
+            if raw[i + 1..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_uppercase()) =>
+        {
+            &raw[..i]
+        }
+        _ => raw,
+    };
+    if pkg == "java" || pkg == "javax" || pkg.starts_with("java.") || pkg.starts_with("javax.") {
+        return String::new();
+    }
+    pkg.to_string()
+}
+
+/// Walk a Java tree, converting `import` declarations into records. Covers
+/// single-type (`import a.b.C;`), static (`import static a.b.C.m;`), and
+/// on-demand wildcard (`import a.b.*;`) forms — all static.
+fn walk_java(node: Node, body: &[u8], out: &mut Vec<Import>) {
+    preorder(node, &mut |n| {
+        if n.kind() == "import_declaration" {
+            if let Some(imp) = parse_java_import(n, body) {
+                out.push(imp);
+            }
+        }
+    });
+}
+
+/// Turn an `import_declaration` into one [`Import`]. The dotted name is a
+/// `scoped_identifier` / `identifier` child; a sibling `asterisk` marks the
+/// on-demand wildcard form. The dep key is the package prefix.
+fn parse_java_import(node: Node, body: &[u8]) -> Option<Import> {
+    let mut name: Option<String> = None;
+    let mut wildcard = false;
+    let mut is_static = false;
+    let mut cursor = node.walk();
+    // include unnamed children so the `static` keyword token is visible.
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "scoped_identifier" | "identifier" => {
+                name = child.utf8_text(body).ok().map(str::to_string);
+            }
+            "asterisk" => wildcard = true,
+            "static" => is_static = true,
+            _ => {}
+        }
+    }
+    let name = name?;
+    if name.is_empty() {
+        return None;
+    }
+    let module = if wildcard {
+        format!("{name}.*")
+    } else {
+        name.clone()
+    };
+    // A static import ends in a member (`...Class.method`); strip that member
+    // so the dep key resolves the enclosing type, then its package prefix.
+    let key_input = if is_static && !wildcard {
+        name.rsplit_once('.').map(|(pkg, _)| pkg).unwrap_or(&name)
+    } else {
+        &name
+    };
+    Some(Import {
+        dep_key: dep_key_java(key_input),
+        module,
+        kind: ImportKind::Static,
+        line: node.start_position().row + 1,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -3417,6 +3645,145 @@ mod tests {
         assert_eq!(reachability_of("rails", &files), Reachability::Used);
         assert_eq!(reachability_of("pg", &files), Reachability::Used);
         assert_eq!(reachability_of("sinatra", &files), Reachability::Unused);
+    }
+
+    // --- Rust -----------------------------------------------------------
+
+    fn extract_rs(src: &str) -> Vec<Import> {
+        extract_imports_rust(src.as_bytes())
+    }
+
+    #[test]
+    fn rs_use_crate_paths() {
+        let imps = extract_rs(
+            "use serde::Serialize;\nuse tokio::sync::mpsc;\nuse anyhow::{Result, Context};",
+        );
+        let keys: std::collections::HashSet<_> =
+            imps.iter().map(|i| i.dep_key.as_str()).collect();
+        assert!(keys.contains("serde"));
+        assert!(keys.contains("tokio"));
+        assert!(keys.contains("anyhow"));
+        assert!(imps.iter().all(|i| i.kind == ImportKind::Static));
+    }
+
+    #[test]
+    fn rs_extern_crate() {
+        let imps = extract_rs("extern crate rocket;");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].dep_key, "rocket");
+        assert_eq!(imps[0].kind, ImportKind::Static);
+    }
+
+    #[test]
+    fn rs_local_and_stdlib_normalize_empty() {
+        let imps = extract_rs(
+            "use crate::foo;\nuse self::bar;\nuse super::baz;\nuse std::collections::HashMap;\nuse core::mem;\nuse alloc::vec::Vec;",
+        );
+        assert!(
+            imps.iter().all(|i| i.dep_key.is_empty()),
+            "expected all empty dep keys, got {imps:?}"
+        );
+    }
+
+    #[test]
+    fn rs_dep_key_normalization() {
+        assert_eq!(dep_key_rust("serde::Serialize"), "serde");
+        assert_eq!(dep_key_rust("tokio::sync::mpsc"), "tokio");
+        assert_eq!(dep_key_rust("crate::foo"), "");
+        assert_eq!(dep_key_rust("self::bar"), "");
+        assert_eq!(dep_key_rust("super::baz"), "");
+        assert_eq!(dep_key_rust("std::io"), "");
+        assert_eq!(dep_key_rust("core::mem"), "");
+        assert_eq!(dep_key_rust("alloc::vec"), "");
+        assert_eq!(dep_key_rust(""), "");
+    }
+
+    #[test]
+    fn rs_bad_source_no_panic() {
+        let _ = extract_rs("use ??? broken (");
+        assert!(extract_rs("").is_empty());
+    }
+
+    #[test]
+    fn reachability_over_rust_file() {
+        let files = vec![(
+            "lib.rs".to_string(),
+            b"use serde::Serialize;\nuse crate::internal;".to_vec(),
+        )];
+        assert_eq!(reachability_of("serde", &files), Reachability::Used);
+        assert_eq!(reachability_of("tokio", &files), Reachability::Unused);
+        // crate-local import contributes no dep key.
+        assert!(!imported_dep_keys(&files).contains("internal"));
+    }
+
+    // --- Java -----------------------------------------------------------
+
+    fn extract_java(src: &str) -> Vec<Import> {
+        extract_imports_java(src.as_bytes())
+    }
+
+    #[test]
+    fn java_single_and_wildcard_imports() {
+        let src = "package x;\nimport com.google.common.collect.Lists;\nimport org.apache.commons.lang3.*;\n";
+        let imps = extract_java(src);
+        let by_key: std::collections::HashSet<_> =
+            imps.iter().map(|i| i.dep_key.as_str()).collect();
+        // trailing type `Lists` dropped → package prefix.
+        assert!(by_key.contains("com.google.common.collect"));
+        // wildcard keeps the whole package.
+        assert!(by_key.contains("org.apache.commons.lang3"));
+        assert!(imps.iter().all(|i| i.kind == ImportKind::Static));
+    }
+
+    #[test]
+    fn java_static_import() {
+        let imps = extract_java("import static org.junit.Assert.assertEquals;");
+        assert_eq!(imps.len(), 1);
+        // member `assertEquals` and type `Assert` stripped → package prefix.
+        assert_eq!(imps[0].dep_key, "org.junit");
+    }
+
+    #[test]
+    fn java_jdk_normalizes_empty() {
+        let imps = extract_java("import java.util.List;\nimport javax.annotation.Nullable;");
+        assert!(
+            imps.iter().all(|i| i.dep_key.is_empty()),
+            "expected empty dep keys, got {imps:?}"
+        );
+    }
+
+    #[test]
+    fn java_dep_key_normalization() {
+        assert_eq!(
+            dep_key_java("com.google.common.collect.Lists"),
+            "com.google.common.collect"
+        );
+        assert_eq!(
+            dep_key_java("org.apache.commons.lang3"),
+            "org.apache.commons.lang3"
+        );
+        assert_eq!(dep_key_java("java.util.List"), "");
+        assert_eq!(dep_key_java("javax.annotation.Nullable"), "");
+        assert_eq!(dep_key_java(""), "");
+    }
+
+    #[test]
+    fn java_bad_source_no_panic() {
+        let _ = extract_java("import ??? broken");
+        assert!(extract_java("").is_empty());
+    }
+
+    #[test]
+    fn reachability_over_java_file() {
+        let files = vec![(
+            "App.java".to_string(),
+            b"import com.google.common.collect.Lists;\nimport java.util.List;".to_vec(),
+        )];
+        assert_eq!(
+            reachability_of("com.google.common.collect", &files),
+            Reachability::Used
+        );
+        assert_eq!(reachability_of("com.example.foo", &files), Reachability::Unused);
     }
 
     #[test]

@@ -69,8 +69,10 @@ fn purl_type(eco: Ecosystem) -> Option<&'static str> {
         Ecosystem::Hackage => "hackage",
         Ecosystem::Cpan => "cpan",
         Ecosystem::CocoaPods => "cocoapods",
-        // Git-distributed with no canonical registry → generic per PURL spec.
-        Ecosystem::Neovim | Ecosystem::Aur => "generic",
+        Ecosystem::Conan => "conan",
+        Ecosystem::Conda => "conda",
+        // Git-distributed / no canonical PURL type → generic per PURL spec.
+        Ecosystem::Neovim | Ecosystem::Aur | Ecosystem::Nix | Ecosystem::Julia => "generic",
     })
 }
 

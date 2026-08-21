@@ -315,6 +315,8 @@ fn eco_for_reach_lang(lang: aegis_reach::Language) -> Option<Ecosystem> {
         Language::Go => Ecosystem::Go,
         Language::Php => Ecosystem::Packagist,
         Language::Ruby => Ecosystem::RubyGems,
+        Language::Rust => Ecosystem::Crates,
+        Language::Java => Ecosystem::Maven,
     })
 }
 
