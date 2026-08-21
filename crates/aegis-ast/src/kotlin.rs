@@ -33,4 +33,12 @@ mod tests {
     fn clean_code_no_capabilities() {
         assert!(scan("fun add(a: Int, b: Int): Int { return a + b }").is_empty());
     }
+
+    #[test]
+    fn detects_getenv() {
+        let s = scanner().unwrap();
+        let mut f = Findings::new(false);
+        s.analyze_file("t.kt", b"fun f() { val x = System.getenv(\"SECRET\") }", &mut f);
+        assert!(f.env_reads().contains(&"SECRET".to_string()), "env_reads={:?}", f.env_reads());
+    }
 }
