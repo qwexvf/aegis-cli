@@ -26,9 +26,15 @@ tree-sitter-haskell = { version = "0.23", optional = true }
 tree-sitter-lua = { version = "0.2", optional = true }
 tree-sitter-gleam = { version = "1", optional = true }
 tree-sitter-dart = { version = "0.2", optional = true }
+tree-sitter-kotlin-ng = { version = "1", optional = true }
+tree-sitter-swift = { version = "0.7", optional = true }
+tree-sitter-c = { version = "0.24", optional = true }
+tree-sitter-cpp = { version = "0.23", optional = true }
+tree-sitter-bash = { version = "0.25", optional = true }
+tree-sitter-elixir = { version = "0.3", optional = true }
 
 [features]
-default = ["js", "py", "ruby", "rust", "go", "php", "csharp", "java", "haskell", "lua", "gleam", "dart", "cocoapods"]
+default = ["js", "py", "ruby", "rust", "go", "php", "csharp", "java", "haskell", "lua", "gleam", "dart", "cocoapods", "kotlin", "swift", "c", "cpp", "bash", "elixir"]
 js = ["dep:tree-sitter-javascript"]
 py = ["dep:tree-sitter-python"]
 ruby = ["dep:tree-sitter-ruby"]
@@ -43,3 +49,9 @@ gleam = ["dep:tree-sitter-gleam"]
 dart = ["dep:tree-sitter-dart"]
 # CocoaPods podspecs are Ruby — reuse the Ruby grammar with a podspec query.
 cocoapods = ["dep:tree-sitter-ruby"]
+kotlin = ["dep:tree-sitter-kotlin-ng"]
+swift = ["dep:tree-sitter-swift"]
+c = ["dep:tree-sitter-c"]
+cpp = ["dep:tree-sitter-cpp"]
+bash = ["dep:tree-sitter-bash"]
+elixir = ["dep:tree-sitter-elixir"]
