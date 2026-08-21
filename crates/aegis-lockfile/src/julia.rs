@@ -125,6 +125,8 @@ uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 
     #[test]
     fn invalid_utf8_errors() {
-        assert!(JuliaManifest.parse(&[0xff, 0xfe], &DirectMap::new()).is_err());
+        assert!(JuliaManifest
+            .parse(&[0xff, 0xfe], &DirectMap::new())
+            .is_err());
     }
 }

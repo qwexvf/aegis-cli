@@ -38,7 +38,15 @@ mod tests {
     fn detects_getenv() {
         let s = scanner().unwrap();
         let mut f = Findings::new(false);
-        s.analyze_file("t.kt", b"fun f() { val x = System.getenv(\"SECRET\") }", &mut f);
-        assert!(f.env_reads().contains(&"SECRET".to_string()), "env_reads={:?}", f.env_reads());
+        s.analyze_file(
+            "t.kt",
+            b"fun f() { val x = System.getenv(\"SECRET\") }",
+            &mut f,
+        );
+        assert!(
+            f.env_reads().contains(&"SECRET".to_string()),
+            "env_reads={:?}",
+            f.env_reads()
+        );
     }
 }
