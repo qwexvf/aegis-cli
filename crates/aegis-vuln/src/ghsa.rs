@@ -311,7 +311,11 @@ fn ghsa_ecosystem(eco: Ecosystem) -> Option<&'static str> {
         | Ecosystem::Cpan
         | Ecosystem::CocoaPods
         | Ecosystem::Neovim
-        | Ecosystem::Aur => return None,
+        | Ecosystem::Aur
+        | Ecosystem::Conan
+        | Ecosystem::Nix
+        | Ecosystem::Julia
+        | Ecosystem::Conda => return None,
     })
 }
 

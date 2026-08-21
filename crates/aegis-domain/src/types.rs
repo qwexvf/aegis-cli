@@ -77,6 +77,14 @@ pub enum Ecosystem {
     CocoaPods,
     Neovim,
     Aur,
+    /// C/C++ packages resolved through Conan (`conan.lock`).
+    Conan,
+    /// Nix flake inputs (`flake.lock`).
+    Nix,
+    /// Julia packages (`Manifest.toml`).
+    Julia,
+    /// Conda packages (`conda-lock.yml`).
+    Conda,
 }
 
 impl Ecosystem {
@@ -102,6 +110,10 @@ impl Ecosystem {
             CocoaPods => "cocoapods",
             Neovim => "neovim",
             Aur => "aur",
+            Conan => "conan",
+            Nix => "nix",
+            Julia => "julia",
+            Conda => "conda",
         }
     }
 }

@@ -42,6 +42,10 @@ pub(crate) fn parse_ecosystem(s: &str) -> Option<Ecosystem> {
         "cocoapods" | "pods" => Ecosystem::CocoaPods,
         "neovim" => Ecosystem::Neovim,
         "aur" => Ecosystem::Aur,
+        "conan" => Ecosystem::Conan,
+        "nix" => Ecosystem::Nix,
+        "julia" => Ecosystem::Julia,
+        "conda" => Ecosystem::Conda,
         _ => return None,
     })
 }

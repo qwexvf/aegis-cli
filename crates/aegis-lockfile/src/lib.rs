@@ -23,6 +23,10 @@ pub mod cargo;
 pub mod cocoapods;
 #[cfg(feature = "packagist")]
 pub mod composer;
+#[cfg(feature = "conan")]
+pub mod conan;
+#[cfg(feature = "conda")]
+pub mod conda;
 #[cfg(feature = "cpan")]
 pub mod cpan;
 #[cfg(feature = "cran")]
@@ -35,8 +39,12 @@ pub mod go;
 pub mod hackage;
 #[cfg(feature = "hex")]
 pub mod hex;
+#[cfg(feature = "julia")]
+pub mod julia;
 #[cfg(feature = "maven")]
 pub mod maven;
+#[cfg(feature = "nix")]
+pub mod nix;
 #[cfg(feature = "npm")]
 pub mod npm;
 #[cfg(feature = "nuget")]
@@ -141,6 +149,14 @@ pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
         v.push(Box::new(hackage::CabalFreeze));
         v.push(Box::new(hackage::StackYamlLock));
     }
+    #[cfg(feature = "conan")]
+    v.push(Box::new(conan::ConanLock));
+    #[cfg(feature = "nix")]
+    v.push(Box::new(nix::FlakeLock));
+    #[cfg(feature = "julia")]
+    v.push(Box::new(julia::JuliaManifest));
+    #[cfg(feature = "conda")]
+    v.push(Box::new(conda::CondaLock));
     v
 }
 
