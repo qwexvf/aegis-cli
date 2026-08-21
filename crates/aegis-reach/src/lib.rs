@@ -3658,8 +3658,7 @@ mod tests {
         let imps = extract_rs(
             "use serde::Serialize;\nuse tokio::sync::mpsc;\nuse anyhow::{Result, Context};",
         );
-        let keys: std::collections::HashSet<_> =
-            imps.iter().map(|i| i.dep_key.as_str()).collect();
+        let keys: std::collections::HashSet<_> = imps.iter().map(|i| i.dep_key.as_str()).collect();
         assert!(keys.contains("serde"));
         assert!(keys.contains("tokio"));
         assert!(keys.contains("anyhow"));
@@ -3783,7 +3782,10 @@ mod tests {
             reachability_of("com.google.common.collect", &files),
             Reachability::Used
         );
-        assert_eq!(reachability_of("com.example.foo", &files), Reachability::Unused);
+        assert_eq!(
+            reachability_of("com.example.foo", &files),
+            Reachability::Unused
+        );
     }
 
     #[test]

@@ -102,6 +102,8 @@ package:
 
     #[test]
     fn corrupt_input_errors() {
-        assert!(CondaLock.parse(b"\t: : broken\n  - [", &DirectMap::new()).is_err());
+        assert!(CondaLock
+            .parse(b"\t: : broken\n  - [", &DirectMap::new())
+            .is_err());
     }
 }

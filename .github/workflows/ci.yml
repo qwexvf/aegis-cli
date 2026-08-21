@@ -44,10 +44,17 @@ jobs:
           cargo build -p aegis-lockfile --no-default-features --features npm
           cargo build -p aegis-lockfile --no-default-features --features maven
           cargo build -p aegis-lockfile --no-default-features --features hex
-          # ast grammars: zero, one native, and the ruby-reuse (cocoapods).
+          cargo build -p aegis-lockfile --no-default-features --features conda
+          cargo build -p aegis-lockfile --no-default-features --features conan
+          cargo build -p aegis-lockfile --no-default-features --features julia
+          # ast grammars: zero, one native, the ruby-reuse (cocoapods), and the
+          # new grammars in isolation.
           cargo build -p aegis-ast --no-default-features
           cargo build -p aegis-ast --no-default-features --features js
           cargo build -p aegis-ast --no-default-features --features cocoapods
+          cargo build -p aegis-ast --no-default-features --features kotlin
+          cargo build -p aegis-ast --no-default-features --features elixir
+          cargo build -p aegis-ast --no-default-features --features bash
           # heuristics: zero, and each optional-dep detector in isolation.
           cargo build -p aegis-heuristics --no-default-features
           cargo build -p aegis-heuristics --no-default-features --features secrets
