@@ -281,9 +281,6 @@ v0.29 for `analyze`, `sbom`, and `ci`. They run offline; `ci-parity` replays a
 committed HTTP cassette rather than hitting the network. Re-capture with
 `--record` (needs the Go binary) or `--record-cassettes` (needs network).
 
-`PROGRESS.txt` tracks the port in detail — phase status, parity findings, and
-what is deliberately not ported.
-
 ## Migrating from Go v0.29
 
 The Rust CLI is flat, stateless-by-default, and CI-first. Scanning behavior
