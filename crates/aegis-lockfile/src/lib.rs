@@ -43,6 +43,8 @@ pub mod hex;
 pub mod julia;
 #[cfg(feature = "maven")]
 pub mod maven;
+#[cfg(feature = "nimble")]
+pub mod nimble;
 #[cfg(feature = "nix")]
 pub mod nix;
 #[cfg(feature = "npm")]
@@ -157,6 +159,8 @@ pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
     v.push(Box::new(julia::JuliaManifest));
     #[cfg(feature = "conda")]
     v.push(Box::new(conda::CondaLock));
+    #[cfg(feature = "nimble")]
+    v.push(Box::new(nimble::NimbleLock));
     v
 }
 

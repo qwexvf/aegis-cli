@@ -203,6 +203,7 @@ fn check_project_dir() -> Check {
         "cabal.project.freeze",
         "stack.yaml.lock",
         "manifest.toml",
+        "nimble.lock",
     ];
     let found: Vec<&str> = LOCKFILES
         .iter()
