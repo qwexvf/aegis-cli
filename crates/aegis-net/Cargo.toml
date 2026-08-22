@@ -14,7 +14,7 @@ ureq = { version = "2", optional = true }
 # Cassette record/replay only — kept optional so the lean-build floor stays dep-free.
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
-base64 = { version = "0.22", optional = true }
+base64 = { version = "0.23", optional = true }
 
 [features]
 default = ["ureq-backend"]
