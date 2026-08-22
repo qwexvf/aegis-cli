@@ -252,6 +252,19 @@ impl ProjectReach {
         {
             return Reachability::Used;
         }
+        // NuGet: `keys` holds imported namespaces (`Newtonsoft.Json.Linq`),
+        // `dep.name` a package (`Newtonsoft.Json`). A package and the namespaces
+        // it provides share a dotted root, so match either direction of dotted
+        // prefix. (Some packages namespace differently — `AWSSDK.S3` →
+        // `Amazon.S3` — and won't match; documented, same class of gap as PyPI.)
+        if dep.ecosystem == Ecosystem::NuGet {
+            let pkg_dot = format!("{}.", dep.name);
+            if keys.iter().any(|k| {
+                *k == dep.name || k.starts_with(&pkg_dot) || dep.name.starts_with(&format!("{k}."))
+            }) {
+                return Reachability::Used;
+            }
+        }
         Reachability::Unused
     }
 }
@@ -329,6 +342,7 @@ fn eco_for_reach_lang(lang: aegis_reach::Language) -> Option<Ecosystem> {
         Language::Ruby => Ecosystem::RubyGems,
         Language::Rust => Ecosystem::Crates,
         Language::Java => Ecosystem::Maven,
+        Language::CSharp => Ecosystem::NuGet,
     })
 }
 
@@ -342,15 +356,17 @@ pub(crate) fn is_enriched_ecosystem(eco: Ecosystem) -> bool {
     )
 }
 
-/// Ecosystems the `ci` reachability layer can classify: enriched AND covered
-/// by an aegis-reach import parser (js/python/go/ruby). Crates is enriched but
-/// has no Rust import parser, so a crate dep stays Unknown (never downgraded on
-/// a false "unused"). Go v0.29 classifies npm only — extending to the other
-/// parseable enriched ecosystems is a Rust-ahead behavior.
+/// Ecosystems the `ci` reachability layer can classify: covered by an
+/// aegis-reach import parser and carrying an OSV advisory feed the downgrade can
+/// act on. js/python/go/ruby, plus NuGet (C# `using` parser + OSV "NuGet").
+/// NuGet source isn't capability-scanned (not enriched), but reachability walks
+/// the PROJECT source, not the dep, so it classifies independently. Crates has
+/// no import-level ci parser wired, so a crate dep stays Unknown (never
+/// downgraded on a false "unused").
 pub(crate) fn reachability_eligible(eco: Ecosystem) -> bool {
     matches!(
         eco,
-        Ecosystem::Npm | Ecosystem::PyPI | Ecosystem::Go | Ecosystem::RubyGems
+        Ecosystem::Npm | Ecosystem::PyPI | Ecosystem::Go | Ecosystem::RubyGems | Ecosystem::NuGet
     )
 }
 
@@ -758,6 +774,34 @@ mod tests {
     }
 
     #[test]
+    fn nuget_package_matches_imported_namespace() {
+        // C# `using` namespaces vs NuGet package names: exact and either-way
+        // dotted-prefix. `Newtonsoft.Json` package ⊇ `using Newtonsoft.Json.Linq`;
+        // `System.Text.Json` package == the imported namespace.
+        let dir = scratch();
+        std::fs::write(
+            dir.join("Program.cs"),
+            b"using System.Text.Json;\nusing Newtonsoft.Json.Linq;\nclass P {}\n",
+        )
+        .unwrap();
+        let reach = project_reachability(&dir);
+        assert_eq!(
+            reach.classify(&dep("System.Text.Json", Ecosystem::NuGet)),
+            Reachability::Used
+        );
+        assert_eq!(
+            reach.classify(&dep("Newtonsoft.Json", Ecosystem::NuGet)),
+            Reachability::Used,
+            "package should match its more-specific imported namespace"
+        );
+        assert_eq!(
+            reach.classify(&dep("Serilog", Ecosystem::NuGet)),
+            Reachability::Unused
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn bare_project_marks_all_unused() {
         // No source files at all → nothing imported → every dep Unused.
         let dir = scratch();
@@ -838,5 +882,6 @@ mod tests {
         assert!(reachability_eligible(Ecosystem::PyPI));
         assert!(reachability_eligible(Ecosystem::Go));
         assert!(reachability_eligible(Ecosystem::RubyGems));
+        assert!(reachability_eligible(Ecosystem::NuGet));
     }
 }

@@ -143,6 +143,8 @@ pub enum Language {
     Rust,
     /// Java (`tree-sitter-java`).
     Java,
+    /// C# (`tree-sitter-c-sharp`).
+    CSharp,
 }
 
 /// Parse JS/TS source and return every import it declares.
@@ -196,6 +198,13 @@ pub fn extract_imports_java(source: &[u8]) -> Vec<Import> {
     extract_with(Language::Java, source)
 }
 
+/// Parse C# source and return every `using` directive it declares.
+///
+/// A parse failure yields an empty vec — never panics.
+pub fn extract_imports_csharp(source: &[u8]) -> Vec<Import> {
+    extract_with(Language::CSharp, source)
+}
+
 /// Parse `source` with the grammar for `lang` and return every import.
 ///
 /// A parse failure (or a grammar that won't load) yields an empty vec —
@@ -210,6 +219,7 @@ pub fn extract_with(lang: Language, source: &[u8]) -> Vec<Import> {
         Language::Ruby => tree_sitter_ruby::LANGUAGE.into(),
         Language::Rust => tree_sitter_rust::LANGUAGE.into(),
         Language::Java => tree_sitter_java::LANGUAGE.into(),
+        Language::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
     };
     if parser.set_language(&language).is_err() {
         return Vec::new();
@@ -227,6 +237,7 @@ pub fn extract_with(lang: Language, source: &[u8]) -> Vec<Import> {
         Language::Ruby => walk_ruby(tree.root_node(), source, &mut imports),
         Language::Rust => walk_rust(tree.root_node(), source, &mut imports),
         Language::Java => walk_java(tree.root_node(), source, &mut imports),
+        Language::CSharp => walk_csharp(tree.root_node(), source, &mut imports),
     }
     imports
 }
@@ -343,6 +354,8 @@ fn language_for(path: &str) -> Option<Language> {
         Some(Language::Rust)
     } else if lower.ends_with(".java") {
         Some(Language::Java)
+    } else if lower.ends_with(".cs") {
+        Some(Language::CSharp)
     } else {
         None
     }
@@ -1417,6 +1430,77 @@ fn parse_java_import(node: Node, body: &[u8]) -> Option<Import> {
         kind: ImportKind::Static,
         line: node.start_position().row + 1,
     })
+}
+
+// ---------------------------------------------------------------------------
+// C#
+// ---------------------------------------------------------------------------
+
+/// Walk a C# tree, converting each `using_directive` into an [`Import`].
+/// Covers plain (`using System.Text.Json;`), `global using`, `static`
+/// (`using static System.Math;`), and alias (`using J = System.Text.Json;`)
+/// forms — all static imports.
+fn walk_csharp(node: Node, body: &[u8], out: &mut Vec<Import>) {
+    preorder(node, &mut |n| {
+        if n.kind() == "using_directive" {
+            if let Some(imp) = parse_csharp_using(n, body) {
+                out.push(imp);
+            }
+        }
+    });
+}
+
+/// Turn a `using_directive` into one [`Import`]. The namespace/type path is the
+/// last `qualified_name`/`identifier` child (an alias's `X =` prefix and the
+/// `using`/`global`/`static` keywords are skipped); a `static` keyword marks
+/// the member-import form. The dep key is the namespace.
+fn parse_csharp_using(node: Node, body: &[u8]) -> Option<Import> {
+    let mut name: Option<String> = None;
+    let mut is_static = false;
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            // The namespace/type path. For an alias (`J = System.X`) the target
+            // path is the last such node, so keep overwriting.
+            "qualified_name" | "identifier" => {
+                name = child.utf8_text(body).ok().map(str::to_string);
+            }
+            "static" => is_static = true,
+            _ => {}
+        }
+    }
+    let name = name?;
+    if name.is_empty() {
+        return None;
+    }
+    // A static using imports a type's members (`using static System.Math`);
+    // strip the trailing type so the dep key resolves the namespace.
+    let key_input = if is_static {
+        name.rsplit_once('.').map(|(ns, _)| ns).unwrap_or(&name)
+    } else {
+        &name
+    };
+    Some(Import {
+        dep_key: dep_key_csharp(key_input),
+        module: name.clone(),
+        kind: ImportKind::Static,
+        line: node.start_position().row + 1,
+    })
+}
+
+/// Dep key for a C# namespace. Unlike Java, the .NET base-class-library
+/// namespaces (`System.*`) are NOT filtered — many ship as real NuGet packages
+/// (`System.Text.Json`, `System.Text.Encodings.Web`), so dropping them would
+/// miss live deps. The whole namespace is kept; the consumer matches it against
+/// package names by dotted prefix (a package and its namespace share a root,
+/// e.g. package `Newtonsoft.Json` ⊇ `using Newtonsoft.Json.Linq`).
+pub fn dep_key_csharp(raw: &str) -> String {
+    let raw = raw.trim();
+    // `global` / `alias` artifacts shouldn't reach here, but guard anyway.
+    if raw.is_empty() || raw == "static" || raw == "global" {
+        return String::new();
+    }
+    raw.to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -4153,6 +4237,37 @@ mod tests {
     fn java_bad_source_no_panic() {
         let _ = extract_java("import ??? broken");
         assert!(extract_java("").is_empty());
+    }
+
+    fn extract_cs(src: &str) -> Vec<Import> {
+        extract_imports_csharp(src.as_bytes())
+    }
+
+    #[test]
+    fn cs_plain_global_and_alias_usings() {
+        let src = "using System.Text.Json;\nglobal using Newtonsoft.Json.Linq;\nusing J = System.Text.Json;\nnamespace A { class C {} }\n";
+        let imps = extract_cs(src);
+        let keys: std::collections::HashSet<_> = imps.iter().map(|i| i.dep_key.as_str()).collect();
+        // whole namespace kept (System.* NOT filtered — real nuget packages).
+        assert!(keys.contains("System.Text.Json"), "{imps:?}");
+        assert!(keys.contains("Newtonsoft.Json.Linq"), "{imps:?}");
+        assert!(imps.iter().all(|i| i.kind == ImportKind::Static));
+    }
+
+    #[test]
+    fn cs_static_using_strips_type() {
+        // `using static System.Math;` → namespace System (type Math stripped).
+        let imps = extract_cs("using static System.Math;");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].dep_key, "System");
+    }
+
+    #[test]
+    fn cs_dep_key_and_bad_source() {
+        assert_eq!(dep_key_csharp("Newtonsoft.Json"), "Newtonsoft.Json");
+        assert_eq!(dep_key_csharp(""), "");
+        let _ = extract_cs("using ??? broken");
+        assert!(extract_cs("").is_empty());
     }
 
     #[test]
