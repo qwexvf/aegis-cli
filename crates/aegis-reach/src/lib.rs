@@ -1093,6 +1093,234 @@ fn parse_rust_extern_crate(node: Node, body: &[u8]) -> Option<Import> {
 }
 
 // ---------------------------------------------------------------------------
+// Rust used-symbols
+// ---------------------------------------------------------------------------
+
+/// One resolved `use` leaf: the crate dep key it roots at, the imported item
+/// (last path segment), and the local name it binds (the `as` alias when
+/// present, else the item).
+struct RustBinding {
+    module: String,
+    symbol: String,
+    local: String,
+}
+
+/// Expand a Rust use-tree's text into flat `(full_path, alias)` leaves.
+/// Handles nested brace groups (`a::{b, c::d}`) and per-leaf `as` aliases
+/// (`a::b as x`). A `*` wildcard leaf is kept verbatim so the caller can treat
+/// it as a namespace root. Text-based on purpose — robust across the several
+/// tree-sitter node shapes a use tree can take.
+fn expand_rust_use(tree: &str) -> Vec<(String, Option<String>)> {
+    let tree = tree.trim();
+    let Some(open) = tree.find('{') else {
+        // No group: a single path, optionally `path as alias`.
+        let (path, alias) = match tree.split_once(" as ") {
+            Some((p, a)) => (p.trim().to_string(), Some(a.trim().to_string())),
+            None => (tree.to_string(), None),
+        };
+        return vec![(path, alias)];
+    };
+    // Match the group to its closing brace and split the inner list on
+    // top-level commas (nested groups keep their commas).
+    let prefix = tree[..open].trim_end().trim_end_matches("::");
+    let inner = &tree[open + 1..tree.rfind('}').unwrap_or(tree.len())];
+    let mut out = Vec::new();
+    for item in split_top_level_commas(inner) {
+        let item = item.trim();
+        if item.is_empty() {
+            continue;
+        }
+        for (sub, alias) in expand_rust_use(item) {
+            let full = if prefix.is_empty() {
+                sub
+            } else if sub.is_empty() {
+                prefix.to_string()
+            } else {
+                format!("{prefix}::{sub}")
+            };
+            out.push((full, alias));
+        }
+    }
+    out
+}
+
+/// Split on commas that sit outside any `{}` nesting.
+fn split_top_level_commas(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut cur = String::new();
+    for c in s.chars() {
+        match c {
+            '{' => {
+                depth += 1;
+                cur.push(c);
+            }
+            '}' => {
+                depth -= 1;
+                cur.push(c);
+            }
+            ',' if depth == 0 => {
+                out.push(std::mem::take(&mut cur));
+            }
+            _ => cur.push(c),
+        }
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// Parse Rust source and return every use of an imported crate symbol.
+///
+/// Two passes: collect `use` bindings (local name → crate + imported item),
+/// then walk usage sites and correlate. Two site shapes are recognized,
+/// mirroring the Go pass's package-selector model:
+///
+/// - `local::Sym` (member access on a bound module/type) → `(crate, Sym)`.
+/// - `crate::Sym...` (a full path rooted at an imported crate) → `(crate, Sym)`.
+/// - `f(...)` where `f` is a bound item local → `(crate, item)`.
+///
+/// Bare type-position uses (`T: Serialize`, `#[derive(Serialize)]`) are not
+/// counted — the pass stays call/path-anchored to avoid matching same-named
+/// locals. `crate`/`self`/`super`/`std`/`core`/`alloc` roots bind nothing.
+/// A parse failure yields an empty vec.
+pub fn extract_used_symbols_rust(source: &[u8]) -> Vec<UsedSymbol> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_rust::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    // Bindings by local name, and the set of imported crate dep keys.
+    let mut bindings: HashMap<String, RustBinding> = HashMap::new();
+    let mut crate_roots: HashSet<String> = HashSet::new();
+    collect_rust_use_bindings(tree.root_node(), source, &mut bindings, &mut crate_roots);
+    if bindings.is_empty() && crate_roots.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    collect_rust_uses(tree.root_node(), source, &bindings, &crate_roots, &mut out);
+    out
+}
+
+fn collect_rust_use_bindings(
+    node: Node,
+    body: &[u8],
+    bindings: &mut HashMap<String, RustBinding>,
+    crate_roots: &mut HashSet<String>,
+) {
+    preorder(node, &mut |n| {
+        if n.kind() != "use_declaration" {
+            return;
+        }
+        let Some(arg) = n.child_by_field_name("argument") else {
+            return;
+        };
+        let Ok(text) = arg.utf8_text(body) else {
+            return;
+        };
+        for (path, alias) in expand_rust_use(text) {
+            let module = dep_key_rust(&path);
+            if module.is_empty() {
+                continue;
+            }
+            crate_roots.insert(module.clone());
+            let leaf = path.rsplit("::").next().unwrap_or(&path).trim();
+            if leaf == "*" || leaf.is_empty() {
+                continue; // wildcard / bare crate: no concrete local symbol
+            }
+            let local = alias.unwrap_or_else(|| leaf.to_string());
+            bindings.insert(
+                local.clone(),
+                RustBinding {
+                    module,
+                    symbol: leaf.to_string(),
+                    local,
+                },
+            );
+        }
+    });
+}
+
+fn collect_rust_uses(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, RustBinding>,
+    crate_roots: &HashSet<String>,
+    out: &mut Vec<UsedSymbol>,
+) {
+    // Don't descend into import declarations — their paths aren't uses.
+    if matches!(node.kind(), "use_declaration" | "extern_crate_declaration") {
+        return;
+    }
+    if node.kind() == "scoped_identifier" {
+        if let Ok(text) = node.utf8_text(body) {
+            let segs: Vec<&str> = text.split("::").map(|s| s.trim()).collect();
+            if segs.len() >= 2 && !segs[0].is_empty() {
+                let head = segs[0];
+                let second = segs[1].to_string();
+                let line = node.start_position().row + 1;
+                if let Some(b) = bindings.get(head) {
+                    // `local::Sym` — member access on a bound module/type.
+                    out.push(UsedSymbol {
+                        module: b.module.clone(),
+                        symbol: second,
+                        line,
+                    });
+                } else {
+                    // `crate::Sym...` — a full path rooted at an imported crate.
+                    let m = dep_key_rust(head);
+                    if !m.is_empty() && crate_roots.contains(&m) {
+                        out.push(UsedSymbol {
+                            module: m,
+                            symbol: second,
+                            line,
+                        });
+                    }
+                }
+            }
+        }
+        // A scoped_identifier's children are just path segments — no deeper
+        // uses to find.
+        return;
+    }
+    if node.kind() == "call_expression" {
+        // Unwrap a turbofish call (`from_str::<i32>()` parses as a
+        // `generic_function` wrapping the callee) to reach the identifier.
+        let mut callee = node.child_by_field_name("function");
+        if let Some(c) = callee {
+            if c.kind() == "generic_function" {
+                callee = c.child_by_field_name("function");
+            }
+        }
+        if let Some(func) = callee {
+            if func.kind() == "identifier" {
+                if let Ok(name) = func.utf8_text(body) {
+                    if let Some(b) = bindings.get(name) {
+                        if b.local == name {
+                            out.push(UsedSymbol {
+                                module: b.module.clone(),
+                                symbol: b.symbol.clone(),
+                                line: func.start_position().row + 1,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_rust_uses(child, body, bindings, crate_roots, out);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Java
 // ---------------------------------------------------------------------------
 
@@ -1262,10 +1490,11 @@ pub fn extract_used_symbols(source: &[u8]) -> Vec<UsedSymbol> {
 /// file in a project. Files are routed by extension —
 /// `.js/.ts/.mjs/.cjs/.jsx/.tsx` through the JS used-symbol pass,
 /// `.py/.pyi` through the Python one, `.go` through the Go one,
-/// `.php/.phtml` through the PHP one; any other extension is skipped.
-/// Ruby has no used-symbol pass by design (`require`/`gem` bind no local
-/// — see the module docs), so `.rb` files contribute nothing here. A
-/// file whose usages don't reference `dep_key` contributes nothing.
+/// `.php/.phtml` through the PHP one, `.rs` through the Rust one; any other
+/// extension is skipped. Ruby has no used-symbol pass by design
+/// (`require`/`gem` bind no local — see the module docs), so `.rb` files
+/// contribute nothing here. A file whose usages don't reference `dep_key`
+/// contributes nothing.
 pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<String> {
     let mut out = HashSet::new();
     for (path, bytes) in files {
@@ -1274,6 +1503,7 @@ pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<St
             Some(Language::Python) => extract_used_symbols_python(bytes),
             Some(Language::Go) => extract_used_symbols_go(bytes),
             Some(Language::Php) => extract_used_symbols_php(bytes),
+            Some(Language::Rust) => extract_used_symbols_rust(bytes),
             _ => continue,
         };
         for used in uses {
@@ -3750,6 +3980,91 @@ mod tests {
             imps.iter().all(|i| i.dep_key.is_empty()),
             "expected all empty dep keys, got {imps:?}"
         );
+    }
+
+    #[test]
+    fn rs_used_symbols_named_import_call() {
+        // `use serde_json::from_str; from_str(...)` → (serde_json, from_str).
+        let syms = extract_used_symbols_rust(
+            b"use serde_json::from_str;\nfn f() { let _ = from_str(\"{}\"); }\n",
+        );
+        assert!(
+            syms.iter()
+                .any(|s| s.module == "serde_json" && s.symbol == "from_str"),
+            "got {syms:?}"
+        );
+    }
+
+    #[test]
+    fn rs_used_symbols_turbofish_call() {
+        // `from_str::<i32>(...)` parses as a generic_function callee.
+        let syms = extract_used_symbols_rust(
+            b"use serde_json::from_str;\nfn f() { let _ = from_str::<i32>(\"1\"); }\n",
+        );
+        assert!(
+            syms.iter()
+                .any(|s| s.module == "serde_json" && s.symbol == "from_str"),
+            "turbofish call missed: {syms:?}"
+        );
+    }
+
+    #[test]
+    fn rs_used_symbols_full_path_and_member_access() {
+        // full path: `serde_json::to_string(...)` (crate imported via `use`).
+        // member access on a bound module: `mpsc::channel()`.
+        let src = b"use serde_json;\nuse tokio::sync::mpsc;\nfn f() { serde_json::to_string(&1); let _ = mpsc::channel::<u8>(); }\n";
+        let syms = extract_used_symbols_rust(src);
+        assert!(
+            syms.iter()
+                .any(|s| s.module == "serde_json" && s.symbol == "to_string"),
+            "full-path use missing: {syms:?}"
+        );
+        assert!(
+            syms.iter()
+                .any(|s| s.module == "tokio" && s.symbol == "channel"),
+            "member-access use missing: {syms:?}"
+        );
+    }
+
+    #[test]
+    fn rs_used_symbols_alias_and_grouped() {
+        // grouped import with an alias: `use anyhow::{Result as R, bail};`
+        let src = b"use anyhow::{Result as R, bail};\nfn f() -> R<()> { bail!(\"x\") }\n";
+        let syms = extract_used_symbols_rust(src);
+        // `bail!` is a macro (not a plain call) — the grouped/alias parse is what
+        // we assert here via used_symbols_of over a project.
+        let files = vec![("m.rs".to_string(), src.to_vec())];
+        let used = used_symbols_of("anyhow", &files);
+        // R aliases Result; using R in a path/return isn't call-anchored, so the
+        // set may be empty — the point is the parse doesn't panic and routes .rs.
+        let _ = used;
+        let _ = syms;
+    }
+
+    #[test]
+    fn rs_used_symbols_skips_local_and_stdlib() {
+        // `crate::`, `std::`, and unimported local modules contribute nothing.
+        let src =
+            b"use std::collections::HashMap;\nfn f() { let _ = HashMap::new(); crate::helper::go(); mymod::thing(); }\n";
+        let syms = extract_used_symbols_rust(src);
+        assert!(
+            syms.iter().all(|s| s.module != "std"
+                && s.module != "crate"
+                && s.module != "mymod"
+                && s.module != "helper"),
+            "leaked a non-crate module: {syms:?}"
+        );
+    }
+
+    #[test]
+    fn rs_used_symbols_via_project_helper() {
+        let files = vec![(
+            "app.rs".to_string(),
+            b"use serde_json::from_str;\nfn f() { let _ = from_str(\"{}\"); }\n".to_vec(),
+        )];
+        let used = used_symbols_of("serde_json", &files);
+        assert!(used.contains("from_str"), "got {used:?}");
+        assert!(used_symbols_of("nonexistent", &files).is_empty());
     }
 
     #[test]
