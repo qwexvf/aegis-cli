@@ -73,6 +73,21 @@ jobs:
           cargo build -p aegis-net --no-default-features --features cassette
           cargo build -p aegis-net --no-default-features --features "ureq-backend cassette"
 
+  audit:
+    # RustSec advisory gate over the real dependency graph (Cargo.lock only —
+    # the deliberately-vulnerable fixtures under examples/ are separate manifests
+    # and are NOT in the workspace lockfile, so they never trip this). Fails the
+    # build when a crate we actually depend on gains an advisory.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+      - name: install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: cargo audit
+        run: cargo audit
+
   parity:
     # Command-parity gates. Diff the Rust binary against goldens captured from
     # the Go reference (aegis v0.29). Goldens are committed (examples/), so no
