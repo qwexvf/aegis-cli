@@ -10,11 +10,11 @@ description = "Source-code reachability (JS/TS + Python + Go + PHP + Ruby import
 [dependencies]
 aegis-domain = { path = "../aegis-domain" }
 tree-sitter = "0.25"
-tree-sitter-javascript = "0.23"
-tree-sitter-python = "0.23"
-tree-sitter-go = "0.23"
-tree-sitter-php = "0.23"
+tree-sitter-javascript = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-go = "0.25"
+tree-sitter-php = "0.24"
 tree-sitter-ruby = "0.23"
-tree-sitter-rust = "0.23"
+tree-sitter-rust = "0.24"
 tree-sitter-java = "0.23"
 tree-sitter-c-sharp = "0.23"
