@@ -497,6 +497,59 @@ pub fn dep_key_python(raw: &str) -> String {
     }
 }
 
+/// Candidate top-level import names for a PyPI **distribution** name, for
+/// consumer-side reachability matching (`classify`, engine `dep_reachability`).
+///
+/// The import name a project writes (`import yaml`) frequently differs from the
+/// distribution name in the lockfile (`PyYAML`). `dep_key_python` normalizes the
+/// *import* side; this normalizes the *distribution* side to the set of names it
+/// could be imported as, so the two meet. Matching against ANY candidate errs
+/// toward `Used` — the security-safe direction: a missed mapping must never
+/// downgrade a live advisory on a dep that is actually imported.
+///
+/// Sources, in order: a curated table for the well-known mismatches (the
+/// authoritative map lives in each wheel's `top_level.txt`, unavailable to an
+/// offline lockfile scan), then normalized fallbacks (PEP 503 lowercase, and
+/// `-`/`.` → `_`). The raw name is always included.
+pub fn pypi_import_candidates(dist: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |s: String| {
+        if !s.is_empty() && !out.contains(&s) {
+            out.push(s);
+        }
+    };
+    push(dist.to_string());
+
+    // Curated dist → import-top-level for the common non-matching cases.
+    let lower = dist.to_ascii_lowercase();
+    if let Some(mapped) = match lower.as_str() {
+        "pyyaml" => Some("yaml"),
+        "beautifulsoup4" => Some("bs4"),
+        "pillow" => Some("PIL"),
+        "python-dateutil" => Some("dateutil"),
+        "python-dotenv" => Some("dotenv"),
+        "scikit-learn" => Some("sklearn"),
+        "scikit-image" => Some("skimage"),
+        "opencv-python" => Some("cv2"),
+        "opencv-python-headless" => Some("cv2"),
+        "msgpack-python" => Some("msgpack"),
+        "attrs" => Some("attr"),
+        "pymysql" => Some("pymysql"),
+        "protobuf" => Some("google"),
+        "google-cloud-storage" => Some("google"),
+        "typing-extensions" => Some("typing_extensions"),
+        _ => None,
+    } {
+        push(mapped.to_string());
+    }
+
+    // Normalized fallbacks for the merely-cased / punctuation-swapped cases
+    // (`Django` → `django`, `python-dateutil` → `python_dateutil`).
+    push(lower.clone());
+    push(lower.replace(['-', '.'], "_"));
+    out
+}
+
 /// Whether a Python module path uses leading-dot relative notation
 /// (`.x`, `..y.z`, `.`). Mirrors depusage's Python `IsRelative`.
 fn is_relative_python(raw: &str) -> bool {
@@ -3286,6 +3339,21 @@ mod tests {
         assert_eq!(imps[0].module, "os.path");
         assert_eq!(imps[0].dep_key, "os");
         assert_eq!(imps[0].kind, ImportKind::Static);
+    }
+
+    #[test]
+    fn pypi_import_candidates_maps_renamed_dists() {
+        // curated mismatches
+        assert!(pypi_import_candidates("PyYAML").contains(&"yaml".to_string()));
+        assert!(pypi_import_candidates("Pillow").contains(&"PIL".to_string()));
+        assert!(pypi_import_candidates("beautifulsoup4").contains(&"bs4".to_string()));
+        // case-only normalization (no table entry needed)
+        assert!(pypi_import_candidates("Django").contains(&"django".to_string()));
+        // punctuation → underscore fallback
+        assert!(pypi_import_candidates("python-dateutil").contains(&"dateutil".to_string()));
+        assert!(pypi_import_candidates("some-lib").contains(&"some_lib".to_string()));
+        // raw name always present
+        assert!(pypi_import_candidates("requests").contains(&"requests".to_string()));
     }
 
     #[test]

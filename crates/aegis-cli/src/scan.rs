@@ -240,6 +240,18 @@ impl ProjectReach {
                 return Reachability::Used;
             }
         }
+        // PyPI distribution names frequently differ from the top-level import
+        // name (`PyYAML` → `yaml`, `Pillow` → `PIL`). `keys` holds import names,
+        // so a direct `dep.name` match misses and the dep looks Unused — which
+        // would wrongly downgrade a live advisory. Match against the distribution
+        // name's import candidates instead.
+        if dep.ecosystem == Ecosystem::PyPI
+            && aegis_reach::pypi_import_candidates(&dep.name)
+                .iter()
+                .any(|c| keys.contains(c))
+        {
+            return Reachability::Used;
+        }
         Reachability::Unused
     }
 }
@@ -712,6 +724,34 @@ mod tests {
         // ci contract for a scanned lockfile.
         assert_eq!(
             reach.classify(&dep("left-pad", Ecosystem::Npm)),
+            Reachability::Unused
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pypi_dist_name_matches_renamed_import() {
+        // `import yaml` / `import PIL` / `import bs4`, but the lockfile pins the
+        // distribution names `PyYAML` / `Pillow` / `beautifulsoup4`. Without the
+        // dist→import candidate mapping these look Unused and a live advisory
+        // would be wrongly downgraded.
+        let dir = scratch();
+        std::fs::write(
+            dir.join("app.py"),
+            b"import yaml\nfrom PIL import Image\nimport bs4\n",
+        )
+        .unwrap();
+        let reach = project_reachability(&dir);
+        for dist in ["PyYAML", "Pillow", "beautifulsoup4"] {
+            assert_eq!(
+                reach.classify(&dep(dist, Ecosystem::PyPI)),
+                Reachability::Used,
+                "{dist} should map to its import name and be Used"
+            );
+        }
+        // A PyPI dep the source never imports is still Unused.
+        assert_eq!(
+            reach.classify(&dep("requests", Ecosystem::PyPI)),
             Reachability::Unused
         );
         let _ = std::fs::remove_dir_all(&dir);

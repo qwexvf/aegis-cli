@@ -97,9 +97,27 @@ pub fn transitive(
     out
 }
 
-/// Dep-level reachability verdict for the `ci`/scan downgrade path, computed
-/// from the engine's four-way signal rolled up over every referenced symbol of
-/// the dep:
+/// Dep-level reachability for the `ci`/scan downgrade path, rolled up over
+/// several candidate import names for one dependency. A PyPI distribution's
+/// lockfile name (`PyYAML`) differs from its import top-level (`yaml`); the
+/// engine graph keys external nodes by the import name written in source, so the
+/// dep must be probed under every name it could be imported as. Combined
+/// most-reachable-wins (Used > Unknown > Unused), the security-safe fold — one
+/// candidate proving reachability outweighs the others looking unused.
+pub fn dep_reachability_multi(graph: &InMemoryGraph, candidates: &[String]) -> Reachability {
+    let mut best = Reachability::Unused;
+    for dep in candidates {
+        match dep_reachability_one(graph, dep) {
+            Reachability::Used => return Reachability::Used,
+            Reachability::Unknown => best = Reachability::Unknown,
+            Reachability::Unused => {}
+        }
+    }
+    best
+}
+
+/// Reachability for a single import name, from the engine's four-way signal
+/// rolled up over every referenced symbol of the dep:
 ///
 /// | engine result                          | verdict  |
 /// |----------------------------------------|----------|
@@ -111,7 +129,7 @@ pub fn transitive(
 /// The import-level floor (`imports` true but nothing proven reached) yields
 /// `Unknown`, never `Unused`: a resolution gap must never hard-suppress a live
 /// advisory. `Unused` is only returned when the dep is not imported at all.
-pub fn dep_reachability(graph: &InMemoryGraph, dep: &str) -> Reachability {
+fn dep_reachability_one(graph: &InMemoryGraph, dep: &str) -> Reachability {
     let symbols = external_symbols(graph, dep);
     let mut any_uses = false;
     for s in &symbols {
@@ -293,7 +311,10 @@ mod tests {
         )
         .unwrap();
         let graph = engine::index(dir.path()).unwrap();
-        assert_eq!(dep_reachability(&graph, "urql"), Reachability::Used);
+        assert_eq!(
+            dep_reachability_multi(&graph, &["urql".to_string()]),
+            Reachability::Used
+        );
     }
 
     #[test]
@@ -306,6 +327,9 @@ mod tests {
         )
         .unwrap();
         let graph = engine::index(dir.path()).unwrap();
-        assert_eq!(dep_reachability(&graph, "urql"), Reachability::Unused);
+        assert_eq!(
+            dep_reachability_multi(&graph, &["urql".to_string()]),
+            Reachability::Unused
+        );
     }
 }
