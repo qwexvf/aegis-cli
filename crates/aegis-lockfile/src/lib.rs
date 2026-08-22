@@ -53,6 +53,8 @@ pub mod nix;
 pub mod npm;
 #[cfg(feature = "nuget")]
 pub mod nuget;
+#[cfg(feature = "opam")]
+pub mod opam;
 #[cfg(feature = "npm")]
 pub mod pnpm;
 #[cfg(feature = "pub")]
@@ -88,6 +90,14 @@ pub trait LockfileParser {
     /// Exact file name this parser handles (case-sensitive), e.g.
     /// "package-lock.json", "Cargo.lock", "go.sum".
     fn filename(&self) -> &'static str;
+
+    /// Whether this parser handles a given basename. Defaults to an exact
+    /// match on [`filename`](Self::filename); parsers whose lockfile name is
+    /// variable (e.g. opam's project-prefixed `<name>.opam.locked`) override
+    /// this with a suffix match.
+    fn matches(&self, filename: &str) -> bool {
+        self.filename() == filename
+    }
 
     /// Which ecosystem the produced dependencies belong to. Drives the
     /// scanner's first-match-per-ecosystem rule.
@@ -165,6 +175,8 @@ pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
     v.push(Box::new(nimble::NimbleLock));
     #[cfg(feature = "elm")]
     v.push(Box::new(elm::ElmJson));
+    #[cfg(feature = "opam")]
+    v.push(Box::new(opam::OpamLocked));
     v
 }
 
@@ -176,7 +188,7 @@ pub fn parse_file(
     direct: &DirectMap,
 ) -> Result<Option<Vec<Dependency>>, ParseError> {
     for p in builtin_parsers() {
-        if p.filename() == filename {
+        if p.matches(filename) {
             return Ok(Some(p.parse(raw, direct)?));
         }
     }

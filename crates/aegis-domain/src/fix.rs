@@ -250,7 +250,8 @@ pub fn upgrade_command(dep: &Dependency, target_version: &str) -> Option<String>
         | Ecosystem::Julia
         | Ecosystem::Conda
         | Ecosystem::Nimble
-        | Ecosystem::Elm => return None,
+        | Ecosystem::Elm
+        | Ecosystem::Opam => return None,
     };
     Some(cmd)
 }

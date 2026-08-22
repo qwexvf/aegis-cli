@@ -89,6 +89,8 @@ pub enum Ecosystem {
     Nimble,
     /// Elm packages (`elm.json`, application type — exact-pinned).
     Elm,
+    /// OCaml packages resolved through opam (`*.opam.locked`).
+    Opam,
 }
 
 impl Ecosystem {
@@ -120,6 +122,7 @@ impl Ecosystem {
             Conda => "conda",
             Nimble => "nim",
             Elm => "elm",
+            Opam => "opam",
         }
     }
 }

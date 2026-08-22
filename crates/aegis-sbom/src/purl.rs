@@ -77,7 +77,8 @@ fn purl_type(eco: Ecosystem) -> Option<&'static str> {
         | Ecosystem::Nix
         | Ecosystem::Julia
         | Ecosystem::Nimble
-        | Ecosystem::Elm => "generic",
+        | Ecosystem::Elm
+        | Ecosystem::Opam => "generic",
     })
 }
 

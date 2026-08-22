@@ -469,7 +469,8 @@ fn osv_ecosystem(eco: Ecosystem) -> Option<&'static str> {
         | Ecosystem::Julia
         | Ecosystem::Conda
         | Ecosystem::Nimble
-        | Ecosystem::Elm => return None,
+        | Ecosystem::Elm
+        | Ecosystem::Opam => return None,
     })
 }
 
