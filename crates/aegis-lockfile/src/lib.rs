@@ -31,6 +31,8 @@ pub mod conda;
 pub mod cpan;
 #[cfg(feature = "cran")]
 pub mod cran;
+#[cfg(feature = "elm")]
+pub mod elm;
 #[cfg(feature = "rubygems")]
 pub mod gemfile;
 #[cfg(feature = "go")]
@@ -161,6 +163,8 @@ pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
     v.push(Box::new(conda::CondaLock));
     #[cfg(feature = "nimble")]
     v.push(Box::new(nimble::NimbleLock));
+    #[cfg(feature = "elm")]
+    v.push(Box::new(elm::ElmJson));
     v
 }
 

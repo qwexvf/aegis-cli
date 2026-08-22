@@ -27,7 +27,7 @@ serde_yaml_ng = { version = "0.10", optional = true }
 default = [
     "npm", "pypi", "cargo", "go", "packagist", "nuget", "cran", "swift",
     "rubygems", "maven", "hex", "pub", "cocoapods", "cpan", "hackage",
-    "conan", "nix", "julia", "conda", "nimble",
+    "conan", "nix", "julia", "conda", "nimble", "elm",
 ]
 npm = []
 pypi = []
@@ -49,5 +49,6 @@ nix = []
 julia = []
 conda = ["dep:serde_yaml_ng"]
 nimble = []
+elm = []
 
 [dev-dependencies]

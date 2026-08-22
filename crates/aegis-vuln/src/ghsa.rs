@@ -316,7 +316,8 @@ fn ghsa_ecosystem(eco: Ecosystem) -> Option<&'static str> {
         | Ecosystem::Nix
         | Ecosystem::Julia
         | Ecosystem::Conda
-        | Ecosystem::Nimble => return None,
+        | Ecosystem::Nimble
+        | Ecosystem::Elm => return None,
     })
 }
 

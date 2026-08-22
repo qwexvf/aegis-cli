@@ -87,6 +87,8 @@ pub enum Ecosystem {
     Conda,
     /// Nim packages resolved through nimble (`nimble.lock`).
     Nimble,
+    /// Elm packages (`elm.json`, application type — exact-pinned).
+    Elm,
 }
 
 impl Ecosystem {
@@ -117,6 +119,7 @@ impl Ecosystem {
             Julia => "julia",
             Conda => "conda",
             Nimble => "nim",
+            Elm => "elm",
         }
     }
 }
