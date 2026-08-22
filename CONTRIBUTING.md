@@ -12,10 +12,6 @@ through documentation.
   improvements don't need an issue.
 - Read [SECURITY.md](SECURITY.md) — security issues go through private
   disclosure, not pull requests.
-- `PROGRESS.txt` is the working record of the Go → Rust port: phase
-  status, parity findings, and what is deliberately not ported. Check it
-  before proposing something that looks missing — it may be a scoping
-  decision rather than a gap.
 
 ## Local setup
 
@@ -116,7 +112,7 @@ loosen the job.
 `xtask` compares the Rust scanner against goldens captured from Go
 v0.29. If you change scanning behavior and a gate goes red, that is the
 gate working — either the change is a bug, or it is a deliberate
-divergence that needs a golden refresh and a note in `PROGRESS.txt`.
+divergence that needs a golden refresh.
 
 - `--record` re-captures goldens (needs the Go binary built from `old`).
 - `--record-cassettes` re-captures the `ci-parity` HTTP cassette (needs
