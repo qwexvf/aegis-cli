@@ -230,7 +230,28 @@ pub(crate) fn run_ci(
             use aegis_domain::Ecosystem;
             if matches!(d.ecosystem, Ecosystem::Npm | Ecosystem::PyPI) {
                 if let Some(g) = engine_graph.as_ref() {
-                    return crate::engine_reach::dep_reachability(g, &d.name);
+                    // PyPI dist name (`PyYAML`) ≠ import name (`yaml`); probe the
+                    // engine graph under every candidate import name. npm names
+                    // are the import name, so just the dep name.
+                    let candidates = if matches!(d.ecosystem, Ecosystem::PyPI) {
+                        aegis_reach::pypi_import_candidates(&d.name)
+                    } else {
+                        vec![d.name.clone()]
+                    };
+                    let engine_r = crate::engine_reach::dep_reachability_multi(g, &candidates);
+                    // Soundness floor. The engine returns `Unused` both when the
+                    // dep is genuinely not imported AND when it simply failed to
+                    // bind the dep's externals — a documented gap (today the
+                    // engine binds externals for TS but not JS, so every .js
+                    // import looks unused). A resolution gap must never
+                    // hard-suppress a live advisory, so trust an engine `Unused`
+                    // only when the name-based import walk agrees the dep is
+                    // unused; otherwise fall back to the name-based classification
+                    // (identical to the feature-off path for this dep).
+                    if engine_r == Reachability::Unused {
+                        return reach.classify(d);
+                    }
+                    return engine_r;
                 }
             }
         }

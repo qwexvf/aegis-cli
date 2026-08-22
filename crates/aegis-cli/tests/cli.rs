@@ -1027,3 +1027,67 @@ fn nonnpm_enrich_capabilities_regression() {
         }
     }
 }
+
+/// Soundness floor for the engine-reach backend: the ripple engine binds
+/// external symbols for TS but not JS, so a `.js` dep that is imported AND
+/// called looks `Unused` to the engine and — without the floor — its live
+/// advisory gets downgraded (`block` → `prompt`), passing CI on a genuinely
+/// vulnerable, actively-used dep. `dep_reachability` falls back to the
+/// name-based walk on an engine `Unused`, so the verdict must stay `block`.
+///
+/// Offline via the committed ci-parity cassette; only built under the feature.
+#[cfg(feature = "engine-reach")]
+#[test]
+fn engine_reach_does_not_downgrade_used_js_advisory() {
+    let d = tmp("engine-floor");
+    // Same lodash@4.17.4 lockfile as examples/ci-parity/npm-lodash so the
+    // recorded OSV/tarball cassette keys match. Own package.json so the engine's
+    // project_root resolves to this dir (no walk-up to a stray parent marker).
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"name":"npm-lodash","version":"1.0.0","lockfileVersion":3,"packages":{"":{"name":"npm-lodash","version":"1.0.0","dependencies":{"lodash":"4.17.4"}},"node_modules/lodash":{"version":"4.17.4","resolved":"https://registry.npmjs.org/lodash/-/lodash-4.17.4.tgz"}}}"#,
+    );
+    write(
+        &d,
+        "package.json",
+        r#"{"name":"npm-lodash","version":"1.0.0","dependencies":{"lodash":"4.17.4"}}"#,
+    );
+    write(
+        &d,
+        "index.js",
+        "const _ = require('lodash');\nmodule.exports = _.merge({}, { a: 1 });\n",
+    );
+
+    let cassettes = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("examples")
+        .join("ci-parity-cassettes");
+    let cache = std::env::temp_dir().join(format!("aegis-engine-floor-xdg-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&cache);
+
+    let o = Command::new(BIN)
+        .args([
+            "ci",
+            d.join("package-lock.json").to_str().unwrap(),
+            "--json",
+        ])
+        .env("AEGIS_HTTP_REPLAY", &cassettes)
+        .env("XDG_CACHE_HOME", &cache)
+        .env_remove("GITHUB_TOKEN")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&o.stdout);
+
+    assert!(
+        stdout.contains("\"verdict\": \"block\""),
+        "engine-reach downgraded a live advisory on an imported+called JS dep:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("\"passed\": false"),
+        "CI should fail on a blocked used dep:\n{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+    let _ = std::fs::remove_dir_all(&cache);
+}

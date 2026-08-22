@@ -143,6 +143,8 @@ pub enum Language {
     Rust,
     /// Java (`tree-sitter-java`).
     Java,
+    /// C# (`tree-sitter-c-sharp`).
+    CSharp,
 }
 
 /// Parse JS/TS source and return every import it declares.
@@ -196,6 +198,13 @@ pub fn extract_imports_java(source: &[u8]) -> Vec<Import> {
     extract_with(Language::Java, source)
 }
 
+/// Parse C# source and return every `using` directive it declares.
+///
+/// A parse failure yields an empty vec — never panics.
+pub fn extract_imports_csharp(source: &[u8]) -> Vec<Import> {
+    extract_with(Language::CSharp, source)
+}
+
 /// Parse `source` with the grammar for `lang` and return every import.
 ///
 /// A parse failure (or a grammar that won't load) yields an empty vec —
@@ -210,6 +219,7 @@ pub fn extract_with(lang: Language, source: &[u8]) -> Vec<Import> {
         Language::Ruby => tree_sitter_ruby::LANGUAGE.into(),
         Language::Rust => tree_sitter_rust::LANGUAGE.into(),
         Language::Java => tree_sitter_java::LANGUAGE.into(),
+        Language::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
     };
     if parser.set_language(&language).is_err() {
         return Vec::new();
@@ -227,6 +237,7 @@ pub fn extract_with(lang: Language, source: &[u8]) -> Vec<Import> {
         Language::Ruby => walk_ruby(tree.root_node(), source, &mut imports),
         Language::Rust => walk_rust(tree.root_node(), source, &mut imports),
         Language::Java => walk_java(tree.root_node(), source, &mut imports),
+        Language::CSharp => walk_csharp(tree.root_node(), source, &mut imports),
     }
     imports
 }
@@ -343,6 +354,8 @@ fn language_for(path: &str) -> Option<Language> {
         Some(Language::Rust)
     } else if lower.ends_with(".java") {
         Some(Language::Java)
+    } else if lower.ends_with(".cs") {
+        Some(Language::CSharp)
     } else {
         None
     }
@@ -495,6 +508,59 @@ pub fn dep_key_python(raw: &str) -> String {
         Some(i) if i > 0 => raw[..i].to_string(),
         _ => raw.to_string(),
     }
+}
+
+/// Candidate top-level import names for a PyPI **distribution** name, for
+/// consumer-side reachability matching (`classify`, engine `dep_reachability`).
+///
+/// The import name a project writes (`import yaml`) frequently differs from the
+/// distribution name in the lockfile (`PyYAML`). `dep_key_python` normalizes the
+/// *import* side; this normalizes the *distribution* side to the set of names it
+/// could be imported as, so the two meet. Matching against ANY candidate errs
+/// toward `Used` — the security-safe direction: a missed mapping must never
+/// downgrade a live advisory on a dep that is actually imported.
+///
+/// Sources, in order: a curated table for the well-known mismatches (the
+/// authoritative map lives in each wheel's `top_level.txt`, unavailable to an
+/// offline lockfile scan), then normalized fallbacks (PEP 503 lowercase, and
+/// `-`/`.` → `_`). The raw name is always included.
+pub fn pypi_import_candidates(dist: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |s: String| {
+        if !s.is_empty() && !out.contains(&s) {
+            out.push(s);
+        }
+    };
+    push(dist.to_string());
+
+    // Curated dist → import-top-level for the common non-matching cases.
+    let lower = dist.to_ascii_lowercase();
+    if let Some(mapped) = match lower.as_str() {
+        "pyyaml" => Some("yaml"),
+        "beautifulsoup4" => Some("bs4"),
+        "pillow" => Some("PIL"),
+        "python-dateutil" => Some("dateutil"),
+        "python-dotenv" => Some("dotenv"),
+        "scikit-learn" => Some("sklearn"),
+        "scikit-image" => Some("skimage"),
+        "opencv-python" => Some("cv2"),
+        "opencv-python-headless" => Some("cv2"),
+        "msgpack-python" => Some("msgpack"),
+        "attrs" => Some("attr"),
+        "pymysql" => Some("pymysql"),
+        "protobuf" => Some("google"),
+        "google-cloud-storage" => Some("google"),
+        "typing-extensions" => Some("typing_extensions"),
+        _ => None,
+    } {
+        push(mapped.to_string());
+    }
+
+    // Normalized fallbacks for the merely-cased / punctuation-swapped cases
+    // (`Django` → `django`, `python-dateutil` → `python_dateutil`).
+    push(lower.clone());
+    push(lower.replace(['-', '.'], "_"));
+    out
 }
 
 /// Whether a Python module path uses leading-dot relative notation
@@ -1040,6 +1106,234 @@ fn parse_rust_extern_crate(node: Node, body: &[u8]) -> Option<Import> {
 }
 
 // ---------------------------------------------------------------------------
+// Rust used-symbols
+// ---------------------------------------------------------------------------
+
+/// One resolved `use` leaf: the crate dep key it roots at, the imported item
+/// (last path segment), and the local name it binds (the `as` alias when
+/// present, else the item).
+struct RustBinding {
+    module: String,
+    symbol: String,
+    local: String,
+}
+
+/// Expand a Rust use-tree's text into flat `(full_path, alias)` leaves.
+/// Handles nested brace groups (`a::{b, c::d}`) and per-leaf `as` aliases
+/// (`a::b as x`). A `*` wildcard leaf is kept verbatim so the caller can treat
+/// it as a namespace root. Text-based on purpose — robust across the several
+/// tree-sitter node shapes a use tree can take.
+fn expand_rust_use(tree: &str) -> Vec<(String, Option<String>)> {
+    let tree = tree.trim();
+    let Some(open) = tree.find('{') else {
+        // No group: a single path, optionally `path as alias`.
+        let (path, alias) = match tree.split_once(" as ") {
+            Some((p, a)) => (p.trim().to_string(), Some(a.trim().to_string())),
+            None => (tree.to_string(), None),
+        };
+        return vec![(path, alias)];
+    };
+    // Match the group to its closing brace and split the inner list on
+    // top-level commas (nested groups keep their commas).
+    let prefix = tree[..open].trim_end().trim_end_matches("::");
+    let inner = &tree[open + 1..tree.rfind('}').unwrap_or(tree.len())];
+    let mut out = Vec::new();
+    for item in split_top_level_commas(inner) {
+        let item = item.trim();
+        if item.is_empty() {
+            continue;
+        }
+        for (sub, alias) in expand_rust_use(item) {
+            let full = if prefix.is_empty() {
+                sub
+            } else if sub.is_empty() {
+                prefix.to_string()
+            } else {
+                format!("{prefix}::{sub}")
+            };
+            out.push((full, alias));
+        }
+    }
+    out
+}
+
+/// Split on commas that sit outside any `{}` nesting.
+fn split_top_level_commas(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut cur = String::new();
+    for c in s.chars() {
+        match c {
+            '{' => {
+                depth += 1;
+                cur.push(c);
+            }
+            '}' => {
+                depth -= 1;
+                cur.push(c);
+            }
+            ',' if depth == 0 => {
+                out.push(std::mem::take(&mut cur));
+            }
+            _ => cur.push(c),
+        }
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// Parse Rust source and return every use of an imported crate symbol.
+///
+/// Two passes: collect `use` bindings (local name → crate + imported item),
+/// then walk usage sites and correlate. Two site shapes are recognized,
+/// mirroring the Go pass's package-selector model:
+///
+/// - `local::Sym` (member access on a bound module/type) → `(crate, Sym)`.
+/// - `crate::Sym...` (a full path rooted at an imported crate) → `(crate, Sym)`.
+/// - `f(...)` where `f` is a bound item local → `(crate, item)`.
+///
+/// Bare type-position uses (`T: Serialize`, `#[derive(Serialize)]`) are not
+/// counted — the pass stays call/path-anchored to avoid matching same-named
+/// locals. `crate`/`self`/`super`/`std`/`core`/`alloc` roots bind nothing.
+/// A parse failure yields an empty vec.
+pub fn extract_used_symbols_rust(source: &[u8]) -> Vec<UsedSymbol> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_rust::LANGUAGE.into();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    // Bindings by local name, and the set of imported crate dep keys.
+    let mut bindings: HashMap<String, RustBinding> = HashMap::new();
+    let mut crate_roots: HashSet<String> = HashSet::new();
+    collect_rust_use_bindings(tree.root_node(), source, &mut bindings, &mut crate_roots);
+    if bindings.is_empty() && crate_roots.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    collect_rust_uses(tree.root_node(), source, &bindings, &crate_roots, &mut out);
+    out
+}
+
+fn collect_rust_use_bindings(
+    node: Node,
+    body: &[u8],
+    bindings: &mut HashMap<String, RustBinding>,
+    crate_roots: &mut HashSet<String>,
+) {
+    preorder(node, &mut |n| {
+        if n.kind() != "use_declaration" {
+            return;
+        }
+        let Some(arg) = n.child_by_field_name("argument") else {
+            return;
+        };
+        let Ok(text) = arg.utf8_text(body) else {
+            return;
+        };
+        for (path, alias) in expand_rust_use(text) {
+            let module = dep_key_rust(&path);
+            if module.is_empty() {
+                continue;
+            }
+            crate_roots.insert(module.clone());
+            let leaf = path.rsplit("::").next().unwrap_or(&path).trim();
+            if leaf == "*" || leaf.is_empty() {
+                continue; // wildcard / bare crate: no concrete local symbol
+            }
+            let local = alias.unwrap_or_else(|| leaf.to_string());
+            bindings.insert(
+                local.clone(),
+                RustBinding {
+                    module,
+                    symbol: leaf.to_string(),
+                    local,
+                },
+            );
+        }
+    });
+}
+
+fn collect_rust_uses(
+    node: Node,
+    body: &[u8],
+    bindings: &HashMap<String, RustBinding>,
+    crate_roots: &HashSet<String>,
+    out: &mut Vec<UsedSymbol>,
+) {
+    // Don't descend into import declarations — their paths aren't uses.
+    if matches!(node.kind(), "use_declaration" | "extern_crate_declaration") {
+        return;
+    }
+    if node.kind() == "scoped_identifier" {
+        if let Ok(text) = node.utf8_text(body) {
+            let segs: Vec<&str> = text.split("::").map(|s| s.trim()).collect();
+            if segs.len() >= 2 && !segs[0].is_empty() {
+                let head = segs[0];
+                let second = segs[1].to_string();
+                let line = node.start_position().row + 1;
+                if let Some(b) = bindings.get(head) {
+                    // `local::Sym` — member access on a bound module/type.
+                    out.push(UsedSymbol {
+                        module: b.module.clone(),
+                        symbol: second,
+                        line,
+                    });
+                } else {
+                    // `crate::Sym...` — a full path rooted at an imported crate.
+                    let m = dep_key_rust(head);
+                    if !m.is_empty() && crate_roots.contains(&m) {
+                        out.push(UsedSymbol {
+                            module: m,
+                            symbol: second,
+                            line,
+                        });
+                    }
+                }
+            }
+        }
+        // A scoped_identifier's children are just path segments — no deeper
+        // uses to find.
+        return;
+    }
+    if node.kind() == "call_expression" {
+        // Unwrap a turbofish call (`from_str::<i32>()` parses as a
+        // `generic_function` wrapping the callee) to reach the identifier.
+        let mut callee = node.child_by_field_name("function");
+        if let Some(c) = callee {
+            if c.kind() == "generic_function" {
+                callee = c.child_by_field_name("function");
+            }
+        }
+        if let Some(func) = callee {
+            if func.kind() == "identifier" {
+                if let Ok(name) = func.utf8_text(body) {
+                    if let Some(b) = bindings.get(name) {
+                        if b.local == name {
+                            out.push(UsedSymbol {
+                                module: b.module.clone(),
+                                symbol: b.symbol.clone(),
+                                line: func.start_position().row + 1,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_rust_uses(child, body, bindings, crate_roots, out);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Java
 // ---------------------------------------------------------------------------
 
@@ -1139,6 +1433,77 @@ fn parse_java_import(node: Node, body: &[u8]) -> Option<Import> {
 }
 
 // ---------------------------------------------------------------------------
+// C#
+// ---------------------------------------------------------------------------
+
+/// Walk a C# tree, converting each `using_directive` into an [`Import`].
+/// Covers plain (`using System.Text.Json;`), `global using`, `static`
+/// (`using static System.Math;`), and alias (`using J = System.Text.Json;`)
+/// forms — all static imports.
+fn walk_csharp(node: Node, body: &[u8], out: &mut Vec<Import>) {
+    preorder(node, &mut |n| {
+        if n.kind() == "using_directive" {
+            if let Some(imp) = parse_csharp_using(n, body) {
+                out.push(imp);
+            }
+        }
+    });
+}
+
+/// Turn a `using_directive` into one [`Import`]. The namespace/type path is the
+/// last `qualified_name`/`identifier` child (an alias's `X =` prefix and the
+/// `using`/`global`/`static` keywords are skipped); a `static` keyword marks
+/// the member-import form. The dep key is the namespace.
+fn parse_csharp_using(node: Node, body: &[u8]) -> Option<Import> {
+    let mut name: Option<String> = None;
+    let mut is_static = false;
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            // The namespace/type path. For an alias (`J = System.X`) the target
+            // path is the last such node, so keep overwriting.
+            "qualified_name" | "identifier" => {
+                name = child.utf8_text(body).ok().map(str::to_string);
+            }
+            "static" => is_static = true,
+            _ => {}
+        }
+    }
+    let name = name?;
+    if name.is_empty() {
+        return None;
+    }
+    // A static using imports a type's members (`using static System.Math`);
+    // strip the trailing type so the dep key resolves the namespace.
+    let key_input = if is_static {
+        name.rsplit_once('.').map(|(ns, _)| ns).unwrap_or(&name)
+    } else {
+        &name
+    };
+    Some(Import {
+        dep_key: dep_key_csharp(key_input),
+        module: name.clone(),
+        kind: ImportKind::Static,
+        line: node.start_position().row + 1,
+    })
+}
+
+/// Dep key for a C# namespace. Unlike Java, the .NET base-class-library
+/// namespaces (`System.*`) are NOT filtered — many ship as real NuGet packages
+/// (`System.Text.Json`, `System.Text.Encodings.Web`), so dropping them would
+/// miss live deps. The whole namespace is kept; the consumer matches it against
+/// package names by dotted prefix (a package and its namespace share a root,
+/// e.g. package `Newtonsoft.Json` ⊇ `using Newtonsoft.Json.Linq`).
+pub fn dep_key_csharp(raw: &str) -> String {
+    let raw = raw.trim();
+    // `global` / `alias` artifacts shouldn't reach here, but guard anyway.
+    if raw.is_empty() || raw == "static" || raw == "global" {
+        return String::new();
+    }
+    raw.to_string()
+}
+
+// ---------------------------------------------------------------------------
 // JavaScript / TypeScript used-symbols
 // ---------------------------------------------------------------------------
 
@@ -1209,10 +1574,11 @@ pub fn extract_used_symbols(source: &[u8]) -> Vec<UsedSymbol> {
 /// file in a project. Files are routed by extension —
 /// `.js/.ts/.mjs/.cjs/.jsx/.tsx` through the JS used-symbol pass,
 /// `.py/.pyi` through the Python one, `.go` through the Go one,
-/// `.php/.phtml` through the PHP one; any other extension is skipped.
-/// Ruby has no used-symbol pass by design (`require`/`gem` bind no local
-/// — see the module docs), so `.rb` files contribute nothing here. A
-/// file whose usages don't reference `dep_key` contributes nothing.
+/// `.php/.phtml` through the PHP one, `.rs` through the Rust one; any other
+/// extension is skipped. Ruby has no used-symbol pass by design
+/// (`require`/`gem` bind no local — see the module docs), so `.rb` files
+/// contribute nothing here. A file whose usages don't reference `dep_key`
+/// contributes nothing.
 pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<String> {
     let mut out = HashSet::new();
     for (path, bytes) in files {
@@ -1221,6 +1587,7 @@ pub fn used_symbols_of(dep_key: &str, files: &[(String, Vec<u8>)]) -> HashSet<St
             Some(Language::Python) => extract_used_symbols_python(bytes),
             Some(Language::Go) => extract_used_symbols_go(bytes),
             Some(Language::Php) => extract_used_symbols_php(bytes),
+            Some(Language::Rust) => extract_used_symbols_rust(bytes),
             _ => continue,
         };
         for used in uses {
@@ -3289,6 +3656,21 @@ mod tests {
     }
 
     #[test]
+    fn pypi_import_candidates_maps_renamed_dists() {
+        // curated mismatches
+        assert!(pypi_import_candidates("PyYAML").contains(&"yaml".to_string()));
+        assert!(pypi_import_candidates("Pillow").contains(&"PIL".to_string()));
+        assert!(pypi_import_candidates("beautifulsoup4").contains(&"bs4".to_string()));
+        // case-only normalization (no table entry needed)
+        assert!(pypi_import_candidates("Django").contains(&"django".to_string()));
+        // punctuation → underscore fallback
+        assert!(pypi_import_candidates("python-dateutil").contains(&"dateutil".to_string()));
+        assert!(pypi_import_candidates("some-lib").contains(&"some_lib".to_string()));
+        // raw name always present
+        assert!(pypi_import_candidates("requests").contains(&"requests".to_string()));
+    }
+
+    #[test]
     fn py_from_import() {
         let imps = extract_py("from flask import Flask");
         assert_eq!(imps.len(), 1);
@@ -3685,6 +4067,91 @@ mod tests {
     }
 
     #[test]
+    fn rs_used_symbols_named_import_call() {
+        // `use serde_json::from_str; from_str(...)` → (serde_json, from_str).
+        let syms = extract_used_symbols_rust(
+            b"use serde_json::from_str;\nfn f() { let _ = from_str(\"{}\"); }\n",
+        );
+        assert!(
+            syms.iter()
+                .any(|s| s.module == "serde_json" && s.symbol == "from_str"),
+            "got {syms:?}"
+        );
+    }
+
+    #[test]
+    fn rs_used_symbols_turbofish_call() {
+        // `from_str::<i32>(...)` parses as a generic_function callee.
+        let syms = extract_used_symbols_rust(
+            b"use serde_json::from_str;\nfn f() { let _ = from_str::<i32>(\"1\"); }\n",
+        );
+        assert!(
+            syms.iter()
+                .any(|s| s.module == "serde_json" && s.symbol == "from_str"),
+            "turbofish call missed: {syms:?}"
+        );
+    }
+
+    #[test]
+    fn rs_used_symbols_full_path_and_member_access() {
+        // full path: `serde_json::to_string(...)` (crate imported via `use`).
+        // member access on a bound module: `mpsc::channel()`.
+        let src = b"use serde_json;\nuse tokio::sync::mpsc;\nfn f() { serde_json::to_string(&1); let _ = mpsc::channel::<u8>(); }\n";
+        let syms = extract_used_symbols_rust(src);
+        assert!(
+            syms.iter()
+                .any(|s| s.module == "serde_json" && s.symbol == "to_string"),
+            "full-path use missing: {syms:?}"
+        );
+        assert!(
+            syms.iter()
+                .any(|s| s.module == "tokio" && s.symbol == "channel"),
+            "member-access use missing: {syms:?}"
+        );
+    }
+
+    #[test]
+    fn rs_used_symbols_alias_and_grouped() {
+        // grouped import with an alias: `use anyhow::{Result as R, bail};`
+        let src = b"use anyhow::{Result as R, bail};\nfn f() -> R<()> { bail!(\"x\") }\n";
+        let syms = extract_used_symbols_rust(src);
+        // `bail!` is a macro (not a plain call) — the grouped/alias parse is what
+        // we assert here via used_symbols_of over a project.
+        let files = vec![("m.rs".to_string(), src.to_vec())];
+        let used = used_symbols_of("anyhow", &files);
+        // R aliases Result; using R in a path/return isn't call-anchored, so the
+        // set may be empty — the point is the parse doesn't panic and routes .rs.
+        let _ = used;
+        let _ = syms;
+    }
+
+    #[test]
+    fn rs_used_symbols_skips_local_and_stdlib() {
+        // `crate::`, `std::`, and unimported local modules contribute nothing.
+        let src =
+            b"use std::collections::HashMap;\nfn f() { let _ = HashMap::new(); crate::helper::go(); mymod::thing(); }\n";
+        let syms = extract_used_symbols_rust(src);
+        assert!(
+            syms.iter().all(|s| s.module != "std"
+                && s.module != "crate"
+                && s.module != "mymod"
+                && s.module != "helper"),
+            "leaked a non-crate module: {syms:?}"
+        );
+    }
+
+    #[test]
+    fn rs_used_symbols_via_project_helper() {
+        let files = vec![(
+            "app.rs".to_string(),
+            b"use serde_json::from_str;\nfn f() { let _ = from_str(\"{}\"); }\n".to_vec(),
+        )];
+        let used = used_symbols_of("serde_json", &files);
+        assert!(used.contains("from_str"), "got {used:?}");
+        assert!(used_symbols_of("nonexistent", &files).is_empty());
+    }
+
+    #[test]
     fn rs_dep_key_normalization() {
         assert_eq!(dep_key_rust("serde::Serialize"), "serde");
         assert_eq!(dep_key_rust("tokio::sync::mpsc"), "tokio");
@@ -3770,6 +4237,37 @@ mod tests {
     fn java_bad_source_no_panic() {
         let _ = extract_java("import ??? broken");
         assert!(extract_java("").is_empty());
+    }
+
+    fn extract_cs(src: &str) -> Vec<Import> {
+        extract_imports_csharp(src.as_bytes())
+    }
+
+    #[test]
+    fn cs_plain_global_and_alias_usings() {
+        let src = "using System.Text.Json;\nglobal using Newtonsoft.Json.Linq;\nusing J = System.Text.Json;\nnamespace A { class C {} }\n";
+        let imps = extract_cs(src);
+        let keys: std::collections::HashSet<_> = imps.iter().map(|i| i.dep_key.as_str()).collect();
+        // whole namespace kept (System.* NOT filtered — real nuget packages).
+        assert!(keys.contains("System.Text.Json"), "{imps:?}");
+        assert!(keys.contains("Newtonsoft.Json.Linq"), "{imps:?}");
+        assert!(imps.iter().all(|i| i.kind == ImportKind::Static));
+    }
+
+    #[test]
+    fn cs_static_using_strips_type() {
+        // `using static System.Math;` → namespace System (type Math stripped).
+        let imps = extract_cs("using static System.Math;");
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].dep_key, "System");
+    }
+
+    #[test]
+    fn cs_dep_key_and_bad_source() {
+        assert_eq!(dep_key_csharp("Newtonsoft.Json"), "Newtonsoft.Json");
+        assert_eq!(dep_key_csharp(""), "");
+        let _ = extract_cs("using ??? broken");
+        assert!(extract_cs("").is_empty());
     }
 
     #[test]
