@@ -498,7 +498,7 @@ struct AllowRuleConfig {
     reason: String,
 }
 
-/// Convert parsed config entries into domain [`AllowRule`]s, validating the
+/// Convert parsed config entries into domain `AllowRule`s, validating the
 /// ecosystem and capability slugs. Source is stamped "user".
 fn allow_rules_from_config(
     entries: &[AllowRuleConfig],

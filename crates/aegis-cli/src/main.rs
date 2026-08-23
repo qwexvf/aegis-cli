@@ -162,7 +162,7 @@ enum Command {
     /// Generate a shell completion script.
     ///
     ///   bash: source <(aegis completion bash)
-    ///   zsh:  aegis completion zsh > "${fpath[1]}/_aegis"
+    ///   zsh:  `aegis completion zsh > "${fpath[1]}/_aegis"`
     ///   fish: aegis completion fish > ~/.config/fish/completions/aegis.fish
     Completion {
         /// Shell to generate for.
@@ -365,7 +365,7 @@ enum AurSub {
     /// programmatically must branch on the per-package verdict in --json,
     /// not on the exit code.
     Scan {
-        /// Directory holding the PKGBUILD (e.g. ~/.cache/paru/clone/<pkg>).
+        /// Directory holding the PKGBUILD (e.g. `~/.cache/paru/clone/<pkg>`).
         dir: String,
         /// Emit the machine-readable report paru consumes.
         #[arg(long)]
