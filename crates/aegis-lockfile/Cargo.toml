@@ -53,3 +53,8 @@ elm = []
 opam = ["dep:regex"]
 
 [dev-dependencies]
+divan = "0.1"
+
+[[bench]]
+name = "parse"
+harness = false
