@@ -125,6 +125,10 @@ impl NormalizedPackage {
 /// Run every compiled-in detector and return the deduped union of
 /// capabilities they emit. Mirrors the heuristics pipeline's fan-out.
 pub fn run_heuristics(pkg: &NormalizedPackage) -> Vec<Capability> {
+    // Every detector below is feature-gated; a zero-feature build uses none of
+    // them, leaving `pkg` untouched. Reference it so that degenerate config
+    // doesn't warn.
+    let _ = &pkg;
     let mut caps: Vec<Capability> = Vec::new();
     #[cfg(feature = "binary-dropper")]
     caps.extend(binary_dropper::check_binary_dropper(pkg));
