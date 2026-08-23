@@ -18,3 +18,10 @@ tree-sitter-ruby = "0.23"
 tree-sitter-rust = "0.24"
 tree-sitter-java = "0.23"
 tree-sitter-c-sharp = "0.23"
+
+[dev-dependencies]
+divan = "0.1"
+
+[[bench]]
+name = "reach"
+harness = false
