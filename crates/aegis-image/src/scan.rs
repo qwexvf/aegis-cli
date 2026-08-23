@@ -132,9 +132,22 @@ pub fn deep_scan_image_files(files: &ImageFiles) -> Vec<Finding> {
 ///
 /// Deterministic: input is a `BTreeMap`, so findings come out in path order.
 pub fn ast_scan_image_files(files: &ImageFiles) -> Vec<Finding> {
+    // Compile one scanner per distinct extension and reuse it across every file
+    // with that extension. `scanner_for` builds a tree-sitter Query, which is
+    // expensive (~tens of ms); rebuilding it per file made scanning an image's
+    // many source files pathologically slow (a large node_modules is minutes,
+    // and a crafted image with many tiny .js entries hangs the scan).
+    let mut scanners: std::collections::HashMap<
+        String,
+        Option<Box<dyn aegis_ast::LanguageScanner>>,
+    > = std::collections::HashMap::new();
     let mut out = Vec::new();
     for (path, body) in &files.files {
-        let Some(scanner) = scanner_for(path) else {
+        let Some(ext) = path.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()) else {
+            continue;
+        };
+        let scanner = scanners.entry(ext).or_insert_with(|| scanner_for(path));
+        let Some(scanner) = scanner.as_ref() else {
             continue; // no grammar for this extension
         };
         let capped = if body.len() > MAX_SOURCE_FILE_BYTES {

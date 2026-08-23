@@ -222,14 +222,20 @@ pub(crate) struct ProjectReach {
 }
 
 impl ProjectReach {
-    /// Classify a dependency. `Used` when the project source imports it,
-    /// otherwise `Unused` — matching Go's observed `ci` contract (a dep in a
-    /// scanned lockfile that no source imports is Unused, never Unknown). Go
+    /// Classify a dependency. `Used` when the project source imports it;
+    /// `Unused` when source of that ecosystem's language WAS scanned but the dep
+    /// isn't imported (safe to downgrade); `Unknown` when NO source of that
+    /// language was scanned at all — absence of evidence is not evidence of
+    /// non-use, and downgrading there silently passes a critical advisory on a
+    /// lockfile-only / monorepo / shallow scan (the CI gate's whole job). Go
     /// import paths sit under a module root, so match by prefix there.
     pub(crate) fn classify(&self, dep: &Dependency) -> aegis_domain::Reachability {
         use aegis_domain::Reachability;
+        // `imported` has a bucket for an ecosystem iff ≥1 source file of that
+        // language was scanned (see `project_reachability`). No bucket → we saw
+        // no source that could import this dep → can't tell → don't downgrade.
         let Some(keys) = self.imported.get(&dep.ecosystem) else {
-            return Reachability::Unused;
+            return Reachability::Unknown;
         };
         if keys.contains(&dep.name) {
             return Reachability::Used;
@@ -802,9 +808,26 @@ mod tests {
     }
 
     #[test]
-    fn bare_project_marks_all_unused() {
-        // No source files at all → nothing imported → every dep Unused.
+    fn bare_project_marks_all_unknown_not_unused() {
+        // No source files at all → we have NO evidence, so classification is
+        // Unknown (not Unused). Downgrading here would silently pass a critical
+        // advisory on a lockfile-only / monorepo / shallow scan.
         let dir = scratch();
+        let reach = project_reachability(&dir);
+        assert_eq!(
+            reach.classify(&dep("lodash", Ecosystem::Npm)),
+            Reachability::Unknown
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn source_present_but_dep_unimported_is_unused() {
+        // Source of the ecosystem's language WAS scanned, and it doesn't import
+        // the dep → Unused (safe to downgrade). This is the case that must stay
+        // Unused, distinct from "no source at all".
+        let dir = scratch();
+        std::fs::write(dir.join("index.js"), b"const x = 1;\n").unwrap();
         let reach = project_reachability(&dir);
         assert_eq!(
             reach.classify(&dep("lodash", Ecosystem::Npm)),
@@ -816,10 +839,14 @@ mod tests {
     #[test]
     fn node_modules_is_skipped() {
         // An import living under node_modules must not count as project usage.
+        // With no OTHER source present, that leaves no scanned source → Unknown.
         let dir = scratch();
         let nm = dir.join("node_modules").join("foo");
         std::fs::create_dir_all(&nm).unwrap();
         std::fs::write(nm.join("index.js"), b"require('lodash');\n").unwrap();
+        // A real project file that does NOT import lodash — so source was
+        // scanned but lodash is genuinely unused.
+        std::fs::write(dir.join("app.js"), b"const x = 1;\n").unwrap();
         let reach = project_reachability(&dir);
         assert_eq!(
             reach.classify(&dep("lodash", Ecosystem::Npm)),

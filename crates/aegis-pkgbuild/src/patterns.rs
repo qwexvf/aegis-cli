@@ -29,6 +29,13 @@ lazy_re!(
     net_exec,
     r"(?i)(curl|wget|fetch)\b[^|;&]*(\||;|&&)\s*(sh|bash|zsh|python|perl|node|eval)\b"
 );
+// process substitution: the shell runs first, reading a fetched payload —
+// `bash <(curl ...)`, `source <(wget ...)`, `. <(fetch ...)`. The pipe form
+// above never matches this because there's no `|`/`;`/`&&`.
+lazy_re!(
+    proc_subst_exec,
+    r"(?i)(^|[\s;&|])(sh|bash|zsh|source|eval|\.)\s+<\([^)]*(curl|wget|fetch)\b"
+);
 lazy_re!(eval_sub, r#"(?i)\beval\s+["'$]"#);
 
 // base64 / hex obfuscation decoded then run

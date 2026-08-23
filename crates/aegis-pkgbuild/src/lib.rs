@@ -130,7 +130,10 @@ fn scan_bytes(body: &[u8], file: &str, upstream: &str) -> Vec<Finding> {
             cur_fn = format!("{file}:{}()", &c[1]);
         }
 
-        if net_exec().is_match(line) || b64_exec().is_match(line) {
+        if net_exec().is_match(line)
+            || proc_subst_exec().is_match(line)
+            || b64_exec().is_match(line)
+        {
             out.push(Finding {
                 severity: Severity::Critical,
                 rule: "download-exec",

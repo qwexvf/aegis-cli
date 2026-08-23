@@ -20,6 +20,10 @@ struct Pkg {
     name: String,
     #[serde(default)]
     version: String,
+    /// conda-lock records the installer per entry; `pip`-managed packages come
+    /// from PyPI and must key advisory lookups against PyPI, not conda.
+    #[serde(default)]
+    manager: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -44,12 +48,17 @@ impl LockfileParser for CondaLock {
             if p.name.is_empty() || p.version.is_empty() {
                 continue;
             }
-            let key = format!("{}@{}", p.name, p.version);
+            let eco = if p.manager == "pip" {
+                Ecosystem::PyPI
+            } else {
+                Ecosystem::Conda
+            };
+            let key = format!("{}/{}@{}", eco.as_str(), p.name, p.version);
             if !seen.insert(key) {
                 continue;
             }
             out.push(Dependency {
-                ecosystem: Ecosystem::Conda,
+                ecosystem: eco,
                 name: p.name,
                 version: p.version,
                 ..Default::default()
@@ -92,6 +101,28 @@ package:
         assert_eq!(deps[0].version, "3.11.5");
         assert_eq!(deps[1].name, "numpy");
         assert_eq!(deps[1].version, "1.26.0");
+    }
+
+    #[test]
+    fn pip_managed_entries_map_to_pypi() {
+        let raw = br#"
+package:
+  - name: numpy
+    version: "1.26.0"
+    manager: conda
+  - name: requests
+    version: "2.31.0"
+    manager: pip
+"#;
+        let deps = CondaLock.parse(raw, &DirectMap::new()).unwrap();
+        let numpy = deps.iter().find(|d| d.name == "numpy").unwrap();
+        let requests = deps.iter().find(|d| d.name == "requests").unwrap();
+        assert_eq!(numpy.ecosystem, Ecosystem::Conda);
+        assert_eq!(
+            requests.ecosystem,
+            Ecosystem::PyPI,
+            "pip-managed entry must map to PyPI for correct advisory lookup"
+        );
     }
 
     #[test]
