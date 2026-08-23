@@ -425,13 +425,16 @@ fn bash_array(text: &str, name: &str) -> Option<Vec<String>> {
     let key = format!("{name}=(");
     let mut open = None;
     let mut off = 0usize;
-    for line in text.lines() {
+    // `split_inclusive` keeps the line terminator, so `off` counts real bytes
+    // regardless of `\n` vs `\r\n` — summing `lines()` lengths drifts one byte
+    // per CRLF line and can land `open` mid-multibyte-char, panicking the slice.
+    for line in text.split_inclusive('\n') {
         let indent = line.len() - line.trim_start().len();
         if line.trim_start().starts_with(&key) {
             open = Some(off + indent + key.len());
             break;
         }
-        off += line.len() + 1; // +1 for the newline `lines()` stripped
+        off += line.len();
     }
     let rest = &text[open?..];
     let close = rest.find(')')?;

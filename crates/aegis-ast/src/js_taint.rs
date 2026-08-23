@@ -239,12 +239,18 @@ fn is_word_byte(b: u8) -> bool {
 
 /// `needle` appears in `hay` bounded by non-word chars on both sides.
 fn word_in(hay: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
     let hb = hay.as_bytes();
     let mut from = 0;
     while let Some(rel) = hay[from..].find(needle) {
         let start = from + rel;
         let end = start + needle.len();
-        from = start + 1;
+        // Advance by one whole char, not one byte: `needle` may begin with a
+        // multibyte char (JS identifiers allow non-ASCII), and `start + 1` could
+        // land mid-char, panicking the next `hay[from..]` slice.
+        from = start + needle.chars().next().map_or(1, |c| c.len_utf8());
         let before_ok = start == 0 || !is_word_byte(hb[start - 1]);
         let after_ok = end >= hb.len() || !is_word_byte(hb[end]);
         if before_ok && after_ok {
@@ -447,5 +453,27 @@ fn truncate(s: &str, n: usize) -> String {
         s.to_string()
     } else {
         s.chars().take(n).collect()
+    }
+}
+
+#[cfg(test)]
+mod word_in_tests {
+    use super::word_in;
+
+    #[test]
+    fn multibyte_needle_does_not_panic() {
+        // Regression: `from = start + 1` sliced mid-char when the needle began
+        // with a multibyte char (JS identifiers allow non-ASCII).
+        assert!(!word_in("λ2", "λ")); // λ is followed by a word char → not bounded
+        assert!(word_in("(λ)", "λ")); // bounded by parens → a word match
+        assert!(!word_in("", "λ"));
+        assert!(!word_in("x", ""));
+    }
+
+    #[test]
+    fn ascii_word_boundaries_still_hold() {
+        assert!(word_in("eval(x)", "eval"));
+        assert!(!word_in("evaluate(x)", "eval"));
+        assert!(word_in("a; foo ;b", "foo"));
     }
 }
