@@ -79,7 +79,7 @@ pub fn scan_image_files(files: &ImageFiles) -> Vec<Finding> {
 ///
 /// Each file is scanned in isolation so a capability can be attributed to the
 /// exact path that triggered it. Binary and non-UTF8 files are skipped, and
-/// each file is capped at [`MAX_SOURCE_FILE_BYTES`]; malformed input never
+/// each file is capped at `MAX_SOURCE_FILE_BYTES`; malformed input never
 /// panics — worst case a file is skipped.
 ///
 /// Deterministic: input is a `BTreeMap`, so findings come out in path order.
@@ -124,7 +124,7 @@ pub fn deep_scan_image_files(files: &ImageFiles) -> Vec<Finding> {
 /// A language scanner is chosen by file extension via [`scanner_for`]; files
 /// with no compiled-in grammar are skipped. Each file is scanned in isolation
 /// so a capability maps to the exact path that triggered it. Binary / non-UTF8
-/// files are skipped and each file is capped at [`MAX_SOURCE_FILE_BYTES`];
+/// files are skipped and each file is capped at `MAX_SOURCE_FILE_BYTES`;
 /// malformed input never panics — worst case a file is skipped.
 ///
 /// Each finding's `reason` is the capability's own `.description()`, so the

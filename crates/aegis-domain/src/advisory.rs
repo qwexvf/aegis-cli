@@ -76,7 +76,7 @@ pub struct AdvisoryQuery {
 }
 
 impl AdvisoryQuery {
-    /// Canonical "<ecosystem>/<name>@<version>" key for matching results
+    /// Canonical `<ecosystem>/<name>@<version>` key for matching results
     /// back to inputs. Mirrors `AdvisoryQuery.Key()`.
     pub fn key(&self) -> String {
         format!("{}/{}@{}", self.ecosystem.as_str(), self.name, self.version)

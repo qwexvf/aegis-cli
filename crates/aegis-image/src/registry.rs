@@ -5,7 +5,7 @@
 //! bearer token (see Auth below), fetch the manifest (following a multi-arch
 //! index to its linux/amd64 child), then fetch every layer blob — and feeds
 //! the ordered gzipped layer blobs into the exact same
-//! [`crate::overlay::overlay_layers`] assembly the tarball path uses, so
+//! the `overlay::overlay_layers` assembly the tarball path uses, so
 //! whiteouts and later-layer-wins semantics are identical.
 //!
 //! ## Auth
@@ -178,7 +178,7 @@ pub fn pull_image(http: &dyn HttpClient, reference: &str) -> Result<ImageFiles, 
 ///
 /// Resolves a bearer token via the generic `/v2/` challenge flow (sending
 /// `creds` as Basic auth when present), then feeds the ordered gzipped layer
-/// blobs into the shared [`crate::overlay::overlay_layers`] assembly —
+/// blobs into the shared `overlay::overlay_layers` assembly —
 /// identical whiteout / later-layer-wins semantics to the tarball path.
 pub fn pull_image_auth(
     http: &dyn HttpClient,

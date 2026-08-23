@@ -51,7 +51,7 @@ fn parse_rfc3339(s: &str) -> Option<OffsetDateTime> {
 }
 
 /// Fires [`Capability::MaintainerHijackRisk`] when at least
-/// [`HIJACK_SIGNAL_THRESHOLD`] of three known-bad shapes hold: fresh publish,
+/// `HIJACK_SIGNAL_THRESHOLD` of three known-bad shapes hold: fresh publish,
 /// long gap since the previous version, and low weekly downloads. `now` is
 /// injected for deterministic tests.
 pub fn detect_maintainer_hijack_risk(
