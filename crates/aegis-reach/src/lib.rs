@@ -801,10 +801,18 @@ fn go_string_literal_value(node: Node, body: &[u8]) -> Option<String> {
 // PHP
 // ---------------------------------------------------------------------------
 
-/// PHP dep key — always empty. Composer maps namespaces to packages via
-/// composer.json autoload sections, which depusage can't resolve without
-/// project-side data. Consumers match the verbatim `module` against
-/// composer.lock metadata instead. Mirrors depusage's PHP `DepKey`.
+/// PHP dep key — always empty, a documented limitation rather than a stub.
+///
+/// Dep-level reachability needs a `use Foo\Bar` namespace mapped to a Composer
+/// `vendor/package`. That mapping lives only in each dependency's composer.json
+/// PSR-4 `autoload`, which isn't present offline (no `composer install`), and
+/// the top namespace segment is NOT reliably the vendor (`GuzzleHttp` →
+/// `guzzlehttp/guzzle`, `Doctrine\ORM` → `doctrine/orm`). A heuristic here would
+/// silently mis-match — for a security downgrade that means wrongly suppressing
+/// a live advisory — so PHP is intentionally not keyed at the dep level, and
+/// Packagist is not `reachability_eligible` in the `ci` gate. The PHP
+/// used-symbol pass still works: it matches the verbatim namespace `module`, a
+/// separate axis that needs no package mapping. Mirrors depusage's PHP `DepKey`.
 pub fn dep_key_php(_raw: &str) -> String {
     String::new()
 }

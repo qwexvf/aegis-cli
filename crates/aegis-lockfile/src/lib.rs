@@ -192,7 +192,19 @@ pub fn parse_file(
 ) -> Result<Option<Vec<Dependency>>, ParseError> {
     for p in builtin_parsers() {
         if p.matches(filename) {
-            return Ok(Some(p.parse(raw, direct)?));
+            let mut deps = p.parse(raw, direct)?;
+            // Deterministic order: several parsers build from a HashMap, so their
+            // natural order is nondeterministic across runs — which made `parse`
+            // and `sbom` output (both routinely committed/diffed) unstable. Sort
+            // by (ecosystem, name, version) so output is reproducible.
+            deps.sort_by(|a, b| {
+                a.ecosystem
+                    .as_str()
+                    .cmp(b.ecosystem.as_str())
+                    .then_with(|| a.name.cmp(&b.name))
+                    .then_with(|| a.version.cmp(&b.version))
+            });
+            return Ok(Some(deps));
         }
     }
     Ok(None)
