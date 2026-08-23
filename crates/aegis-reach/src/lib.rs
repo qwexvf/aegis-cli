@@ -227,6 +227,9 @@ pub fn extract_with(lang: Language, source: &[u8]) -> Vec<Import> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    // No depth guard here: the import walk is iterative (`preorder`/`walk*`) and
+    // safe at any nesting. Only the recursive used-symbol/call-graph/site
+    // walkers below need the guard.
 
     let mut imports = Vec::new();
     match lang {
@@ -359,6 +362,29 @@ fn language_for(path: &str) -> Option<Language> {
     } else {
         None
     }
+}
+
+/// Depth past which a source file is treated as pathological and skipped.
+/// Real code (even generated bundles) sits far under this; the used-symbol,
+/// call-graph, and symbol-site walkers below still recurse one frame per AST
+/// level, so this bound keeps an adversarially-nested file from overflowing the
+/// stack. The import pass uses the iterative [`preorder`] and needs no guard.
+const MAX_AST_DEPTH: usize = 500;
+
+/// Whether any node in the tree sits deeper than [`MAX_AST_DEPTH`]. Iterative
+/// (constant stack), so the check itself can't overflow.
+fn tree_too_deep(root: Node) -> bool {
+    let mut stack = vec![(root, 0usize)];
+    while let Some((node, depth)) = stack.pop() {
+        if depth > MAX_AST_DEPTH {
+            return true;
+        }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            stack.push((child, depth + 1));
+        }
+    }
+    false
 }
 
 /// Pre-order walk in constant stack space.
@@ -1124,26 +1150,47 @@ struct RustBinding {
 /// it as a namespace root. Text-based on purpose — robust across the several
 /// tree-sitter node shapes a use tree can take.
 fn expand_rust_use(tree: &str) -> Vec<(String, Option<String>)> {
+    expand_rust_use_depth(tree, 0)
+}
+
+/// Cap on use-tree brace nesting. Real code never approaches this; the bound
+/// stops adversarial/error-recovery text like `a::{{{{…}}}}` from overflowing
+/// the stack.
+const MAX_USE_TREE_DEPTH: usize = 64;
+
+fn expand_rust_use_depth(tree: &str, depth: usize) -> Vec<(String, Option<String>)> {
     let tree = tree.trim();
-    let Some(open) = tree.find('{') else {
-        // No group: a single path, optionally `path as alias`.
+    let no_group = || {
+        // A single path, optionally `path as alias`.
         let (path, alias) = match tree.split_once(" as ") {
             Some((p, a)) => (p.trim().to_string(), Some(a.trim().to_string())),
             None => (tree.to_string(), None),
         };
-        return vec![(path, alias)];
+        vec![(path, alias)]
+    };
+    if depth > MAX_USE_TREE_DEPTH {
+        return no_group();
+    }
+    let Some(open) = tree.find('{') else {
+        return no_group();
+    };
+    // The closing brace must come *after* the opening one. Malformed input
+    // (error-recovery text, `a::}{b`) can put `}` first; treat as no group
+    // rather than slicing a reversed range (which panics).
+    let Some(close) = tree.rfind('}').filter(|&c| c > open) else {
+        return no_group();
     };
     // Match the group to its closing brace and split the inner list on
     // top-level commas (nested groups keep their commas).
     let prefix = tree[..open].trim_end().trim_end_matches("::");
-    let inner = &tree[open + 1..tree.rfind('}').unwrap_or(tree.len())];
+    let inner = &tree[open + 1..close];
     let mut out = Vec::new();
     for item in split_top_level_commas(inner) {
         let item = item.trim();
         if item.is_empty() {
             continue;
         }
-        for (sub, alias) in expand_rust_use(item) {
+        for (sub, alias) in expand_rust_use_depth(item, depth + 1) {
             let full = if prefix.is_empty() {
                 sub
             } else if sub.is_empty() {
@@ -1207,6 +1254,9 @@ pub fn extract_used_symbols_rust(source: &[u8]) -> Vec<UsedSymbol> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     // Bindings by local name, and the set of imported crate dep keys.
     let mut bindings: HashMap<String, RustBinding> = HashMap::new();
@@ -1558,6 +1608,9 @@ pub fn extract_used_symbols(source: &[u8]) -> Vec<UsedSymbol> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut bindings = HashMap::new();
     collect_js_bindings(tree.root_node(), source, &mut bindings);
@@ -2025,6 +2078,9 @@ pub fn extract_used_symbols_python(source: &[u8]) -> Vec<UsedSymbol> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut infos = Vec::new();
     collect_py_import_infos(tree.root_node(), source, &mut infos);
@@ -2309,6 +2365,9 @@ pub fn extract_used_symbols_go(source: &[u8]) -> Vec<UsedSymbol> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut bindings = HashMap::new();
     collect_go_bindings(tree.root_node(), source, &mut bindings);
@@ -2459,6 +2518,9 @@ pub fn extract_used_symbols_php(source: &[u8]) -> Vec<UsedSymbol> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut bindings = HashMap::new();
     collect_php_bindings(tree.root_node(), source, &mut bindings);
@@ -2680,6 +2742,9 @@ pub fn call_graph(source: &[u8]) -> Vec<CallNode> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut acc = CgAcc::default();
     cg_walk(tree.root_node(), source, MODULE_SCOPE, &mut acc);
@@ -2840,6 +2905,9 @@ pub fn used_symbol_sites(source: &[u8]) -> Vec<SymbolSite> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut bindings = HashMap::new();
     collect_js_bindings(tree.root_node(), source, &mut bindings);
@@ -2977,6 +3045,9 @@ pub fn call_graph_python(source: &[u8]) -> Vec<CallNode> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut acc = CgAcc::default();
     cg_walk_py(tree.root_node(), source, MODULE_SCOPE, &mut acc);
@@ -3038,6 +3109,9 @@ pub fn used_symbol_sites_python(source: &[u8]) -> Vec<SymbolSite> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut infos = Vec::new();
     collect_py_import_infos(tree.root_node(), source, &mut infos);
@@ -3145,6 +3219,9 @@ pub fn call_graph_go(source: &[u8]) -> Vec<CallNode> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut acc = CgAcc::default();
     cg_walk_go(tree.root_node(), source, MODULE_SCOPE, &mut acc);
@@ -3207,6 +3284,9 @@ pub fn used_symbol_sites_go(source: &[u8]) -> Vec<SymbolSite> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut bindings = HashMap::new();
     collect_go_bindings(tree.root_node(), source, &mut bindings);
@@ -3290,6 +3370,9 @@ pub fn call_graph_php(source: &[u8]) -> Vec<CallNode> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut acc = CgAcc::default();
     cg_walk_php(tree.root_node(), source, MODULE_SCOPE, &mut acc);
@@ -3352,6 +3435,9 @@ pub fn used_symbol_sites_php(source: &[u8]) -> Vec<SymbolSite> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
+    if tree_too_deep(tree.root_node()) {
+        return Vec::new();
+    }
 
     let mut bindings = HashMap::new();
     collect_php_bindings(tree.root_node(), source, &mut bindings);
@@ -4076,6 +4162,45 @@ mod tests {
             syms.iter()
                 .any(|s| s.module == "serde_json" && s.symbol == "from_str"),
             "got {syms:?}"
+        );
+    }
+
+    #[test]
+    fn deeply_nested_source_does_not_overflow() {
+        // The used-symbol / call-graph / site walkers recurse per AST level;
+        // MAX_AST_DEPTH guards them. A few thousand levels used to overflow the
+        // stack — now each entry returns empty instead of crashing.
+        let js = format!("const _=require('lodash');\n{}", "a(".repeat(5000));
+        let _ = extract_used_symbols(js.as_bytes());
+        let _ = call_graph(js.as_bytes());
+        let _ = used_symbol_sites(js.as_bytes());
+        let py = format!("import os\nx={}1{}\n", "(".repeat(5000), ")".repeat(5000));
+        let _ = extract_used_symbols_python(py.as_bytes());
+        let rs = format!("use serde::Serialize;\nfn f(){{ {} }}", "g(".repeat(5000));
+        let _ = extract_used_symbols_rust(rs.as_bytes());
+        // A normal (shallow) file still yields results.
+        let ok = extract_used_symbols(b"const _=require('lodash');\n_.merge({},{});\n");
+        assert!(ok.iter().any(|u| u.module == "lodash"), "{ok:?}");
+    }
+
+    #[test]
+    fn expand_rust_use_malformed_and_deep_no_panic() {
+        // Reversed braces (`}` before `{`) must not slice a reversed range.
+        let out = expand_rust_use("a::}{b");
+        assert!(
+            !out.is_empty(),
+            "malformed input should still yield something"
+        );
+        // Pathological nesting must not overflow the stack (depth-bounded).
+        let deep = format!("a::{}{}", "{".repeat(500), "}".repeat(500));
+        let _ = expand_rust_use(&deep);
+        // A normal grouped/aliased tree still expands correctly.
+        let ok = expand_rust_use("serde::{Serialize, de::Deserializer as D}");
+        assert!(ok.iter().any(|(p, _)| p == "serde::Serialize"), "{ok:?}");
+        assert!(
+            ok.iter()
+                .any(|(p, a)| p == "serde::de::Deserializer" && a.as_deref() == Some("D")),
+            "{ok:?}"
         );
     }
 

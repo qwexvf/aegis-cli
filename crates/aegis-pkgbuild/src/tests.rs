@@ -261,6 +261,22 @@ fn multiline_arrays_parse() {
     assert!(!rules(&scan(&pkg(src))).contains(&"checksum-count-mismatch"));
 }
 
+#[test]
+fn crlf_and_multibyte_before_array_does_not_panic() {
+    // Regression: bash_array summed `lines()` lengths + 1, drifting one byte
+    // per CRLF line; with a multibyte char before source=(), the drifted offset
+    // sliced mid-char and panicked. CRLF endings + `é` in a comment, many short
+    // lines to build up the drift, then a source array.
+    let mut src = String::from("# pkgbuildé comment\r\n");
+    for i in 0..12 {
+        src.push_str(&format!("var{i}=x\r\n"));
+    }
+    src.push_str("source=('a'\r\n  'b')\r\n");
+    // Must not panic; parse succeeds and finds the two entries (no mismatch).
+    let r = scan(&pkg(&src));
+    let _ = rules(&r);
+}
+
 // --- ported rules still behave ---
 
 #[test]

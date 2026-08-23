@@ -25,6 +25,14 @@ use crate::layout::clean_path;
 /// so a path is still visible to the scan.
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 
+/// Total captured bytes across one layer, and total entries walked. Per-file
+/// caps alone don't bound a gzip/tar bomb: a small blob can inflate to millions
+/// of tiny entries, each a `Vec` in the merged view — unbounded memory. These
+/// stop the walk once a layer looks hostile; a partial view is safe (a bomb is
+/// malicious anyway, and legit images sit far under both).
+const MAX_LAYER_TOTAL_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_LAYER_ENTRIES: usize = 200_000;
+
 /// The flattened root filesystem of an image after overlaying every layer.
 #[derive(Debug, Default, Clone)]
 pub struct ImageFiles {
@@ -75,7 +83,15 @@ fn walk_layer_tar<R: Read>(reader: R, view: &mut LayerView) -> Result<(), String
     let iter = archive
         .entries()
         .map_err(|e| format!("read layer tar: {e}"))?;
+    let mut total_bytes: u64 = 0;
+    let mut entry_count: usize = 0;
     for entry in iter {
+        // Bomb guard: stop walking once a layer exceeds the entry or byte
+        // budget, keeping the partial view already captured.
+        entry_count += 1;
+        if entry_count > MAX_LAYER_ENTRIES || total_bytes > MAX_LAYER_TOTAL_BYTES {
+            break;
+        }
         let mut entry = entry.map_err(|e| format!("layer tar entry: {e}"))?;
         let is_regular = entry.header().entry_type().is_file();
         let raw = entry
@@ -117,6 +133,7 @@ fn walk_layer_tar<R: Read>(reader: R, view: &mut LayerView) -> Result<(), String
             .take(MAX_FILE_BYTES)
             .read_to_end(&mut buf)
             .map_err(|e| format!("read layer file {name}: {e}"))?;
+        total_bytes = total_bytes.saturating_add(buf.len() as u64);
         view.files.push((name, buf));
     }
     Ok(())
