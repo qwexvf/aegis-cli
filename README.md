@@ -13,11 +13,9 @@ It answers the questions a security engineer actually asks about a dependency:
 - Is a flagged dependency even used? (`reach` / `run` unused-deps)
 - What's in this container image? (`image` — tarball or registry pull)
 
-> **Rust rewrite.** `main` is the Rust implementation. The Go v0.29 tree that
-> preceded it lives on the [`old`](https://github.com/qwexvf/aegis-cli/tree/old)
-> branch and is frozen; releases up to and including `v0.29.1` are Go builds.
-> See [Migrating from Go v0.29](#migrating-from-go-v029) for the command-surface
-> differences.
+Pure-Rust, offline-first, CI-first. Every check runs locally with no backend
+and no network unless you ask for one; the online paths (advisory feeds,
+published-source fetch) are opt-in and cached on disk.
 
 ## Install
 
@@ -281,51 +279,6 @@ v0.29 for `analyze`, `sbom`, and `ci`. They run offline; `ci-parity` replays a
 committed HTTP cassette rather than hitting the network. Re-capture with
 `--record` (needs the Go binary) or `--record-cassettes` (needs network).
 
-## Migrating from Go v0.29
-
-The Rust CLI is flat, stateless-by-default, and CI-first. Scanning behavior
-(verdicts, scores, capabilities, advisories) is at parity and gated in CI, but
-the command surface differs:
-
-**Renamed or reshaped**
-
-| Go v0.29 | Rust |
-|---|---|
-| `analyze <spec>` (fetch by name) | `explain <name@version>` |
-| `analyze <spec> --local <dir>` | `analyze <dir>` |
-| `hook install` / `uninstall` | `hook --install` / `--uninstall` |
-| `image scan` | `image` (the subcommand level was flattened away) |
-| `version` | `--version` |
-
-**Same command, same behaviour**
-
-`allowlist` (`add`/`remove`/`list`/`test`/`verify`), `actions scan`, `audit
-tail`, `cache` (`list`/`clear`), `doctor`, `completion`, `snapshot`
-(`save`/`show`/`diff`/`enrich`/`verify`/`rescan`), `ci`, `fix`, `sbom`,
-`explain`.
-
-Some of these differ in what they operate on rather than what they do.
-Go's `cache` managed a decision cache the Rust port deliberately does not
-keep; the Rust one manages the advisory feed cache instead. Go's `doctor`
-checked the Cloud API; the Rust one checks the feeds and the allowlist.
-
-**Not ported — cloud-coupled, and out of scope by design**
-
-`admin`, `admin gen-key`, `cloud`, `cloud analyze`, `recheck`,
-`snapshot submit`, `allowlist sync`. The CLI talks to Aegis Cloud over
-HTTP only, and that side lives in a different repository.
-
-**Not ported — declined**
-
-The interactive TUI. JSON, SARIF, CycloneDX and SPDX already feed
-dashboards and GitHub code scanning, which is what a CI-first scanner
-needs.
-
-**Rust-only**
-
-`parse`, `run` (an `aegis.toml` task runner), `reach`, `snapshot capture`,
-`aur` (the PKGBUILD install gate), and `explain`'s capability-catalog mode.
-
 ## Security
 
 Report vulnerabilities per [SECURITY.md](SECURITY.md).
@@ -336,3 +289,9 @@ to assess**. It is not a replacement for authorization.
 ## License
 
 [Apache-2.0](LICENSE)
+
+---
+
+The Go v0.29 tree that preceded this rewrite is frozen on the
+[`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch; releases up to
+`v0.29.1` are Go builds.
