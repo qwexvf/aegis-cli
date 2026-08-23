@@ -64,6 +64,9 @@ impl LicenseFetcher {
 }
 
 /// GET a URL and parse the body as JSON; None on any non-2xx / parse error.
+// Used only by the per-ecosystem license fetchers below, all feature-gated —
+// dead in a zero-feature build.
+#[allow(dead_code)]
 fn get_json(http: &dyn HttpClient, url: &str, headers: &[(&str, &str)]) -> Option<Value> {
     let resp = http.get(url, headers).ok()?;
     if !resp.is_ok() {
@@ -72,6 +75,7 @@ fn get_json(http: &dyn HttpClient, url: &str, headers: &[(&str, &str)]) -> Optio
     serde_json::from_slice(&resp.body).ok()
 }
 
+#[allow(dead_code)]
 fn non_empty(s: &str) -> Option<String> {
     if s.is_empty() {
         None

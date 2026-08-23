@@ -112,7 +112,10 @@ pub trait LockfileParser {
 /// returns only the npm parser. Mirrors the Go package-level registry,
 /// but assembled from enabled features instead of `init()` side effects.
 pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
-    #[allow(unused_mut)]
+    // cfg-gated pushes can't be a `vec![]` literal — the element set depends on
+    // enabled features. Lean builds (few features) otherwise trip
+    // vec_init_then_push.
+    #[allow(unused_mut, clippy::vec_init_then_push)]
     let mut v: Vec<Box<dyn LockfileParser>> = Vec::new();
     #[cfg(feature = "npm")]
     {
