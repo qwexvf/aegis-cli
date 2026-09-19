@@ -207,24 +207,33 @@ fn check_all(eco: Ecosystem, specs: &[&spec::Spec], ctx: &PolicyCtx) -> Vec<Outc
             }
         };
 
-        let assessment = match crate::scan::fetch_and_scan_package(eco, &s.name, &version) {
-            Ok(sp) => sp.assessment,
-            Err(e) => {
-                let why = Unchecked::ScanFailed(e);
-                return Outcome {
-                    name: s.name.clone(),
-                    version,
-                    action: evaluate_unchecked(&why, ctx),
-                    verdict: None,
-                    unchecked: Some(why),
-                    advisories: advs,
-                };
-            }
+        // The capability half is cacheable: a published version's code never
+        // changes. The advisory half above is not, so it is never cached here.
+        let eco_s = eco.as_str();
+        let cap_v = match crate::pkgcache::get(eco_s, &s.name, &version) {
+            Some(v) => v,
+            None => match crate::scan::fetch_and_scan_package(eco, &s.name, &version) {
+                Ok(sp) => {
+                    let v = verdict(&sp.assessment, &RiskAssessment::default());
+                    crate::pkgcache::put(eco_s, &s.name, &version, v);
+                    v
+                }
+                Err(e) => {
+                    let why = Unchecked::ScanFailed(e);
+                    return Outcome {
+                        name: s.name.clone(),
+                        version,
+                        action: evaluate_unchecked(&why, ctx),
+                        verdict: None,
+                        unchecked: Some(why),
+                        advisories: advs,
+                    };
+                }
+            },
         };
 
         // Same composition as `run_ci`, minus the reachability downgrade —
         // see the module docs for why that one must not be reused here.
-        let cap_v = verdict(&assessment, &RiskAssessment::default());
         let adv_v = verdict_for_advisories(&advs);
         let final_v = cap_v.max(adv_v);
 

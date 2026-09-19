@@ -12,7 +12,7 @@ use crate::util::parse_severity;
 
 /// Base cache directory: `$XDG_CACHE_HOME/aegis` (or `$HOME/.cache/aegis`),
 /// falling back to the OS temp dir.
-fn cache_base() -> std::path::PathBuf {
+pub(crate) fn cache_base() -> std::path::PathBuf {
     std::env::var_os("XDG_CACHE_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))
