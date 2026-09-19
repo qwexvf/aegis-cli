@@ -60,44 +60,13 @@ fn native_hook() -> String {
 }
 
 /// Replace the marked block if present, otherwise append it.
-///
-/// Pure so the marker handling is testable without touching a filesystem.
 pub(crate) fn inject(existing: &str, body: &str) -> String {
-    let body = if body.ends_with('\n') {
-        body.to_string()
-    } else {
-        format!("{body}\n")
-    };
-    let block = format!("{MARKER_START}\n{body}{MARKER_END}\n");
-
-    if let Some(start) = existing.find(MARKER_START) {
-        if let Some(rel_end) = existing[start..].find(MARKER_END) {
-            let mut end = start + rel_end + MARKER_END.len();
-            if existing[end..].starts_with('\n') {
-                end += 1;
-            }
-            return format!("{}{}{}", &existing[..start], block, &existing[end..]);
-        }
-    }
-    let mut out = existing.to_string();
-    if !out.is_empty() && !out.ends_with('\n') {
-        out.push('\n');
-    }
-    out.push_str(&block);
-    out
+    crate::markers::inject(existing, body, MARKER_START, MARKER_END)
 }
 
-/// Remove the marked block. Returns `None` when there was nothing of ours
-/// to remove, so callers can report "not installed" rather than rewriting
-/// the file for no reason.
+/// Remove the marked block. `None` when there was nothing of ours to remove.
 pub(crate) fn strip(existing: &str) -> Option<String> {
-    let start = existing.find(MARKER_START)?;
-    let rel_end = existing[start..].find(MARKER_END)?;
-    let mut end = start + rel_end + MARKER_END.len();
-    if existing[end..].starts_with('\n') {
-        end += 1;
-    }
-    Some(format!("{}{}", &existing[..start], &existing[end..]))
+    crate::markers::strip(existing, MARKER_START, MARKER_END)
 }
 
 /// lefthook -> husky -> native, in that order. `None` when there is no git

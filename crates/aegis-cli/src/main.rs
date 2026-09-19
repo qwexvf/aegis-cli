@@ -13,8 +13,10 @@ mod engine_reach;
 mod enrich;
 mod gate;
 mod hook;
+mod markers;
 mod pm;
 mod scan;
+mod shell_init;
 mod snapshot;
 mod util;
 mod workflow;
@@ -270,6 +272,34 @@ enum Command {
         /// Arguments for go, passed through untouched.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
         argv: Vec<String>,
+    },
+    /// Print shell functions that route package-manager installs through the
+    /// aegis gate: `eval "$(aegis shell-init zsh)"`.
+    ///
+    /// Interactive shells only — CI and scripts never source an rc file, so
+    /// use `aegis ci` there instead.
+    ShellInit {
+        /// Shell to generate for: zsh, bash, fish. Detected from $SHELL when
+        /// omitted.
+        shell: Option<String>,
+        /// Comma-separated managers to wrap (default: npm,pnpm,yarn,bun).
+        #[arg(long)]
+        pm: Option<String>,
+        /// Wrap every supported manager, including cargo, pip and go.
+        #[arg(long)]
+        all: bool,
+        /// Write the eval line into your shell rc file.
+        #[arg(long)]
+        install: bool,
+        /// Remove the block this wrote, leaving the rest of the file intact.
+        #[arg(long, conflicts_with = "install")]
+        uninstall: bool,
+        /// Edit this file instead of the detected rc file.
+        #[arg(long)]
+        rc: Option<String>,
+        /// Install even in CI, where the snippet would never load.
+        #[arg(long)]
+        force: bool,
     },
     /// Scan an AUR package's PKGBUILD and .install hooks for malware patterns.
     /// The install gate for paru/yay.
@@ -574,6 +604,15 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Command::Parse { file, json } => run_parse(&file, json),
+        Command::ShellInit {
+            shell,
+            pm,
+            all,
+            install,
+            uninstall,
+            rc,
+            force,
+        } => shell_init::run(shell, pm, all, install, uninstall, rc, force),
         Command::Npm { argv } => pm::run(pm::Pm::Npm, &argv),
         Command::Pnpm { argv } => pm::run(pm::Pm::Pnpm, &argv),
         Command::Yarn { argv } => pm::run(pm::Pm::Yarn, &argv),
