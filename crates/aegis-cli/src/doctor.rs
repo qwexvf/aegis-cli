@@ -78,6 +78,8 @@ pub(crate) fn run_doctor(offline: bool, json: bool) -> ExitCode {
         check_project_dir(),
         check_git(),
         check_github_token(),
+        check_shell_init(),
+        check_pm_resolution(),
     ];
     checks.push(if offline {
         warn("advisory-feeds", "skipped (--offline)")
@@ -219,6 +221,68 @@ fn check_project_dir() -> Check {
 }
 
 /// `hook` and the AUR history rules shell out to git.
+/// Is the shell integration loaded in the shell that invoked us?
+///
+/// `AEGIS_SHELL_INIT` is exported by the snippet, and doctor is a child
+/// process, so inheriting it is proof the wrapper is live right now — which
+/// no amount of reading rc files can establish.
+fn check_shell_init() -> Check {
+    match std::env::var("AEGIS_SHELL_INIT") {
+        Ok(v) if !v.trim().is_empty() => {
+            let pms = std::env::var("AEGIS_SHELL_PMS").unwrap_or_else(|_| "unknown".into());
+            pass("shell-init", format!("active (v{v}) — wrapping: {pms}"))
+        }
+        _ => warn(
+            "shell-init",
+            "not loaded in this shell — run `aegis shell-init --install`, \
+             then restart your shell",
+        ),
+    }
+}
+
+/// Does each wrapped manager still resolve to a real binary?
+///
+/// The failure worth catching is a PATH where the manager resolves to aegis
+/// itself: the gate then refuses to run, and the cause is otherwise very hard
+/// to work out from the error alone.
+fn check_pm_resolution() -> Check {
+    let pms = std::env::var("AEGIS_SHELL_PMS").unwrap_or_default();
+    if pms.trim().is_empty() {
+        return pass("pm-resolution", "no wrapped managers to check");
+    }
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let self_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| std::fs::canonicalize(p).ok());
+
+    let mut ok = Vec::new();
+    let mut missing = Vec::new();
+    let mut recursive = Vec::new();
+    for name in pms.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        match crate::pm::exec::resolve_pm(name, &path, self_path.as_deref()) {
+            Ok(p) => ok.push(format!("{name}→{}", p.display())),
+            Err(crate::pm::exec::ResolveError::NotFound) => missing.push(name.to_string()),
+            Err(crate::pm::exec::ResolveError::OnlyAegis(_)) => recursive.push(name.to_string()),
+        }
+    }
+    if !recursive.is_empty() {
+        return fail(
+            "pm-resolution",
+            format!(
+                "{} on PATH resolves to aegis itself — the gate will refuse to run",
+                recursive.join(", ")
+            ),
+        );
+    }
+    if !missing.is_empty() {
+        return warn(
+            "pm-resolution",
+            format!("wrapped but not installed: {}", missing.join(", ")),
+        );
+    }
+    pass("pm-resolution", ok.join(", "))
+}
+
 fn check_git() -> Check {
     match std::process::Command::new("git").arg("--version").output() {
         Ok(o) if o.status.success() => {

@@ -47,6 +47,8 @@ macOS is enough; there is no cgo boundary and no separate grammar toolchain.
 | `allowlist <sub>` | manage capability suppressions — see [Allowlist](#allowlist) |
 | `explain [capability\|pkg@ver]` | the risk model, or a published package's capabilities |
 | `hook [--install\|--uninstall]` | git pre-commit hook that scans staged lockfiles |
+| `npm`/`pnpm`/`yarn`/`bun`/`cargo`/`pip`/`go` | install gate — check packages *before* the manager fetches them, see [Install gate](#install-gate) |
+| `shell-init <shell>` | shell functions that route installs through the gate |
 | `actions` / `actions scan` | generate a workflow, or audit existing ones for risk |
 | `audit tail` | the local decision log — what was scanned, and what the verdict was |
 | `cache list` / `cache clear` | the on-disk advisory caches (CISA KEV, OSV documents) |
@@ -165,6 +167,72 @@ Rules are validated before they are written, so an unknown capability or
 a malformed semver range cannot land on disk and quietly break every
 later scan. Editing `aegis.toml` preserves the rest of the file — your
 `[[task]]` entries survive.
+
+
+## Install gate
+
+`ci` and `analyze` tell you about a dependency you already have. The install
+gate runs **before** the package manager fetches anything, which is the only
+point at which a malicious `postinstall` has not yet executed.
+
+```sh
+aegis npm install lodash          # check, then hand off to the real npm
+aegis pnpm add left-pad@1.3.0
+aegis cargo add serde             # also pnpm, yarn, bun, pip, go
+```
+
+Blocked installs exit 1 and the package manager never runs.
+
+### Routing a bare `pnpm install` through it
+
+Nobody types `aegis pnpm install`, so generate shell functions that do:
+
+```sh
+eval "$(aegis shell-init zsh)"              # try it in this shell
+aegis shell-init zsh --install              # persist it to your rc file
+aegis shell-init --uninstall                # remove it again
+```
+
+Wraps npm, pnpm, yarn and bun by default; `--pm cargo,pip,go` or `--all` adds
+the rest. `cargo` and `go` are opt-in because `cargo check` and `go build` run
+constantly and install nothing.
+
+### What it checks
+
+| Command shape | Checked |
+|---|---|
+| `npm install <pkg>` | the named packages |
+| `npm install` / `npm ci` / `pnpm install --frozen-lockfile` | every dependency the lockfile pins |
+| `pip install -r requirements.txt` | every requirement listed |
+| `npm run build`, `cargo check` | nothing — not an install, passed straight through |
+| `npm install ./local`, `git+https://…`, `workspace:*` | skipped and reported: there is no registry entry to check |
+
+### Failing closed
+
+Anything the gate cannot verify — registry unreachable, package not found, a
+scan that errored — **blocks**. Making the scanner unreachable would otherwise
+be a complete bypass for exactly the adversary this tool models.
+
+Two escape hatches, both named in every blocking message:
+
+```sh
+AEGIS_NO_GATE=1 pnpm install …            # skip the gate entirely
+AEGIS_GATE_ALLOW_UNCHECKED=1 pnpm add …   # accept packages that could not be verified
+command pnpm install …                    # bypass the shell function
+```
+
+Other knobs: `AEGIS_GATE_FAIL_ON` (`safe`/`review`/`prompt`/`block`, default
+`block`) and `AEGIS_GATE_JOBS`.
+
+### What it does not cover
+
+- **Non-interactive shells.** CI, `make`, `mise run` and `package.json`
+  scripts never source an rc file, so the wrapper is absent there by
+  construction. Use `aegis ci <lockfile>` and `aegis hook --install` instead.
+- **`npx` / `pnpm dlx` / `bunx` / `uvx`** as separate entry points, and
+  `python -m pip`.
+- **Non-registry specs.** A `git+https://` dependency is reported as skipped,
+  not verified.
 
 ## AUR packages
 
