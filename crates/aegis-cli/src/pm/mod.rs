@@ -12,7 +12,12 @@
 //! `crate::gate` — so this module and `argv`/`spec` are unit-testable with no
 //! process and no network.
 
+// The argv walker and spec parser are consumed by the gate, which lands in
+// the next commit; `exec` is wired now. The attribute goes away with the gate.
+#![allow(dead_code)]
+
 pub(crate) mod argv;
+pub(crate) mod exec;
 pub(crate) mod spec;
 
 use aegis_domain::Ecosystem;
@@ -627,6 +632,16 @@ static GO: PmDef = PmDef {
     lockfiles: &["go.sum"],
     spec_style: SpecStyle::GoModule,
 };
+
+/// Entry point for `aegis <pm> <args...>`.
+///
+/// Until the gate lands this is a transparent wrapper: classify the argv,
+/// then hand off to the real manager either way. Wiring it as a no-op first
+/// keeps the passthrough path — the part that can break someone's shell —
+/// reviewable on its own.
+pub(crate) fn run(pm: Pm, args: &[String]) -> std::process::ExitCode {
+    exec::exec_real(pm.name(), args)
+}
 
 #[cfg(test)]
 mod tests {

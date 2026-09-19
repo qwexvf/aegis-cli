@@ -12,9 +12,6 @@ mod doctor;
 mod engine_reach;
 mod enrich;
 mod hook;
-// Consumed by the install gate, which lands in the next commit; the attribute
-// goes away with the wiring.
-#[allow(dead_code)]
 mod pm;
 mod scan;
 mod snapshot;
@@ -174,6 +171,104 @@ enum Command {
     Snapshot {
         #[command(subcommand)]
         sub: SnapshotSub,
+    },
+    /// Run npm through the aegis install gate, then hand off to the real
+    /// npm. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "npm",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Npm {
+        /// Arguments for npm, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run pnpm through the aegis install gate, then hand off to the real
+    /// pnpm. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "pnpm",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Pnpm {
+        /// Arguments for pnpm, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run yarn through the aegis install gate, then hand off to the real
+    /// yarn. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "yarn",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Yarn {
+        /// Arguments for yarn, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run bun through the aegis install gate, then hand off to the real
+    /// bun. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "bun",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Bun {
+        /// Arguments for bun, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run cargo through the aegis install gate, then hand off to the real
+    /// cargo. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "cargo",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Cargo {
+        /// Arguments for cargo, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run pip through the aegis install gate, then hand off to the real
+    /// pip. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "pip",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Pip {
+        /// Arguments for pip, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run go through the aegis install gate, then hand off to the real
+    /// go. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "go",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Go {
+        /// Arguments for go, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
     },
     /// Scan an AUR package's PKGBUILD and .install hooks for malware patterns.
     /// The install gate for paru/yay.
@@ -478,6 +573,13 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Command::Parse { file, json } => run_parse(&file, json),
+        Command::Npm { argv } => pm::run(pm::Pm::Npm, &argv),
+        Command::Pnpm { argv } => pm::run(pm::Pm::Pnpm, &argv),
+        Command::Yarn { argv } => pm::run(pm::Pm::Yarn, &argv),
+        Command::Bun { argv } => pm::run(pm::Pm::Bun, &argv),
+        Command::Cargo { argv } => pm::run(pm::Pm::Cargo, &argv),
+        Command::Pip { argv } => pm::run(pm::Pm::Pip, &argv),
+        Command::Go { argv } => pm::run(pm::Pm::Go, &argv),
         Command::Ci {
             file,
             fail_on,
