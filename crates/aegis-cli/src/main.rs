@@ -11,6 +11,7 @@ mod doctor;
 #[cfg(feature = "engine-reach")]
 mod engine_reach;
 mod enrich;
+mod gate;
 mod hook;
 mod pm;
 mod scan;

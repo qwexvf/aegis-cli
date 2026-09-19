@@ -5,7 +5,7 @@
 //! `npm i -w frontend lodash` installs one package, not two. Each manager's
 //! value-flag table (see [`PmDef`](super::PmDef)) drives that.
 
-use super::{Pm, PmDef};
+use super::Pm;
 
 /// What the argv asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,16 +135,6 @@ fn capture_flag_value(flag: &str, value: &str, w: &mut Walk) {
         }
         _ => {}
     }
-}
-
-/// The lockfile basenames to look for, in priority order.
-pub(crate) fn lockfiles(pm: Pm) -> &'static [&'static str] {
-    pm.def().lockfiles
-}
-
-/// The canonical install verb, for messages.
-pub(crate) fn install_verb(def: &PmDef) -> &'static str {
-    def.install_verb
 }
 
 #[cfg(test)]

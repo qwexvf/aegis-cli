@@ -12,10 +12,6 @@
 //! `crate::gate` — so this module and `argv`/`spec` are unit-testable with no
 //! process and no network.
 
-// The argv walker and spec parser are consumed by the gate, which lands in
-// the next commit; `exec` is wired now. The attribute goes away with the gate.
-#![allow(dead_code)]
-
 pub(crate) mod argv;
 pub(crate) mod exec;
 pub(crate) mod spec;
@@ -53,6 +49,7 @@ pub(crate) struct PmDef {
     pub name: &'static str,
     pub eco: Ecosystem,
     /// The canonical install verb, for messages and override hints.
+    #[allow(dead_code)] // consumed by lockfile mode
     pub install_verb: &'static str,
     /// Verbs that install something. `argv[0]` is matched against these.
     pub install_verbs: &'static [&'static str],
@@ -68,6 +65,7 @@ pub(crate) struct PmDef {
     /// missing one.
     pub known_flags: &'static [&'static str],
     /// Lockfile basenames to look for in lockfile mode, in priority order.
+    #[allow(dead_code)] // consumed by lockfile mode
     pub lockfiles: &'static [&'static str],
     pub spec_style: SpecStyle,
 }
@@ -94,6 +92,7 @@ impl Pm {
     }
 
     /// Every manager, for table-wide tests and for `shell-init`.
+    #[allow(dead_code)] // consumed by shell-init
     pub(crate) const ALL: [Pm; 7] = [
         Pm::Npm,
         Pm::Pnpm,
@@ -106,6 +105,7 @@ impl Pm {
 
     /// Parse a manager name. `pip3` is accepted as `pip`; note that
     /// `python -m pip` cannot be wrapped and is documented as uncovered.
+    #[allow(dead_code)] // consumed by shell-init
     pub(crate) fn parse(s: &str) -> Option<Pm> {
         match s {
             "npm" => Some(Pm::Npm),
@@ -633,14 +633,9 @@ static GO: PmDef = PmDef {
     spec_style: SpecStyle::GoModule,
 };
 
-/// Entry point for `aegis <pm> <args...>`.
-///
-/// Until the gate lands this is a transparent wrapper: classify the argv,
-/// then hand off to the real manager either way. Wiring it as a no-op first
-/// keeps the passthrough path — the part that can break someone's shell —
-/// reviewable on its own.
+/// Entry point for `aegis <pm> <args...>`: gate, then hand off.
 pub(crate) fn run(pm: Pm, args: &[String]) -> std::process::ExitCode {
-    exec::exec_real(pm.name(), args)
+    crate::gate::run(pm, args)
 }
 
 #[cfg(test)]
