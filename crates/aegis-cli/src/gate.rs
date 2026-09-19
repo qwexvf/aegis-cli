@@ -70,10 +70,7 @@ pub(crate) fn run(pm: Pm, args: &[String]) -> ExitCode {
     match walk.kind {
         // Not an install at all — `npm run build`, `cargo check`.
         InstallKind::NotInstall => return exec::exec_real(pm.name(), args),
-        // Lockfile installs land in a later commit; pass through rather than
-        // pretending to have checked them.
-        InstallKind::Lockfile => return exec::exec_real(pm.name(), args),
-        InstallKind::Named => {}
+        InstallKind::Lockfile | InstallKind::Named => {}
     }
 
     let ctx = PolicyCtx {
@@ -82,11 +79,23 @@ pub(crate) fn run(pm: Pm, args: &[String]) -> ExitCode {
         uncertain_parse: walk.saw_unknown_flag,
     };
 
-    let specs: Vec<spec::Spec> = walk
-        .specs
-        .iter()
-        .map(|raw| spec::parse(pm.def().spec_style, raw))
-        .collect();
+    let specs: Vec<spec::Spec> = if walk.kind == InstallKind::Lockfile {
+        match lockfile_specs(pm, &walk) {
+            Ok(v) => v,
+            Err(e) => {
+                // Nothing to check is not the same as nothing wrong, but
+                // refusing every `npm install` in a directory we cannot read a
+                // lockfile from would be worse than useless.
+                eprintln!("[aegis] lockfile not checked: {e}");
+                return exec::exec_real(pm.name(), args);
+            }
+        }
+    } else {
+        walk.specs
+            .iter()
+            .map(|raw| spec::parse(pm.def().spec_style, raw))
+            .collect()
+    };
 
     // Non-registry specs (paths, git refs, workspace protocols) have nothing
     // to look up. Report them as skipped rather than silently ignoring them —
@@ -125,6 +134,73 @@ pub(crate) fn run(pm: Pm, args: &[String]) -> ExitCode {
     // Everything the gate wants to say or record has to happen before this:
     // exec replaces the process and never returns.
     exec::exec_real(pm.name(), args)
+}
+
+/// Every dependency the lockfile pins, as already-exact specs.
+///
+/// This closes the biggest hole in the Go original: a bare `npm install` or
+/// `npm ci` parses to zero named packages there, so the gate checked nothing
+/// at all — even though that is where a poisoned transitive dependency
+/// actually lands.
+///
+/// Versions from a lockfile are exact, so resolution costs no network call,
+/// and the verdict cache makes a repeat install of an unchanged tree cheap.
+fn lockfile_specs(pm: Pm, walk: &argv::Walk) -> Result<Vec<spec::Spec>, String> {
+    let dir = walk.dir.clone().unwrap_or_else(|| ".".to_string());
+    let base = std::path::Path::new(&dir);
+
+    // pip names its requirement files on the command line; everyone else has
+    // a fixed set to look for.
+    let candidates: Vec<std::path::PathBuf> = if !walk.requirement_files.is_empty() {
+        walk.requirement_files
+            .iter()
+            .map(|f| base.join(f))
+            .collect()
+    } else {
+        pm.def()
+            .lockfiles
+            .iter()
+            .map(|f| base.join(f))
+            .filter(|p| p.is_file())
+            .collect()
+    };
+    if candidates.is_empty() {
+        return Err(format!("no lockfile found in {dir}"));
+    }
+
+    let mut out = Vec::new();
+    for path in candidates {
+        let name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default()
+            .to_string();
+        // bun.lockb is binary and has no parser. Say so rather than reporting
+        // a clean run over a file we never read.
+        if name == "bun.lockb" {
+            eprintln!("[aegis] skipped bun.lockb (binary lockfile, no parser)");
+            continue;
+        }
+        let raw = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let deps = aegis_lockfile::parse_file(&name, &raw, &aegis_lockfile::DirectMap::new())
+            .map_err(|e| format!("{}: {e}", path.display()))?
+            .ok_or_else(|| format!("{}: no parser", path.display()))?;
+        for d in deps {
+            out.push(spec::Spec {
+                name: d.name,
+                requested: d.version,
+                raw: String::new(),
+                kind: spec::SpecKind::Registry,
+            });
+        }
+    }
+    out.sort_by(|a, b| {
+        a.name
+            .cmp(&b.name)
+            .then_with(|| a.requested.cmp(&b.requested))
+    });
+    out.dedup_by(|a, b| a.name == b.name && a.requested == b.requested);
+    Ok(out)
 }
 
 /// Resolve, scan and judge every spec.
