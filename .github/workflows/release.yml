@@ -197,7 +197,18 @@ jobs:
           sha256sum ./*.tar.gz ./*.zip > checksums.txt
           cat checksums.txt
 
+      # The action is pinned, but the cosign BINARY it installs is not, and
+      # cosign 3.x defaults to the new bundle format — which ignores
+      # --output-signature/--output-certificate and then fails on an empty
+      # --bundle path. Pin to the 2.x line so the published artifacts stay the
+      # checksums.txt.sig + checksums.txt.pem pair that RELEASING.md documents
+      # and that every prior release shipped.
+      #
+      # Migrating to --bundle is the real fix, but it changes what users verify
+      # and belongs in its own change, not in a release that is already tagged.
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: 'v2.6.5'
 
       # Keyless: the signature is bound to this workflow's OIDC identity, so a
       # verifier can prove the artifact came from this repo's release job and
