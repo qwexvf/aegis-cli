@@ -8,6 +8,25 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
+## [0.30.0-rc.7](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.6...v0.30.0-rc.7) (2026-09-21)
+
+### Fixed
+
+* **`parse`, `ci`, `fix` and `sbom` silently dropped unpinned requirements.**
+  `requirements.txt` is a dependency spec, not a lockfile: `pytest>=7` and a
+  bare `pytest-cov` are ordinary content, and only `==` pins were kept —
+  reporting on 1 of 6 dependencies on a real project with nothing to say the
+  other 5 existed, and disagreeing with the install gate about the same file.
+  The skip stays (an SBOM component needs an exact version) but is now
+  reported, and points at `aegis pip install -r`, which resolves ranges and
+  checks all of them.
+
+### Changed
+
+* A block driven by a lowered `AEGIS_GATE_FAIL_ON` no longer prints as
+  `BLOCK pkg (safe)`, which read as a contradiction. It now names the
+  threshold that caused it.
+
 ## [0.30.0-rc.6](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.5...v0.30.0-rc.6) (2026-09-21)
 
 ### Fixed

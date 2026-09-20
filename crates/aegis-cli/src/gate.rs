@@ -440,7 +440,19 @@ fn report(outcomes: &[Outcome]) {
                 }
             }
             (Action::Block, _, Some(v)) => {
-                eprintln!("[aegis] BLOCK {who} ({})", v.name());
+                // `BLOCK pkg (safe)` reads as a contradiction. It happens when
+                // the threshold is lowered below Block, so name the threshold
+                // rather than leaving the verdict looking self-contradictory.
+                if v < VerdictKind::Block {
+                    eprintln!(
+                        "[aegis] BLOCK {who} (verdict {}, at or above your \
+                         AEGIS_GATE_FAIL_ON={} threshold)",
+                        v.name(),
+                        fail_on_threshold().name()
+                    );
+                } else {
+                    eprintln!("[aegis] BLOCK {who} ({})", v.name());
+                }
                 for a in &o.advisories {
                     eprintln!("          {} [{}] {}", a.id, a.severity.as_str(), a.summary);
                 }

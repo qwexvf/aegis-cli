@@ -157,6 +157,7 @@ pub(crate) fn run_ci(
             return ExitCode::from(2);
         }
     };
+    warn_unpinned_requirements(basename, &bytes, deps.len());
     // Project name = the lockfile's parent dir (mirrors Go's project identity).
     let project = path
         .parent()
@@ -1094,6 +1095,7 @@ pub(crate) fn run_fix(file: &str, offline: bool, script: bool, json: bool) -> Ex
             return ExitCode::from(2);
         }
     };
+    warn_unpinned_requirements(basename, &bytes, deps.len());
 
     // Advisory lookup (skipped offline → empty plan).
     let mut pairs: Vec<(Dependency, Vec<aegis_domain::Advisory>)> = Vec::new();
@@ -1241,6 +1243,7 @@ pub(crate) fn run_sbom(
             return ExitCode::from(2);
         }
     };
+    warn_unpinned_requirements(basename, &bytes, deps.len());
 
     // --online: resolve each dep's SPDX license from its registry (rayon
     // over deps) and populate the license field the emitters read.
@@ -1960,6 +1963,36 @@ pub(crate) fn run_actions() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Warn when a requirements file carried entries the lockfile parser dropped.
+///
+/// `requirements.txt` is a dependency *spec*, not a lockfile: `pytest>=7` and
+/// a bare `pytest-cov` are ordinary content, and the parser keeps only `==`
+/// pins because `sbom` needs exact versions to emit a valid component. That
+/// skip is defensible; doing it silently is not — on a real project it meant
+/// reporting on 1 of 6 dependencies with no indication the other 5 existed.
+///
+/// The install gate resolves those ranges instead, so without this the two
+/// disagree about the same file and neither says so.
+pub(crate) fn warn_unpinned_requirements(basename: &str, raw: &[u8], parsed: usize) {
+    if !(basename.starts_with("requirements") && basename.ends_with(".txt")) {
+        return;
+    }
+    let text = String::from_utf8_lossy(raw);
+    let entries = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with('-'))
+        .count();
+    if entries > parsed {
+        eprintln!(
+            "aegis: {basename}: {} of {entries} entries are not pinned with `==` and were \
+             skipped — only exact pins can be scanned here. `aegis pip install -r {basename}` \
+             resolves ranges and checks all of them.",
+            entries - parsed
+        );
+    }
+}
+
 pub(crate) fn run_parse(file: &str, json: bool) -> ExitCode {
     let bytes = match std::fs::read(file) {
         Ok(b) => b,
@@ -1984,6 +2017,7 @@ pub(crate) fn run_parse(file: &str, json: bool) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    warn_unpinned_requirements(basename, &bytes, deps.len());
 
     if json {
         let views: Vec<DepView> = deps.iter().map(DepView::from).collect();
