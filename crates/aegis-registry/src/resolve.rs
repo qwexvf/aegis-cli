@@ -10,7 +10,7 @@
 //!
 //! Range satisfaction reuses [`aegis_domain::max_satisfying`] — the npm/node
 //! dialect, which is what npm, pnpm, yarn and bun all speak. PyPI's dialect is
-//! different and is translated in [`pypi_range_to_npm`].
+//! different and is translated on the way in.
 //!
 //! [`fetch_npm_source`]: crate::fetch_npm_source
 

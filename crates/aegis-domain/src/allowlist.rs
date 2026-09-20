@@ -506,7 +506,7 @@ impl Constraints {
 
 /// Does `version` satisfy `range`? Empty and `"*"` ranges match anything;
 /// a malformed range or version is "no match", never an error — the same
-/// contract [`Version::parse`] uses.
+/// contract `Version::parse` uses.
 ///
 /// The install gate resolves `npm i lodash@^4` against a packument with this,
 /// so it is the npm/node range dialect, not Cargo's.
