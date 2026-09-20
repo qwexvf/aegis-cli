@@ -113,9 +113,9 @@ pub(crate) fn run(pm: Pm, args: &[String]) -> ExitCode {
         return exec::exec_real(pm.name(), args);
     }
 
-    let outcomes = check_all(pm.ecosystem(), &registry, &ctx);
+    let outcomes = check_all(pm.ecosystem(), &registry, &ctx, walk.kind);
     report(&outcomes);
-    record_audit(pm, &outcomes);
+    record_audit(pm, &outcomes, walk.kind);
 
     if outcomes.iter().any(|o| o.action.blocks()) {
         // Env vars, not flags: everything after `aegis <pm>` is forwarded to
@@ -204,7 +204,28 @@ fn lockfile_specs(pm: Pm, walk: &argv::Walk) -> Result<Vec<spec::Spec>, String> 
 }
 
 /// Resolve, scan and judge every spec.
-fn check_all(eco: Ecosystem, specs: &[&spec::Spec], ctx: &PolicyCtx) -> Vec<Outcome> {
+fn check_all(
+    eco: Ecosystem,
+    specs: &[&spec::Spec],
+    ctx: &PolicyCtx,
+    kind: InstallKind,
+) -> Vec<Outcome> {
+    // A lockfile install means every pinned dependency, transitives included —
+    // hundreds of packages. Capability-scanning all of them costs a tarball
+    // fetch and an AST parse each: measured at over 90 seconds for a real
+    // 922-dependency lockfile, in front of a command the user is waiting on.
+    // Nobody keeps that installed.
+    //
+    // So lockfile mode checks advisories only by default. That is one batched
+    // OSV query for the whole tree, already disk-cached, and it catches the
+    // case that matters most here — a known-vulnerable version already pinned
+    // in the tree. AEGIS_GATE_DEEP=1 opts into the full capability scan.
+    //
+    // Named installs always get the full scan: there are a handful of them,
+    // the user typed them, and a brand-new package with no advisory history is
+    // exactly where capability analysis earns its keep.
+    let deep = kind == InstallKind::Named
+        || std::env::var_os("AEGIS_GATE_DEEP").is_some_and(|v| !v.is_empty());
     let http = aegis_net::default_client();
 
     // Resolve first: everything downstream needs an exact version.
@@ -286,26 +307,30 @@ fn check_all(eco: Ecosystem, specs: &[&spec::Spec], ctx: &PolicyCtx) -> Vec<Outc
         // The capability half is cacheable: a published version's code never
         // changes. The advisory half above is not, so it is never cached here.
         let eco_s = eco.as_str();
-        let cap_v = match crate::pkgcache::get(eco_s, &s.name, &version) {
-            Some(v) => v,
-            None => match crate::scan::fetch_and_scan_package(eco, &s.name, &version) {
-                Ok(sp) => {
-                    let v = verdict(&sp.assessment, &RiskAssessment::default());
-                    crate::pkgcache::put(eco_s, &s.name, &version, v);
-                    v
-                }
-                Err(e) => {
-                    let why = Unchecked::ScanFailed(e);
-                    return Outcome {
-                        name: s.name.clone(),
-                        version,
-                        action: evaluate_unchecked(&why, ctx),
-                        verdict: None,
-                        unchecked: Some(why),
-                        advisories: advs,
-                    };
-                }
-            },
+        let cap_v = if !deep {
+            VerdictKind::Safe
+        } else {
+            match crate::pkgcache::get(eco_s, &s.name, &version) {
+                Some(v) => v,
+                None => match crate::scan::fetch_and_scan_package(eco, &s.name, &version) {
+                    Ok(sp) => {
+                        let v = verdict(&sp.assessment, &RiskAssessment::default());
+                        crate::pkgcache::put(eco_s, &s.name, &version, v);
+                        v
+                    }
+                    Err(e) => {
+                        let why = Unchecked::ScanFailed(e);
+                        return Outcome {
+                            name: s.name.clone(),
+                            version,
+                            action: evaluate_unchecked(&why, ctx),
+                            verdict: None,
+                            unchecked: Some(why),
+                            advisories: advs,
+                        };
+                    }
+                },
+            }
         };
 
         // Same composition as `run_ci`, minus the reachability downgrade —
@@ -359,8 +384,19 @@ fn report(outcomes: &[Outcome]) {
 
 /// One audit row per decision, in the same shape `ci` and `aur` write, so the
 /// log stays one stream. Written before exec, which never returns.
-fn record_audit(pm: Pm, outcomes: &[Outcome]) {
+///
+/// Lockfile mode records only the decisions that were not "safe". A bare
+/// install judges the whole tree — 922 dependencies on a real project — and
+/// writing a row for each buries the handful that matter under ~900 lines of
+/// noise per install. The log answers "what did aegis decide", and for a
+/// clean tree the answer is "nothing worth writing down". Named installs keep
+/// every row: there are a few of them and the user asked for them by name.
+fn record_audit(pm: Pm, outcomes: &[Outcome], kind: InstallKind) {
+    let only_notable = kind == InstallKind::Lockfile;
     for o in outcomes {
+        if only_notable && o.action == Action::Proceed && o.verdict == Some(VerdictKind::Safe) {
+            continue;
+        }
         let mut e = crate::audit::Entry::new("gate");
         e.ecosystem = pm.ecosystem().as_str().to_string();
         e.package = o.name.clone();

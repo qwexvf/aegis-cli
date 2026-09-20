@@ -202,10 +202,25 @@ constantly and install nothing.
 | Command shape | Checked |
 |---|---|
 | `npm install <pkg>` | the named packages |
-| `npm install` / `npm ci` / `pnpm install --frozen-lockfile` | every dependency the lockfile pins |
+| `npm install` / `npm ci` / `pnpm install --frozen-lockfile` | every dependency the lockfile pins, advisories only (see below) |
 | `pip install -r requirements.txt` | every requirement listed |
 | `npm run build`, `cargo check` | nothing — not an install, passed straight through |
 | `npm install ./local`, `git+https://…`, `workspace:*` | skipped and reported: there is no registry entry to check |
+
+### Why a lockfile install is advisory-only
+
+A named install (`npm install lodash`) gets the full treatment: source fetch,
+AST capability scan, and advisories.
+
+A lockfile install means the whole tree — transitives included, commonly many
+hundreds of packages. Capability-scanning all of them costs a tarball fetch
+and an AST parse each: measured at over 90 seconds for a real 922-dependency
+lockfile, in front of a command you are waiting on. So lockfile mode checks
+**advisories only**, which is one batched OSV query for the whole tree (32s
+cold, 3s warm on that same lockfile) and catches what matters most there — a
+known-vulnerable version already pinned in your tree.
+
+`AEGIS_GATE_DEEP=1` opts a lockfile install into the full capability scan.
 
 ### Failing closed
 
@@ -222,7 +237,7 @@ command pnpm install …                    # bypass the shell function
 ```
 
 Other knobs: `AEGIS_GATE_FAIL_ON` (`safe`/`review`/`prompt`/`block`, default
-`block`) and `AEGIS_GATE_JOBS`.
+`block`), `AEGIS_GATE_DEEP`, and `AEGIS_GATE_JOBS`.
 
 ### What it does not cover
 
