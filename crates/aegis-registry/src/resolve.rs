@@ -81,10 +81,16 @@ pub fn resolve_version(
         return Err(ResolveError::NotFound);
     }
     if is_exact_version(range_or_tag) {
-        return Ok(range_or_tag
-            .strip_prefix('v')
-            .unwrap_or(range_or_tag)
-            .to_string());
+        // Go module versions *are* v-prefixed — the proxy serves
+        // `@v/v1.6.0.zip` and 404s on `@v/1.6.0.zip` — so stripping the `v`
+        // turned every pinned `go get pkg@v1.2.3` into an unfetchable version
+        // and, under a fail-closed gate, a blocked install. Everywhere else a
+        // leading `v` is a user-typed nicety the registry does not use.
+        let exact = match eco {
+            Ecosystem::Go => range_or_tag,
+            _ => range_or_tag.strip_prefix('v').unwrap_or(range_or_tag),
+        };
+        return Ok(exact.to_string());
     }
     match eco {
         Ecosystem::Npm => resolve_npm(http, "https://registry.npmjs.org", name, range_or_tag),
@@ -349,9 +355,16 @@ mod tests {
             resolve_version(&m, Ecosystem::Npm, "lodash", "4.17.21").unwrap(),
             "4.17.21"
         );
+        // Go keeps its `v`: the module proxy serves `@v/v1.2.3.zip` and 404s
+        // without it, so stripping it blocks every pinned `go get`.
         assert_eq!(
             resolve_version(&m, Ecosystem::Go, "example.com/m", "v1.2.3").unwrap(),
-            "1.2.3"
+            "v1.2.3"
+        );
+        // Elsewhere a user-typed `v` is dropped, since registries do not use it.
+        assert_eq!(
+            resolve_version(&m, Ecosystem::Npm, "lodash", "v4.17.21").unwrap(),
+            "4.17.21"
         );
     }
 

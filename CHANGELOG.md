@@ -8,6 +8,17 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
+## [0.30.0-rc.6](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.5...v0.30.0-rc.6) (2026-09-21)
+
+### Fixed
+
+* **A pinned `go get pkg@v1.2.3` was always blocked.** Exact-version
+  short-circuiting stripped the leading `v`, but Go module versions carry it:
+  the proxy serves `@v/v1.6.0.zip` and 404s on `@v/1.6.0.zip`. The fetch
+  failed, and a fail-closed gate blocks on a failed fetch, so every pinned Go
+  install refused to proceed. The `v` is now kept for Go and still dropped
+  elsewhere, where registries do not use it.
+
 ## [0.30.0-rc.5](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.4...v0.30.0-rc.5) (2026-09-21)
 
 Correctness fixes found by running rc.4's install gate against real projects
