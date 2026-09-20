@@ -8,6 +8,44 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
+## [0.30.0-rc.5](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.4...v0.30.0-rc.5) (2026-09-21)
+
+Correctness fixes found by running rc.4's install gate against real projects
+(axios, vite, requests). **rc.4 reports a clean install over a pnpm workspace
+it barely read — upgrade past it.**
+
+### Fixed
+
+* **pnpm lockfiles were read almost entirely wrong.** Only the first
+  `packages:` section was parsed, but a workspace lockfile is several YAML
+  documents concatenated: on vite that meant **15 of 1415 dependencies**, with
+  the other 1400 reported clean. `ci` and `sbom` were affected too, not just
+  the gate.
+* **pnpm entries split on the last `@`**, which is the wrong point when the
+  version carries its own. `@vitejs/req@file:playground/json@dep-json-require`
+  became the name `@vitejs/req@file:playground/json`, burying the `file:`
+  marker where nothing recognised it.
+* **Advisory severity was under-rated.** Severity came from the first
+  parseable CVSS vector and only fell back to `database_specific` when there
+  was none. GHSA-2v37-7h3g-55p8 (nanoid) carries a v3 vector scoring 5.9 next
+  to `database_specific: HIGH` and a v4 vector scoring 8.2 — GitHub and
+  `npm audit` call it high, aegis called it medium, one verdict level below a
+  block. Severity is now the higher of the two sources.
+* **Local and VCS dependencies in a lockfile were resolved against the
+  registry.** The lookup fails, and a fail-closed gate blocks on a failed
+  lookup, so every `file:` fixture in a monorepo produced a spurious block and
+  the install could not proceed at all.
+* **`pip install -r` only matched the literal name `requirements.txt`**, so
+  `requirements-dev.txt` and `docs/requirements.txt` went unchecked; and the
+  file was parsed as a lockfile, keeping only `==` pins — 1 of 6 dependencies
+  on requests. Requirements lines are now parsed as PEP 508 and ranges are
+  resolved to the version pip would install.
+
+### Changed
+
+* `Severity::rank` is public. The enum is declared `Critical..Info`, so
+  deriving `Ord` would invert every comparison.
+
 ## [0.30.0-rc.4](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.3...v0.30.0-rc.4) (2026-09-20)
 
 The install gate: aegis now runs **before** a package manager fetches anything,
