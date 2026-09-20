@@ -30,7 +30,7 @@ use rayon::prelude::*;
 use crate::enrich::advisories_by_key;
 use crate::pm::argv::{self, InstallKind};
 use crate::pm::spec::{self, SpecKind};
-use crate::pm::{exec, Pm};
+use crate::pm::{exec, Pm, SpecStyle};
 use policy::{evaluate, evaluate_unchecked, Action, PolicyCtx, Unchecked};
 
 /// Cap on parallel package scans. Unlike `ci` — a CI job that may use the
@@ -191,6 +191,18 @@ fn lockfile_specs(pm: Pm, walk: &argv::Walk) -> Result<Vec<spec::Spec>, String> 
             continue;
         }
         let raw = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+
+        // A requirements file is not a lockfile: most entries are ranges
+        // (`pytest>=2.8.0,<10`) or bare names, and the lockfile parser keeps
+        // only `==` pins. That silently checked 1 of 6 dependencies on a real
+        // project. Parse the PEP 508 lines directly instead and let the
+        // resolver turn each range into the version that would actually be
+        // installed.
+        if named_by_flag {
+            out.extend(requirements_specs(&raw));
+            continue;
+        }
+
         let deps = aegis_lockfile::parse_file(&name, &raw, &aegis_lockfile::DirectMap::new())
             .map_err(|e| format!("{}: {e}", path.display()))?
             .ok_or_else(|| format!("{}: no parser", path.display()))?;
@@ -222,6 +234,47 @@ fn lockfile_specs(pm: Pm, walk: &argv::Walk) -> Result<Vec<spec::Spec>, String> 
     });
     out.dedup_by(|a, b| a.name == b.name && a.requested == b.requested);
     Ok(out)
+}
+
+/// Parse a pip requirements file into specs, ranges included.
+///
+/// Handles comments, blank lines, line continuations and the `-r`/`-c`
+/// include directives (reported as skipped rather than silently dropped —
+/// following them would need recursion and its own cycle guard).
+fn requirements_specs(raw: &[u8]) -> Vec<spec::Spec> {
+    let text = String::from_utf8_lossy(raw);
+    let mut joined = String::new();
+    for line in text.lines() {
+        let l = line.trim();
+        if l.is_empty() || l.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = l.strip_suffix('\\') {
+            joined.push_str(rest.trim_end());
+            joined.push(' ');
+            continue;
+        }
+        joined.push_str(l);
+        joined.push('\n');
+    }
+
+    let mut out = Vec::new();
+    for entry in joined.lines() {
+        let e = entry.split('#').next().unwrap_or(entry).trim();
+        if e.is_empty() {
+            continue;
+        }
+        // Options, not packages. `-e .` and `-r other.txt` included.
+        if e.starts_with('-') {
+            continue;
+        }
+        let parsed = spec::parse(SpecStyle::Pep508, e);
+        if parsed.name.is_empty() {
+            continue;
+        }
+        out.push(parsed);
+    }
+    out
 }
 
 /// Resolve, scan and judge every spec.

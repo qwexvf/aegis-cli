@@ -333,20 +333,48 @@ fn fix_version_from_affected(affected: &[OsvAffected]) -> String {
     String::new()
 }
 
-/// Map OSV's severity surface onto our enum: CVSS vector first, then
-/// database_specific.severity. Mirrors `severityFromOSV`.
+/// Map OSV's severity surface onto our enum: the **higher** of the CVSS
+/// vector and `database_specific.severity`.
+///
+/// The Go original returned the first parseable CVSS vector and only fell
+/// back to `database_specific` when there was none. That under-rates real
+/// advisories: GHSA-2v37-7h3g-55p8 (nanoid) carries a CVSS v3 vector scoring
+/// 5.9 — medium — alongside `database_specific.severity: HIGH` and a CVSS v4
+/// vector scoring 8.2. GitHub and `npm audit` both call it high; aegis called
+/// it medium, which is one verdict level down and enough to slip past a block
+/// threshold.
+///
+/// Only the v3 formula is implemented, so a v4-only vector parses as `None`
+/// and the publisher's own rating carries it. Taking the max means a missing
+/// or unparseable source can never *lower* a severity.
 fn severity_from_osv(sevs: &[OsvSeverityIn], db_specific: &str) -> Severity {
-    for s in sevs {
-        if let Some(score) = cvss_base_score(&s.score) {
-            return bucket_cvss(score);
+    // Severity's declaration order runs Critical..Info, so `Ord` would invert
+    // it; `rank()` is the real ordering.
+    let from_cvss = sevs
+        .iter()
+        .filter_map(|s| cvss_base_score(&s.score))
+        .map(bucket_cvss)
+        .max_by_key(|s| s.rank());
+
+    let from_db = match db_specific.to_uppercase().as_str() {
+        "CRITICAL" => Some(Severity::Critical),
+        "HIGH" => Some(Severity::High),
+        "MEDIUM" | "MODERATE" => Some(Severity::Medium),
+        "LOW" => Some(Severity::Low),
+        _ => None,
+    };
+
+    match (from_cvss, from_db) {
+        (Some(a), Some(b)) => {
+            if a.rank() >= b.rank() {
+                a
+            } else {
+                b
+            }
         }
-    }
-    match db_specific.to_uppercase().as_str() {
-        "CRITICAL" => Severity::Critical,
-        "HIGH" => Severity::High,
-        "MEDIUM" | "MODERATE" => Severity::Medium,
-        "LOW" => Severity::Low,
-        _ => Severity::Info,
+        (Some(a), None) => a,
+        (None, Some(b)) => b,
+        (None, None) => Severity::Info,
     }
 }
 
@@ -639,5 +667,32 @@ mod tests {
             .unwrap();
         assert!(result["cocoapods/Alamofire@5.8.0"].is_empty());
         assert_eq!(http.calls.lock().unwrap().len(), 0);
+    }
+    #[test]
+    fn severity_never_under_rates_against_the_publishers_own_rating() {
+        // The real shape of GHSA-2v37-7h3g-55p8 (nanoid): a v3 vector scoring
+        // 5.9 (medium) next to database_specific HIGH and a v4 vector. Taking
+        // the first CVSS hit reported medium, one verdict level below what
+        // GitHub and npm audit show, which is enough to pass a block gate.
+        let sevs = vec![
+            OsvSeverityIn {
+                score: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H".into(),
+            },
+            OsvSeverityIn {
+                score: "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N".into(),
+            },
+        ];
+        assert_eq!(severity_from_osv(&sevs, "HIGH"), Severity::High);
+
+        // A CVSS vector still wins when it is the harsher of the two.
+        let crit = vec![OsvSeverityIn {
+            score: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H".into(),
+        }];
+        assert_eq!(severity_from_osv(&crit, "LOW"), Severity::Critical);
+
+        // Either source alone still works.
+        assert_eq!(severity_from_osv(&[], "MODERATE"), Severity::Medium);
+        assert_eq!(severity_from_osv(&crit, ""), Severity::Critical);
+        assert_eq!(severity_from_osv(&[], ""), Severity::Info);
     }
 }

@@ -28,7 +28,9 @@ impl Severity {
     }
 
     /// Ordering rank for `max_severity`. Higher = more severe.
-    fn rank(self) -> u8 {
+    /// Ordering rank: the enum is declared Critical..Info, so `Ord` would
+    /// invert it. Compare severities through this.
+    pub fn rank(self) -> u8 {
         match self {
             Severity::Info => 0,
             Severity::Low => 1,
