@@ -159,15 +159,40 @@ fn lockfile_specs(pm: Pm, walk: &argv::Walk) -> Result<Vec<spec::Spec>, String> 
             .map(|f| base.join(f))
             .collect()
     } else {
-        pm.def()
-            .lockfiles
-            .iter()
-            .map(|f| base.join(f))
-            .filter(|p| p.is_file())
-            .collect()
+        // Walk up from the target directory. In a workspace the lockfile sits
+        // at the root while the install runs in a package subdirectory
+        // (`pnpm install -C packages/web`, `npm install --prefix`), and
+        // looking only in that directory found nothing — so the install was
+        // passed through unchecked, silently.
+        let mut found = Vec::new();
+        let mut dir = base.to_path_buf();
+        loop {
+            for f in pm.def().lockfiles {
+                let p = dir.join(f);
+                if p.is_file() {
+                    found.push(p);
+                }
+            }
+            if !found.is_empty() {
+                break;
+            }
+            // Stop at a repository boundary: beyond it we would be reading
+            // some unrelated project's lockfile.
+            if dir.join(".git").exists() {
+                break;
+            }
+            match dir.parent() {
+                Some(parent) if parent != dir => dir = parent.to_path_buf(),
+                _ => break,
+            }
+        }
+        found
     };
     if candidates.is_empty() {
-        return Err(format!("no lockfile found in {dir}"));
+        return Err(format!(
+            "no lockfile found in {} or its parents",
+            base.display()
+        ));
     }
 
     // A file named with `-r` is a requirements file by definition, whatever it

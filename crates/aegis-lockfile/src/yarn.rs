@@ -25,6 +25,12 @@ impl LockfileParser for YarnLock {
         let mut seen: HashSet<String> = HashSet::new();
         let mut cur_name = String::new();
         let mut in_block = false;
+        // berry marks the root project and each workspace with a
+        // `resolution: "name@workspace:path"`. Those are local directories,
+        // not registry packages: looked up they 404, which under a fail-closed
+        // gate blocks the install, and `sbom` emitted them as components with
+        // a bogus `0.0.0-use.local` version.
+        let mut cur_is_workspace = false;
 
         for line in text.lines() {
             if line.trim().is_empty() {
@@ -44,6 +50,8 @@ impl LockfileParser for YarnLock {
                 if cur_name == "__metadata" {
                     cur_name.clear();
                 }
+                // The header itself carries the protocol in berry.
+                cur_is_workspace = header.contains("@workspace:");
                 in_block = true;
                 continue;
             }
@@ -51,6 +59,12 @@ impl LockfileParser for YarnLock {
                 continue;
             }
             let l = line.trim();
+            // ...and so does the `resolution:` line, for classic-style headers.
+            if let Some(r) = l.strip_prefix("resolution:") {
+                if r.contains("@workspace:") {
+                    cur_is_workspace = true;
+                }
+            }
             // classic v1 writes `version "X"` (space + quotes); berry v2/3/4
             // writes `version: X` / `version: "X"` (colon, quotes optional).
             let after = l
@@ -58,7 +72,7 @@ impl LockfileParser for YarnLock {
                 .or_else(|| l.strip_prefix("version:"));
             if let Some(after) = after {
                 let ver = after.trim_matches(|c| c == ' ' || c == '"' || c == ':');
-                if cur_name.is_empty() || ver.is_empty() {
+                if cur_name.is_empty() || ver.is_empty() || cur_is_workspace {
                     continue;
                 }
                 let key = format!("{cur_name}@{ver}");
@@ -163,5 +177,33 @@ mod tests {
             "@types/lodash"
         );
         assert_eq!(first_yarn_header_name("foo@workspace:packages/foo"), "foo");
+    }
+    #[test]
+    fn berry_workspaces_are_not_registry_packages() {
+        // The root project and every workspace get a `@workspace:` resolution
+        // and a `0.0.0-use.local` version. Emitting them meant a 404 on the
+        // registry — a blocked install under a fail-closed gate — and bogus
+        // SBOM components.
+        let raw = br#"__metadata:
+  version: 8
+
+"lodash@npm:4.17.21":
+  version: 4.17.21
+  resolution: "lodash@npm:4.17.21"
+  linkType: hard
+
+"root@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "root@workspace:."
+  linkType: soft
+
+"@acme/pkg@workspace:packages/pkg":
+  version: 0.0.0-use.local
+  resolution: "@acme/pkg@workspace:packages/pkg"
+  linkType: soft
+"#;
+        let deps = YarnLock.parse(raw, &DirectMap::new()).unwrap();
+        let names: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, vec!["lodash"], "workspaces leaked in: {names:?}");
     }
 }

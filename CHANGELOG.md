@@ -8,6 +8,24 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
+## [0.30.0-rc.9](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.8...v0.30.0-rc.9) (2026-09-21)
+
+Workspace handling, found by testing the shapes real monorepos use.
+
+### Fixed
+
+* **yarn berry workspaces were treated as registry packages.** The root
+  project and every workspace carry a `@workspace:` resolution and a
+  `0.0.0-use.local` version; emitting them meant a registry 404, which under
+  a fail-closed gate blocks the install (`AEGIS_GATE_DEEP=1` on a two-package
+  workspace produced two spurious blocks), and `sbom` shipped them as
+  components with a fabricated version.
+* **An install run from a package subdirectory was silently ungated.**
+  `pnpm install -C packages/web` and `npm install --prefix` look for a
+  lockfile in that directory, but in a workspace it lives at the root — so
+  the gate reported "no lockfile found" and passed the install through
+  unchecked. It now walks up to the repository boundary.
+
 ## [0.30.0-rc.8](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.7...v0.30.0-rc.8) (2026-09-21)
 
 ### Fixed
