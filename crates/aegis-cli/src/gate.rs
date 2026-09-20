@@ -146,8 +146,8 @@ pub(crate) fn run(pm: Pm, args: &[String]) -> ExitCode {
 /// Versions from a lockfile are exact, so resolution costs no network call,
 /// and the verdict cache makes a repeat install of an unchanged tree cheap.
 fn lockfile_specs(pm: Pm, walk: &argv::Walk) -> Result<Vec<spec::Spec>, String> {
-    let dir = walk.dir.clone().unwrap_or_else(|| ".".to_string());
-    let base = std::path::Path::new(&dir);
+    let dir = walk.dir.clone().unwrap_or_default();
+    let base = std::path::Path::new(if dir.is_empty() { "." } else { &dir });
 
     // pip names its requirement files on the command line; everyone else has
     // a fixed set to look for.
@@ -168,13 +168,22 @@ fn lockfile_specs(pm: Pm, walk: &argv::Walk) -> Result<Vec<spec::Spec>, String> 
         return Err(format!("no lockfile found in {dir}"));
     }
 
+    // A file named with `-r` is a requirements file by definition, whatever it
+    // is called. Real projects use requirements-dev.txt, dev-requirements.txt,
+    // requirements/base.txt — matching only the literal name `requirements.txt`
+    // left every one of those silently unchecked.
+    let named_by_flag = !walk.requirement_files.is_empty();
+
     let mut out = Vec::new();
     for path in candidates {
-        let name = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or_default()
-            .to_string();
+        let name = if named_by_flag {
+            "requirements.txt".to_string()
+        } else {
+            path.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string()
+        };
         // bun.lockb is binary and has no parser. Say so rather than reporting
         // a clean run over a file we never read.
         if name == "bun.lockb" {
@@ -186,11 +195,23 @@ fn lockfile_specs(pm: Pm, walk: &argv::Walk) -> Result<Vec<spec::Spec>, String> 
             .map_err(|e| format!("{}: {e}", path.display()))?
             .ok_or_else(|| format!("{}: no parser", path.display()))?;
         for d in deps {
+            // A lockfile pins local and VCS dependencies too — `file:`,
+            // `link:`, `workspace:`, `git+…`. Those have no registry entry, so
+            // looking them up fails, and under a fail-closed gate a failed
+            // lookup blocks. Left unchecked this turns every workspace with a
+            // local dependency into an install that cannot proceed.
+            let style = pm.def().spec_style;
+            let kind = match spec::non_registry_reason(style, &d.version)
+                .or_else(|| spec::non_registry_reason(style, &d.name))
+            {
+                Some(why) => spec::SpecKind::NonRegistry(why),
+                None => spec::SpecKind::Registry,
+            };
             out.push(spec::Spec {
+                raw: format!("{}@{}", d.name, d.version),
                 name: d.name,
                 requested: d.version,
-                raw: String::new(),
-                kind: spec::SpecKind::Registry,
+                kind,
             });
         }
     }

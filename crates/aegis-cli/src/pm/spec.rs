@@ -135,7 +135,7 @@ fn normalize_pypi(name: &str) -> String {
 }
 
 /// Why this token cannot be resolved against a registry, if it cannot.
-fn non_registry_reason(style: SpecStyle, raw: &str) -> Option<&'static str> {
+pub(crate) fn non_registry_reason(style: SpecStyle, raw: &str) -> Option<&'static str> {
     const PATHS: [&str; 4] = ["./", "../", "/", "~"];
     const URLS: [&str; 6] = [
         "http://",
