@@ -11,8 +11,13 @@ mod doctor;
 #[cfg(feature = "engine-reach")]
 mod engine_reach;
 mod enrich;
+mod gate;
 mod hook;
+mod markers;
+mod pkgcache;
+mod pm;
 mod scan;
+mod shell_init;
 mod snapshot;
 mod util;
 mod workflow;
@@ -44,8 +49,8 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// CI gate: enrich each dep (fetch + scan → verdict) + advisories, fail on
-    /// any dep whose verdict meets the threshold.
+    /// CI gate: scan each dependency, check advisories, fail if any verdict
+    /// meets the threshold.
     Ci {
         /// Path to the lockfile.
         file: String,
@@ -62,8 +67,8 @@ enum Command {
         #[arg(long)]
         sarif: bool,
     },
-    /// Run a config (aegis.toml) of scan tasks — independent tasks run
-    /// in parallel; each task's source scan also fans out across cores.
+    /// Run the scan tasks defined in a config file (aegis.toml). Tasks run
+    /// in parallel.
     Run {
         /// Path to the config file.
         #[arg(default_value = "aegis.toml")]
@@ -99,8 +104,7 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Check whether a dependency is imported (reachable) in a project's JS/TS
-    /// source — the signal that downgrades risk for unused dependencies.
+    /// Check whether a dependency is imported in a project's JS/TS source.
     Reach {
         /// Project source directory.
         dir: String,
@@ -120,9 +124,7 @@ enum Command {
         json: bool,
     },
     /// Print, install, or remove a git pre-commit hook that scans staged
-    /// lockfiles. Detects lefthook and husky before falling back to
-    /// .git/hooks, and brackets its entry in managed markers so it never
-    /// clobbers a hook you already have.
+    /// lockfiles. Supports lefthook, husky, or plain .git/hooks.
     Hook {
         /// Write the step into the project's hook config.
         #[arg(long)]
@@ -131,14 +133,13 @@ enum Command {
         #[arg(long, conflicts_with = "install")]
         uninstall: bool,
     },
-    /// Print a GitHub Actions workflow that runs `aegis ci` on every push,
-    /// or with `scan`, inspect existing workflows for risk.
+    /// Print a GitHub Actions workflow that runs `aegis ci`, or with `scan`,
+    /// inspect existing workflows for risk.
     Actions {
         #[command(subcommand)]
         sub: Option<ActionsSub>,
     },
-    /// Inspect the local audit log — an append-only record of what was
-    /// scanned and what the verdict was.
+    /// Inspect the local audit log of past scans and their verdicts.
     Audit {
         #[command(subcommand)]
         sub: AuditSub,
@@ -169,15 +170,140 @@ enum Command {
         #[arg(value_enum)]
         shell: Shell,
     },
-    /// Snapshot lifecycle: save / show / diff / enrich / verify / rescan plus
-    /// `capture` (the Rust-specific single-package fingerprint mode). Run
-    /// `aegis snapshot help` for the per-subcommand detail.
+    /// Manage snapshots: save, show, diff, enrich, verify, rescan, and capture
+    /// (single-package fingerprint mode).
     Snapshot {
         #[command(subcommand)]
         sub: SnapshotSub,
     },
-    /// Scan an AUR package directory's PKGBUILD and .install hooks for
-    /// malware-delivery patterns — the install gate for paru/yay.
+    /// Run npm through the aegis install gate, then hand off to the real
+    /// npm. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "npm",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Npm {
+        /// Arguments for npm, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run pnpm through the aegis install gate, then hand off to the real
+    /// pnpm. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "pnpm",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Pnpm {
+        /// Arguments for pnpm, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run yarn through the aegis install gate, then hand off to the real
+    /// yarn. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "yarn",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Yarn {
+        /// Arguments for yarn, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run bun through the aegis install gate, then hand off to the real
+    /// bun. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "bun",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Bun {
+        /// Arguments for bun, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run cargo through the aegis install gate, then hand off to the real
+    /// cargo. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "cargo",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Cargo {
+        /// Arguments for cargo, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run pip through the aegis install gate, then hand off to the real
+    /// pip. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "pip",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Pip {
+        /// Arguments for pip, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Run go through the aegis install gate, then hand off to the real
+    /// go. Every argument after the subcommand is forwarded verbatim.
+    #[command(
+        name = "go",
+        disable_help_flag = true,
+        disable_version_flag = true,
+        disable_help_subcommand = true,
+        display_order = 100
+    )]
+    Go {
+        /// Arguments for go, passed through untouched.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        argv: Vec<String>,
+    },
+    /// Print shell functions that route package-manager installs through the
+    /// aegis gate: `eval "$(aegis shell-init zsh)"`.
+    ///
+    /// Interactive shells only — CI and scripts never source an rc file, so
+    /// use `aegis ci` there instead.
+    ShellInit {
+        /// Shell to generate for: zsh, bash, fish. Detected from $SHELL when
+        /// omitted.
+        shell: Option<String>,
+        /// Comma-separated managers to wrap (default: npm,pnpm,yarn,bun).
+        #[arg(long)]
+        pm: Option<String>,
+        /// Wrap every supported manager, including cargo, pip and go.
+        #[arg(long)]
+        all: bool,
+        /// Write the eval line into your shell rc file.
+        #[arg(long)]
+        install: bool,
+        /// Remove the block this wrote, leaving the rest of the file intact.
+        #[arg(long, conflicts_with = "install")]
+        uninstall: bool,
+        /// Edit this file instead of the detected rc file.
+        #[arg(long)]
+        rc: Option<String>,
+        /// Install even in CI, where the snippet would never load.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Scan an AUR package's PKGBUILD and .install hooks for malware patterns.
+    /// The install gate for paru/yay.
     Aur {
         #[command(subcommand)]
         sub: AurSub,
@@ -196,8 +322,8 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Scan an OCI image for risky files — from a local tarball or pulled by
-    /// reference from a registry.
+    /// Scan an OCI image for risky files, from a local tarball or a registry
+    /// reference.
     Image {
         /// Path to a `docker save` / OCI-layout image tarball.
         file: Option<String>,
@@ -479,6 +605,22 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Command::Parse { file, json } => run_parse(&file, json),
+        Command::ShellInit {
+            shell,
+            pm,
+            all,
+            install,
+            uninstall,
+            rc,
+            force,
+        } => shell_init::run(shell, pm, all, install, uninstall, rc, force),
+        Command::Npm { argv } => pm::run(pm::Pm::Npm, &argv),
+        Command::Pnpm { argv } => pm::run(pm::Pm::Pnpm, &argv),
+        Command::Yarn { argv } => pm::run(pm::Pm::Yarn, &argv),
+        Command::Bun { argv } => pm::run(pm::Pm::Bun, &argv),
+        Command::Cargo { argv } => pm::run(pm::Pm::Cargo, &argv),
+        Command::Pip { argv } => pm::run(pm::Pm::Pip, &argv),
+        Command::Go { argv } => pm::run(pm::Pm::Go, &argv),
         Command::Ci {
             file,
             fail_on,

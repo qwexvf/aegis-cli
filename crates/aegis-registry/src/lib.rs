@@ -23,6 +23,7 @@ pub mod license;
 pub mod npm;
 #[cfg(feature = "npm")]
 pub mod pkgsource;
+pub mod resolve;
 
 #[cfg(feature = "attestations")]
 pub use attestations::{fetch_provenance, ProvenanceStatus};
@@ -36,3 +37,4 @@ pub use pkgsource::{
     fetch_crates_source, fetch_go_source, fetch_npm_source, fetch_pypi_source,
     fetch_rubygems_source,
 };
+pub use resolve::{is_exact_version, resolve_version, ResolveError};

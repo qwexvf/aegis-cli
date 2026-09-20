@@ -504,6 +504,41 @@ impl Constraints {
     }
 }
 
+/// Does `version` satisfy `range`? Empty and `"*"` ranges match anything;
+/// a malformed range or version is "no match", never an error — the same
+/// contract [`Version::parse`] uses.
+///
+/// The install gate resolves `npm i lodash@^4` against a packument with this,
+/// so it is the npm/node range dialect, not Cargo's.
+pub fn version_satisfies(range: &str, version: &str) -> bool {
+    if range.is_empty() || range == "*" {
+        return true;
+    }
+    let Some(v) = Version::parse(version) else {
+        return false;
+    };
+    match parse_constraints(range) {
+        Ok(c) => c.matches(&v),
+        Err(_) => false,
+    }
+}
+
+/// The highest version in `versions` that satisfies `range`, by semver §11
+/// precedence. `None` when nothing matches.
+///
+/// Pre-releases are only eligible when the range itself names one, matching
+/// npm: `^1.0.0` must not silently resolve to `2.0.0-beta.1`.
+pub fn max_satisfying<'a>(range: &str, versions: &'a [String]) -> Option<&'a str> {
+    let range_has_pre = range.contains('-');
+    versions
+        .iter()
+        .filter_map(|s| Version::parse(s).map(|v| (v, s)))
+        .filter(|(v, _)| range_has_pre || v.pre.is_empty())
+        .filter(|(_, s)| version_satisfies(range, s))
+        .max_by(|(a, _), (b, _)| a.cmp(b))
+        .map(|(_, s)| s.as_str())
+}
+
 /// Parse a range string into [`Constraints`]. Supports `||` for OR, comma or
 /// whitespace for AND, and per-comparator caret/tilde/comparison/x-range
 /// operators. Empty and `"*"` ranges are handled by the caller (they compile
@@ -1088,6 +1123,43 @@ mod tests {
             ..base()
         }]);
         assert!(s.match_all(Ecosystem::Npm, "lodash", "5.0.0").is_empty());
+    }
+
+    #[test]
+    fn version_satisfies_npm_dialect() {
+        // Caret, tilde, x-range, comparison, OR, comma-AND.
+        assert!(version_satisfies("^4.17.0", "4.17.21"));
+        assert!(!version_satisfies("^4.17.0", "5.0.0"));
+        assert!(version_satisfies("~4.17.0", "4.17.99"));
+        assert!(!version_satisfies("~4.17.0", "4.18.0"));
+        assert!(version_satisfies("4.x", "4.9.1"));
+        assert!(version_satisfies(">=1 <2", "1.5.0"));
+        assert!(version_satisfies("^1 || ^3", "3.2.0"));
+        assert!(!version_satisfies("^1 || ^3", "2.0.0"));
+        // Empty and "*" match anything; junk never matches, never panics.
+        assert!(version_satisfies("", "1.0.0"));
+        assert!(version_satisfies("*", "9.9.9"));
+        assert!(!version_satisfies("^1", "not-a-version"));
+        assert!(!version_satisfies("(((", "1.0.0"));
+    }
+
+    #[test]
+    fn max_satisfying_picks_highest_and_skips_prereleases() {
+        let vs: Vec<String> = ["4.16.0", "4.17.21", "4.17.5", "5.0.0"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(max_satisfying("^4", &vs), Some("4.17.21"));
+        assert_eq!(max_satisfying("^9", &vs), None);
+
+        // A stable range must not resolve to a pre-release, the way npm behaves.
+        let pre: Vec<String> = ["1.0.0", "2.0.0-beta.1"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(max_satisfying(">=1", &pre), Some("1.0.0"));
+        // ...but a range that names one opts back in.
+        assert_eq!(max_satisfying(">=2.0.0-alpha", &pre), Some("2.0.0-beta.1"));
     }
 
     #[test]

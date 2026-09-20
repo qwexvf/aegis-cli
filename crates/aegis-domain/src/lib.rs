@@ -17,8 +17,8 @@ pub mod types;
 
 pub use advisory::{max_severity, Advisory, AdvisoryQuery, Severity};
 pub use allowlist::{
-    apply_allowlist, builtin_allow_rules, AllowRule, AllowSet, Match, MatchKind,
-    ALLOWLIST_SUPPRESS_PREFIX,
+    apply_allowlist, builtin_allow_rules, max_satisfying, version_satisfies, AllowRule, AllowSet,
+    Match, MatchKind, ALLOWLIST_SUPPRESS_PREFIX,
 };
 pub use capability::{Capability, CapabilitySet, ALL_CAPABILITIES};
 pub use fix::{build_fix_plan, compare_fix_version, upgrade_command, FixItem};

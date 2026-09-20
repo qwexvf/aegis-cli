@@ -443,6 +443,21 @@ pub(crate) fn fetch_and_scan_package(
     name: &str,
     version: &str,
 ) -> Result<ScannedPackage, String> {
+    let http = aegis_net::default_client();
+    fetch_and_scan_package_with(&http, eco, name, version)
+}
+
+/// As [`fetch_and_scan_package`], against a caller-supplied transport.
+///
+/// The seam exists so the install gate's failure branches — registry 404,
+/// transport error, corrupt tarball — are unit-testable against
+/// `MockHttpClient`. Cassettes cannot express those well.
+pub(crate) fn fetch_and_scan_package_with(
+    http: &dyn aegis_net::HttpClient,
+    eco: Ecosystem,
+    name: &str,
+    version: &str,
+) -> Result<ScannedPackage, String> {
     if !is_enriched_ecosystem(eco) {
         return Err(format!(
             "explain: no source fetcher for ecosystem {}",
@@ -455,8 +470,7 @@ pub(crate) fn fetch_and_scan_package(
         version: version.to_string(),
         ..Default::default()
     };
-    let http = aegis_net::default_client();
-    let files = fetch_source(&http, &dep)?;
+    let files = fetch_source(http, &dep)?;
     let allow = aegis_domain::AllowSet::new(aegis_domain::builtin_allow_rules())
         .unwrap_or_else(|_| aegis_domain::AllowSet::empty());
     // Evidence on: `explain` is the per-package view, and its output is what a
