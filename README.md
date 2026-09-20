@@ -222,6 +222,21 @@ known-vulnerable version already pinned in your tree.
 
 `AEGIS_GATE_DEEP=1` opts a lockfile install into the full capability scan.
 
+### Private registries
+
+The gate reads `.npmrc` — `registry=`, `@scope:registry=` and `_authToken` —
+from the project directory and `$HOME`, plus `NPM_CONFIG_REGISTRY`, and looks
+each package up on the registry it actually comes from.
+
+A failure against a *private* registry warns rather than blocks: a private
+host cannot distinguish "this package does not exist" from "you are not
+authorised", and blocking on that made every install fail for anyone on
+Verdaccio, Artifactory or GitHub Packages. A 404 on the **public** registry
+still blocks — there it is a real signal that the name is unclaimed.
+
+Only npm-family registries are configurable today; cargo, PyPI and Go always
+use their public registries.
+
 ### Failing closed
 
 Anything the gate cannot verify — registry unreachable, package not found, a
@@ -246,8 +261,11 @@ Other knobs: `AEGIS_GATE_FAIL_ON` (`safe`/`review`/`prompt`/`block`, default
   construction. Use `aegis ci <lockfile>` and `aegis hook --install` instead.
 - **`npx` / `pnpm dlx` / `bunx` / `uvx`** as separate entry points, and
   `python -m pip`.
-- **Non-registry specs.** A `git+https://` dependency is reported as skipped,
-  not verified.
+- **Non-registry specs are skipped, not verified.** A `git+https://`,
+  `file:`, `link:` or `workspace:` dependency has no registry entry to check,
+  so the gate reports it and lets it through. A git dependency is arguably a
+  *higher*-risk install shape than a registry one, so treat a `skipped` line
+  as "unverified", not "fine".
 
 ## AUR packages
 

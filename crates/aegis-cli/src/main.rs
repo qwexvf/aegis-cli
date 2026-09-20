@@ -14,6 +14,7 @@ mod enrich;
 mod gate;
 mod hook;
 mod markers;
+mod npmrc;
 mod pkgcache;
 mod pm;
 mod scan;

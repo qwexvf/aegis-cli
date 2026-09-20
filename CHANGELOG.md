@@ -8,6 +8,39 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
+## [0.30.0-rc.8](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.7...v0.30.0-rc.8) (2026-09-21)
+
+### Fixed
+
+* **Private registries made every install fail.** The gate looked every npm
+  package up on `registry.npmjs.org`, so on Verdaccio, Artifactory, GitHub
+  Packages or a scoped `@company/*` feed each internal package 404'd — and a
+  fail-closed gate turns a 404 into a blocked install. Nobody on a private
+  registry could install anything. The gate now reads `.npmrc` (`registry=`,
+  `@scope:registry=`, `_authToken`, `${VAR}` interpolation) from the project
+  directory and `$HOME`, plus `NPM_CONFIG_REGISTRY`, and queries the registry
+  each package actually comes from. Verified end to end against a live
+  Verdaccio with a genuinely private package.
+
+### Changed
+
+* **A failure against a private registry warns instead of blocking.** A
+  private host cannot distinguish "does not exist" from "not authorised";
+  both are 404/401. A 404 on the **public** registry still blocks, where it is
+  a real signal that the name is unclaimed and squattable.
+* **Release signing moved to the cosign bundle format.** cosign 3.x ignores
+  `--output-signature`/`--output-certificate`, so releases now ship a single
+  `checksums.txt.bundle` instead of `checksums.txt.sig` + `checksums.txt.pem`,
+  and verify with `--bundle`. rc.7 and earlier keep the old pair. This
+  replaces the 2.x version pin added in rc.4.
+
+### Documentation
+
+* The README states plainly that non-registry specs (`git+https://`, `file:`,
+  `workspace:`) are skipped rather than verified — a git dependency is
+  arguably a higher-risk install shape, so `skipped` means "unverified", not
+  "fine" — and that only npm-family registries are configurable.
+
 ## [0.30.0-rc.7](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.6...v0.30.0-rc.7) (2026-09-21)
 
 ### Fixed

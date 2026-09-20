@@ -4,6 +4,11 @@ Releases are cut by pushing a tag. `.github/workflows/release.yml` does the
 rest: re-runs the full CI gate against the tagged commit, cross-compiles every
 target, signs, attests, and publishes.
 
+> **Verification changed in v0.30.0-rc.8.** Releases up to rc.7 ship
+> `checksums.txt.sig` + `checksums.txt.pem` and verify with `--signature` +
+> `--certificate`. From rc.8 they ship a single `checksums.txt.bundle` and
+> verify with `--bundle`, because cosign 3.x ignores the older flags.
+
 ## Cut a release
 
 1. Bump `version` in the workspace `Cargo.toml`, then `cargo check` so
@@ -50,7 +55,7 @@ Per target: a `.tar.gz` (`.zip` on Windows) containing the `aegis` binary plus
 `README.md`, `LICENSE`, `CHANGELOG.md`, `SECURITY.md`.
 
 Alongside them: `checksums.txt`, a cosign keyless signature over it
-(`checksums.txt.sig` + `checksums.txt.pem`), and — on a public repo — SLSA
+(`checksums.txt.bundle`), and — on a public repo — SLSA
 build provenance attestations covering every archive and the checksum file.
 
 Two caveats while `qwexvf/aegis-cli` is a **user-owned private repo**:
@@ -72,8 +77,7 @@ Two caveats while `qwexvf/aegis-cli` is a **user-owned private repo**:
 sha256sum -c checksums.txt --ignore-missing
 
 cosign verify-blob checksums.txt \
-  --signature checksums.txt.sig \
-  --certificate checksums.txt.pem \
+  --bundle checksums.txt.bundle \
   --certificate-identity-regexp 'https://github.com/qwexvf/aegis-cli/.github/workflows/release.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 

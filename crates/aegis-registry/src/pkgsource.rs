@@ -34,6 +34,17 @@ pub fn fetch_npm_source(
     name: &str,
     version: &str,
 ) -> Result<Vec<(String, Vec<u8>)>, String> {
+    fetch_npm_source_auth(http, registry_base, name, version, None)
+}
+
+/// As [`fetch_npm_source`], with a bearer token for a private registry.
+pub fn fetch_npm_source_auth(
+    http: &dyn HttpClient,
+    registry_base: &str,
+    name: &str,
+    version: &str,
+    token: Option<&str>,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
     if name.is_empty() || version.is_empty() {
         return Err("pkgsource: empty name/version".to_string());
     }
@@ -42,8 +53,13 @@ pub fn fetch_npm_source(
         registry_base.trim_end_matches('/'),
         encode_pkg(name)
     );
+    let auth = token.map(|t| format!("Bearer {t}"));
+    let mut headers: Vec<(&str, &str)> = vec![("Accept", "application/vnd.npm.install-v1+json")];
+    if let Some(a) = auth.as_deref() {
+        headers.push(("Authorization", a));
+    }
     let resp = http
-        .get(&url, &[("Accept", "application/vnd.npm.install-v1+json")])
+        .get(&url, &headers)
         .map_err(|e| format!("pkgsource: packument GET: {e}"))?;
     if !resp.is_ok() {
         return Err(format!("pkgsource: packument HTTP {}", resp.status));
@@ -59,8 +75,12 @@ pub fn fetch_npm_source(
         .filter(|s| !s.is_empty())
         .ok_or_else(|| format!("pkgsource: no tarball for {name}@{version}"))?;
 
+    let tb_headers: Vec<(&str, &str)> = match auth.as_deref() {
+        Some(a) => vec![("Authorization", a)],
+        None => Vec::new(),
+    };
     let tb = http
-        .get(tarball, &[])
+        .get(tarball, &tb_headers)
         .map_err(|e| format!("pkgsource: tarball GET: {e}"))?;
     if !tb.is_ok() {
         return Err(format!("pkgsource: tarball HTTP {}", tb.status));

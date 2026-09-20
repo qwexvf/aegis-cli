@@ -128,16 +128,28 @@ pub fn resolve_npm(
     name: &str,
     range_or_tag: &str,
 ) -> Result<String, ResolveError> {
+    resolve_npm_auth(http, registry_base, name, range_or_tag, None)
+}
+
+/// As [`resolve_npm`], with a bearer token for a private registry.
+pub fn resolve_npm_auth(
+    http: &dyn HttpClient,
+    registry_base: &str,
+    name: &str,
+    range_or_tag: &str,
+    token: Option<&str>,
+) -> Result<String, ResolveError> {
     let url = format!(
         "{}/{}",
         registry_base.trim_end_matches('/'),
         encode_pkg(name)
     );
-    let doc = get_json(
-        http,
-        &url,
-        &[("Accept", "application/vnd.npm.install-v1+json")],
-    )?;
+    let auth = token.map(|t| format!("Bearer {t}"));
+    let mut headers: Vec<(&str, &str)> = vec![("Accept", "application/vnd.npm.install-v1+json")];
+    if let Some(a) = auth.as_deref() {
+        headers.push(("Authorization", a));
+    }
+    let doc = get_json(http, &url, &headers)?;
 
     // A dist-tag (`latest`, `next`, `beta`) wins outright when it matches.
     let tag = if range_or_tag.is_empty() {

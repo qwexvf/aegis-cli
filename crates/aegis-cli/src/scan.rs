@@ -458,6 +458,22 @@ pub(crate) fn fetch_and_scan_package_with(
     name: &str,
     version: &str,
 ) -> Result<ScannedPackage, String> {
+    fetch_and_scan_package_at(http, eco, name, version, None, None)
+}
+
+/// As [`fetch_and_scan_package_with`], against a specific npm registry.
+///
+/// The gate resolves each package's registry from `.npmrc` before calling
+/// this: looking a private `@company/*` package up on the public registry
+/// 404s, and a fail-closed gate turns that into a blocked install.
+pub(crate) fn fetch_and_scan_package_at(
+    http: &dyn aegis_net::HttpClient,
+    eco: Ecosystem,
+    name: &str,
+    version: &str,
+    npm_registry: Option<&str>,
+    npm_token: Option<&str>,
+) -> Result<ScannedPackage, String> {
     if !is_enriched_ecosystem(eco) {
         return Err(format!(
             "explain: no source fetcher for ecosystem {}",
@@ -470,7 +486,12 @@ pub(crate) fn fetch_and_scan_package_with(
         version: version.to_string(),
         ..Default::default()
     };
-    let files = fetch_source(http, &dep)?;
+    let files = match (eco, npm_registry) {
+        (Ecosystem::Npm, Some(base)) => {
+            aegis_registry::fetch_npm_source_auth(http, base, name, version, npm_token)?
+        }
+        _ => fetch_source(http, &dep)?,
+    };
     let allow = aegis_domain::AllowSet::new(aegis_domain::builtin_allow_rules())
         .unwrap_or_else(|_| aegis_domain::AllowSet::empty());
     // Evidence on: `explain` is the per-package view, and its output is what a

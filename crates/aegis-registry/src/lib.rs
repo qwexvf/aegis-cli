@@ -34,7 +34,7 @@ pub use license::LicenseFetcher;
 pub use npm::{fetch_maintainer_signal, MaintainerSignal};
 #[cfg(feature = "npm")]
 pub use pkgsource::{
-    fetch_crates_source, fetch_go_source, fetch_npm_source, fetch_pypi_source,
-    fetch_rubygems_source,
+    fetch_crates_source, fetch_go_source, fetch_npm_source, fetch_npm_source_auth,
+    fetch_pypi_source, fetch_rubygems_source,
 };
-pub use resolve::{is_exact_version, resolve_version, ResolveError};
+pub use resolve::{is_exact_version, resolve_npm_auth, resolve_version, ResolveError};

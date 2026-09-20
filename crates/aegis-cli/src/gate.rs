@@ -28,6 +28,7 @@ use aegis_registry::{resolve_version, ResolveError};
 use rayon::prelude::*;
 
 use crate::enrich::advisories_by_key;
+use crate::npmrc::NpmConfig;
 use crate::pm::argv::{self, InstallKind};
 use crate::pm::spec::{self, SpecKind};
 use crate::pm::{exec, Pm, SpecStyle};
@@ -113,7 +114,8 @@ pub(crate) fn run(pm: Pm, args: &[String]) -> ExitCode {
         return exec::exec_real(pm.name(), args);
     }
 
-    let outcomes = check_all(pm.ecosystem(), &registry, &ctx, walk.kind);
+    let npm_cfg = NpmConfig::load(std::path::Path::new(walk.dir.as_deref().unwrap_or(".")));
+    let outcomes = check_all(pm.ecosystem(), &registry, &ctx, walk.kind, &npm_cfg);
     report(&outcomes);
     record_audit(pm, &outcomes, walk.kind);
 
@@ -283,6 +285,7 @@ fn check_all(
     specs: &[&spec::Spec],
     ctx: &PolicyCtx,
     kind: InstallKind,
+    npm_cfg: &NpmConfig,
 ) -> Vec<Outcome> {
     // A lockfile install means every pinned dependency, transitives included —
     // hundreds of packages. Capability-scanning all of them costs a tarball
@@ -306,7 +309,26 @@ fn check_all(
     let resolved: Vec<(usize, Result<String, ResolveError>)> = specs
         .iter()
         .enumerate()
-        .map(|(i, s)| (i, resolve_version(&http, eco, &s.name, &s.requested)))
+        .map(|(i, s)| {
+            let r = if eco == Ecosystem::Npm {
+                let base = npm_cfg.registry_for(&s.name);
+                let tok = npm_cfg.token_for(&base);
+                if aegis_registry::is_exact_version(&s.requested) {
+                    Ok(s.requested.clone())
+                } else {
+                    aegis_registry::resolve_npm_auth(
+                        &http,
+                        &base,
+                        &s.name,
+                        &s.requested,
+                        tok.as_deref(),
+                    )
+                }
+            } else {
+                resolve_version(&http, eco, &s.name, &s.requested)
+            };
+            (i, r)
+        })
         .collect();
 
     // One batched advisory call for the whole install rather than one per
@@ -386,24 +408,48 @@ fn check_all(
         } else {
             match crate::pkgcache::get(eco_s, &s.name, &version) {
                 Some(v) => v,
-                None => match crate::scan::fetch_and_scan_package(eco, &s.name, &version) {
-                    Ok(sp) => {
-                        let v = verdict(&sp.assessment, &RiskAssessment::default());
-                        crate::pkgcache::put(eco_s, &s.name, &version, v);
-                        v
+                None => {
+                    let base = (eco == Ecosystem::Npm).then(|| npm_cfg.registry_for(&s.name));
+                    let tok = base.as_deref().and_then(|b| npm_cfg.token_for(b));
+                    let http2 = aegis_net::default_client();
+                    match crate::scan::fetch_and_scan_package_at(
+                        &http2,
+                        eco,
+                        &s.name,
+                        &version,
+                        base.as_deref(),
+                        tok.as_deref(),
+                    ) {
+                        Ok(sp) => {
+                            let v = verdict(&sp.assessment, &RiskAssessment::default());
+                            crate::pkgcache::put(eco_s, &s.name, &version, v);
+                            v
+                        }
+                        Err(e) => {
+                            // A private registry cannot tell "absent" from "no
+                            // access": both come back 404/401. Blocking there took
+                            // every private-registry user offline, so an
+                            // unreachable *private* host is a warning while the
+                            // public registry still blocks — a 404 there is a real
+                            // signal that the name is unclaimed and squattable.
+                            let private = base.as_deref().is_some_and(|b| !NpmConfig::is_public(b));
+                            let why = Unchecked::ScanFailed(e);
+                            let action = if private {
+                                Action::WarnUnchecked
+                            } else {
+                                evaluate_unchecked(&why, ctx)
+                            };
+                            return Outcome {
+                                name: s.name.clone(),
+                                version,
+                                action,
+                                verdict: None,
+                                unchecked: Some(why),
+                                advisories: advs,
+                            };
+                        }
                     }
-                    Err(e) => {
-                        let why = Unchecked::ScanFailed(e);
-                        return Outcome {
-                            name: s.name.clone(),
-                            version,
-                            action: evaluate_unchecked(&why, ctx),
-                            verdict: None,
-                            unchecked: Some(why),
-                            advisories: advs,
-                        };
-                    }
-                },
+                }
             }
         };
 
