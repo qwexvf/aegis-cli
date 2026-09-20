@@ -8,6 +8,66 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
+## [0.30.0-rc.4](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.3...v0.30.0-rc.4) (2026-09-20)
+
+The install gate: aegis now runs **before** a package manager fetches anything,
+which is the only point at which a malicious `postinstall` has not yet
+executed. Everything before this scanned what you already had.
+
+### Added
+
+* **`aegis npm|pnpm|yarn|bun|cargo|pip|go <args>`** — resolve, fetch, scan and
+  judge each package, then hand off to the real manager. A blocked install
+  exits 1 and the manager never runs. Verdict composition is the same
+  `cap.max(advisory)` that `ci` uses, so a package that fails `aegis ci` also
+  fails the gate.
+* **`aegis shell-init <shell>`** — zsh, bash and fish functions that route a
+  bare `pnpm install` through the gate. `--install` writes an eval line into
+  your rc file between sentinel markers; `--uninstall` removes exactly that
+  block. Wraps npm/pnpm/yarn/bun by default; `--pm` or `--all` adds cargo, pip
+  and go.
+* **Lockfile installs are gated too.** A bare `npm install`, `npm ci`,
+  `pnpm install --frozen-lockfile` or `pip install -r requirements.txt` checks
+  every pinned dependency — the case where a poisoned transitive actually
+  lands, and one the Go implementation never covered.
+* **Version resolution** for npm, crates.io, PyPI and the Go module proxy, so
+  `npm i lodash@^4` and `cargo add serde` resolve to an exact published version
+  before anything is fetched. Range matching reuses the existing npm-dialect
+  constraint parser rather than taking on `semver`, which speaks Cargo's.
+* **`aegis doctor`** reports whether shell integration is loaded and whether
+  each wrapped manager still resolves to a real binary — failing loudly when
+  one resolves to aegis itself.
+* On-disk cache of per-package verdicts, keyed by an explicit scan-schema tag.
+
+### Security
+
+* **The gate fails closed.** Anything unverifiable — registry unreachable,
+  package not found, scan errored — blocks, because making the scanner
+  unreachable would otherwise be a complete bypass. `AEGIS_GATE_ALLOW_UNCHECKED=1`
+  accepts unverified packages and `AEGIS_NO_GATE=1` skips the gate; both are
+  named in every blocking message.
+* **Recursion is refused, not followed.** A `PATH` entry named `npm` that
+  resolves to aegis exits 2 with an explanation rather than looping. Three
+  defences: an `AEGIS_GATE_ACTIVE` sentinel on the child, `PATH` resolution
+  that rejects aegis by canonical path and by file name, and a hard failure
+  when every candidate is aegis.
+* The reachability downgrade `ci` applies is deliberately **not** reused in the
+  gate: a package being installed is by definition not yet imported, so it
+  would soften every new package's verdict by one level.
+
+### Notes
+
+* A lockfile install checks **advisories only** by default. Capability-scanning
+  a whole tree measured over 90s on a real 922-dependency lockfile, in front of
+  a command you are waiting on; advisory-only is 32s cold and 3s warm.
+  `AEGIS_GATE_DEEP=1` opts into the full scan (240s and 23 blocks vs 17 on that
+  same lockfile).
+* Not covered, by construction: non-interactive shells (CI, `make`, `mise run`,
+  `package.json` scripts never source an rc file — use `aegis ci` and
+  `aegis hook --install`), `npx`/`dlx`/`bunx`, `python -m pip`, and
+  non-registry specs such as `git+https://`, which are reported as skipped.
+* The Windows passthrough compiles but has never been run on a Windows host.
+
 ## [0.30.0-rc.3](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.2...v0.30.0-rc.3) (2026-08-19)
 
 Risk-score tuning driven by a 16k-package known-good corpus (download-ranked top
