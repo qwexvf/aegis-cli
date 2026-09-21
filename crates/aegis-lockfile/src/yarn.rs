@@ -50,8 +50,12 @@ impl LockfileParser for YarnLock {
                 if cur_name == "__metadata" {
                     cur_name.clear();
                 }
-                // The header itself carries the protocol in berry.
-                cur_is_workspace = header.contains("@workspace:");
+                // The header carries the protocol in both dialects, and it is
+                // the only place that works for classic v1, where `version`
+                // precedes `resolved` inside the block.
+                cur_is_workspace = ["@workspace:", "@file:", "@link:", "@portal:"]
+                    .iter()
+                    .any(|p| header.contains(p));
                 in_block = true;
                 continue;
             }
@@ -62,6 +66,16 @@ impl LockfileParser for YarnLock {
             // ...and so does the `resolution:` line, for classic-style headers.
             if let Some(r) = l.strip_prefix("resolution:") {
                 if r.contains("@workspace:") {
+                    cur_is_workspace = true;
+                }
+            }
+            // Classic v1 has no `@workspace:` protocol; it points a local
+            // package at a directory with `resolved "file:packages/x"`. Those
+            // carry an ordinary version (1.0.0), so the berry check above does
+            // not see them, and they were emitted as registry packages.
+            if let Some(r) = l.strip_prefix("resolved ") {
+                let r = r.trim().trim_matches('"');
+                if r.starts_with("file:") || r.starts_with("link:") || r.starts_with("portal:") {
                     cur_is_workspace = true;
                 }
             }
@@ -205,5 +219,24 @@ mod tests {
         let deps = YarnLock.parse(raw, &DirectMap::new()).unwrap();
         let names: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
         assert_eq!(names, vec!["lodash"], "workspaces leaked in: {names:?}");
+    }
+    #[test]
+    fn classic_v1_file_resolutions_are_not_registry_packages() {
+        // v1 has no `@workspace:` protocol: a local package is pointed at a
+        // directory by `resolved "file:..."` and carries an ordinary version,
+        // so the berry check does not see it.
+        let raw = br#"# yarn lockfile v1
+
+lodash@4.17.21:
+  version "4.17.21"
+  resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.21.tgz#abc"
+
+"@acme/local@file:packages/local":
+  version "1.0.0"
+  resolved "file:packages/local"
+"#;
+        let deps = YarnLock.parse(raw, &DirectMap::new()).unwrap();
+        let names: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, vec!["lodash"], "local package leaked in: {names:?}");
     }
 }

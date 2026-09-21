@@ -101,8 +101,10 @@ pub(crate) fn run(pm: Pm, args: &[String]) -> ExitCode {
     // Non-registry specs (paths, git refs, workspace protocols) have nothing
     // to look up. Report them as skipped rather than silently ignoring them —
     // that is real missing coverage and the user should see it.
+    let mut skipped = 0usize;
     for s in &specs {
         if let SpecKind::NonRegistry(why) = &s.kind {
+            skipped += 1;
             eprintln!("[aegis] skipped {} ({why}, nothing to verify)", s.raw);
         }
     }
@@ -111,12 +113,23 @@ pub(crate) fn run(pm: Pm, args: &[String]) -> ExitCode {
         .filter(|s| s.kind == SpecKind::Registry)
         .collect();
     if registry.is_empty() {
+        summarize(0, skipped, 0, walk.kind, true);
         return exec::exec_real(pm.name(), args);
     }
 
     let npm_cfg = NpmConfig::load(std::path::Path::new(walk.dir.as_deref().unwrap_or(".")));
     let outcomes = check_all(pm.ecosystem(), &registry, &ctx, walk.kind, &npm_cfg);
     report(&outcomes);
+    let unverified = outcomes.iter().filter(|o| o.unchecked.is_some()).count();
+    let deep = walk.kind == InstallKind::Named
+        || std::env::var_os("AEGIS_GATE_DEEP").is_some_and(|v| !v.is_empty());
+    summarize(
+        outcomes.len() - unverified,
+        skipped,
+        unverified,
+        walk.kind,
+        deep,
+    );
     record_audit(pm, &outcomes, walk.kind);
 
     if outcomes.iter().any(|o| o.action.blocks()) {
@@ -498,6 +511,54 @@ fn check_all(
         // A thread pool we could not build is not a reason to skip the gate.
         Err(_) => resolved.iter().map(judge).collect(),
     }
+}
+
+/// Always say what was actually checked.
+///
+/// Every correctness bug found in this gate so far produced a *confident
+/// clean answer over content it never examined* — a lockfile parser reading
+/// 15 of 1415 dependencies, a requirements file where 5 of 6 entries were
+/// dropped, an install in a subdirectory that found no lockfile at all. None
+/// of them errored. On a clean run the gate printed nothing, so "checked
+/// everything, all fine" and "checked almost nothing, all fine" looked
+/// identical from the outside, and the first of those shipped in a release.
+///
+/// One line of arithmetic makes the difference visible: a 1415-dependency
+/// project reporting `checked 15` is obvious to anyone reading it, where
+/// silence was not.
+fn summarize(checked: usize, skipped: usize, unverified: usize, kind: InstallKind, deep: bool) {
+    // Nothing checked at all during an install is the shape worth shouting
+    // about: it is indistinguishable from success unless we say so.
+    if checked == 0 && unverified == 0 {
+        if kind == InstallKind::Lockfile {
+            eprintln!(
+                "[aegis] checked 0 dependencies — nothing was verified \
+                 ({skipped} skipped as non-registry)"
+            );
+        }
+        return;
+    }
+
+    // Say which half ran. A lockfile install checks advisories only by
+    // default, so a bare "checked N" would claim the capability scan happened
+    // too — and for a package on an unreachable private registry an
+    // advisory-only pass looks identical to a fully verified one.
+    let mut parts = vec![format!(
+        "checked {checked} {}{}",
+        if checked == 1 {
+            "dependency"
+        } else {
+            "dependencies"
+        },
+        if deep { "" } else { " (advisories only)" }
+    )];
+    if skipped > 0 {
+        parts.push(format!("{skipped} skipped (non-registry)"));
+    }
+    if unverified > 0 {
+        parts.push(format!("{unverified} could not be verified"));
+    }
+    eprintln!("[aegis] {}", parts.join(" · "));
 }
 
 /// Everything goes to stderr: stdout belongs to the package manager.

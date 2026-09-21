@@ -8,6 +8,38 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
+## [0.30.0](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.9...v0.30.0) (2026-09-21)
+
+First stable release of the Rust rewrite, and of the **install gate** — aegis
+now runs *before* a package manager fetches anything, which is the only point
+at which a malicious `postinstall` has not yet executed.
+
+See rc.1 through rc.9 for the full history. Since rc.9:
+
+### Added
+
+* **The gate always reports what it checked** — `checked 922 dependencies`,
+  `checked 1 dependency · 1 skipped (non-registry)`, and
+  `(advisories only)` when a lockfile install ran the advisory half alone.
+
+  This is a fix for a *class* of bug rather than one instance. Every
+  correctness defect found during rc.5–rc.9 produced a confident clean answer
+  over content that was never examined: a lockfile parser reading 15 of 1415
+  dependencies, a requirements file where 5 of 6 entries were dropped, yarn
+  workspaces resolved against the registry, an install in a subdirectory that
+  found no lockfile at all. None of them errored, and on a clean run the gate
+  printed nothing — so "checked everything, all fine" and "checked almost
+  nothing, all fine" were indistinguishable, and the first of those shipped.
+  One line of arithmetic makes the difference visible.
+
+### Fixed
+
+* **yarn classic v1 local packages were treated as registry packages.** v1 has
+  no `@workspace:` protocol; it points a local package at a directory with
+  `resolved "file:packages/x"` and gives it an ordinary version, so the berry
+  check added in rc.9 did not see it. Detected from the block header, which is
+  the only place that works for v1, where `version` precedes `resolved`.
+
 ## [0.30.0-rc.9](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.8...v0.30.0-rc.9) (2026-09-21)
 
 Workspace handling, found by testing the shapes real monorepos use.
