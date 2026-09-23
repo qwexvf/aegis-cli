@@ -49,11 +49,20 @@ const SCAN_STEP: &str = r#"for lock in $(git diff --cached --name-only --diff-fi
 done
 "#;
 
-const LEFTHOOK_ENTRY: &str = r#"pre-commit:
-  commands:
-    aegis:
-      run: aegis ci --fail-on block
-"#;
+/// lefthook runs `run:` through `sh -c`, so the same loop as the native
+/// hook goes in as a block scalar. A bare `aegis ci` here would fail every
+/// commit: `ci` requires a lockfile argument.
+fn lefthook_entry() -> String {
+    let mut out = String::from("pre-commit:\n  commands:\n    aegis:\n      run: |\n");
+    for line in SCAN_STEP.lines() {
+        if !line.is_empty() {
+            out.push_str("        ");
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
 
 fn native_hook() -> String {
     format!("#!/bin/sh\nset -e\n{}", inject("", SCAN_STEP))
@@ -108,8 +117,9 @@ pub(crate) fn run_hook(install: bool, uninstall: bool) -> ExitCode {
 
 fn do_install(fw: Framework, path: &Path) -> ExitCode {
     let existing = std::fs::read_to_string(path).unwrap_or_default();
+    let lefthook = lefthook_entry();
     let body = match fw {
-        Framework::Lefthook => LEFTHOOK_ENTRY,
+        Framework::Lefthook => lefthook.as_str(),
         Framework::Husky | Framework::Native => SCAN_STEP,
     };
 
@@ -252,6 +262,18 @@ mod tests {
         assert_eq!(detect(&d).unwrap().0, Framework::Lefthook);
 
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn lefthook_entry_runs_the_same_loop_as_the_native_hook() {
+        let entry = lefthook_entry();
+        let script: String = entry
+            .lines()
+            .skip_while(|l| !l.ends_with("run: |"))
+            .skip(1)
+            .map(|l| format!("{}\n", l.strip_prefix("        ").unwrap_or(l)))
+            .collect();
+        assert_eq!(script, SCAN_STEP);
     }
 
     #[test]
