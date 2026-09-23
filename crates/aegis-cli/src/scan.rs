@@ -492,7 +492,7 @@ pub(crate) fn fetch_and_scan_package_at(
         }
         _ => fetch_source(http, &dep)?,
     };
-    let allow = aegis_domain::AllowSet::new(aegis_domain::builtin_allow_rules())
+    let allow = aegis_domain::AllowSet::new(crate::allowlist::effective_rules(Path::new(".")))
         .unwrap_or_else(|_| aegis_domain::AllowSet::empty());
     // Evidence on: `explain` is the per-package view, and its output is what a
     // public package report cites. Without file/line/snippet a report says

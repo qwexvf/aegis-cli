@@ -9,8 +9,9 @@
 //! - **project** — `aegis.toml` in the current directory, committed with
 //!   the repo so a team shares the same suppressions.
 //!
-//! Both use the same `[[allow]]` shape the scanner already reads, so a rule
-//! added here is picked up by `analyze` and `run` with no extra wiring.
+//! Both use the same `[[allow]]` shape as `aegis.toml`, and every scan
+//! (`ci`, `analyze`, `explain`, the install gate, `snapshot diff`) applies
+//! builtin, user and project rules through [`effective_rules`].
 //!
 //! `--reason` is required on `add`. A suppression with no recorded reason
 //! is indistinguishable from a mistake six months later, and the whole
@@ -270,17 +271,21 @@ pub(crate) fn run_remove(
 
 // --- list ---
 
-/// Every layer, in the order the scanner applies them.
-fn all_layers() -> (Vec<AllowRule>, Vec<String>) {
+/// Every layer, in the order the scanner applies them. The project layer is
+/// `aegis.toml` in `project_dir`.
+fn all_layers(project_dir: &Path) -> (Vec<AllowRule>, Vec<String>) {
     let mut rules = aegis_domain::builtin_allow_rules();
     let mut problems = Vec::new();
-    for scope in [Scope::User, Scope::Project] {
-        match load(&scope.path()) {
+    for (scope, path) in [
+        (Scope::User, Scope::User.path()),
+        (Scope::Project, project_dir.join("aegis.toml")),
+    ] {
+        match load(&path) {
             Ok(f) => {
                 for e in &f.allow {
                     match entry_to_rule(e, scope.name()) {
                         Ok(r) => rules.push(r),
-                        Err(msg) => problems.push(format!("{}: {msg}", scope.path().display())),
+                        Err(msg) => problems.push(format!("{}: {msg}", path.display())),
                     }
                 }
             }
@@ -290,8 +295,50 @@ fn all_layers() -> (Vec<AllowRule>, Vec<String>) {
     (rules, problems)
 }
 
+/// The rules a scan rooted at `project_dir` applies: builtin, user, project.
+/// A broken entry is skipped with a warning rather than failing the scan, and
+/// the warning prints once per process because the gate calls this per package.
+pub(crate) fn effective_rules(project_dir: &Path) -> Vec<AllowRule> {
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    let (rules, problems) = all_layers(project_dir);
+    WARNED.call_once(|| {
+        for p in &problems {
+            eprintln!("aegis: warning: allowlist: {p}");
+        }
+    });
+    rules
+}
+
+/// Identifies the non-builtin rules, for keying caches of allowlisted
+/// verdicts. Empty when there are none, so a user without an allowlist keeps
+/// the same cache keys as before. `DefaultHasher` output can change between
+/// Rust releases; that only costs a cache miss.
+pub(crate) fn user_rules_tag(rules: &[AllowRule]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut lines: Vec<String> = rules
+        .iter()
+        .filter(|r| r.source != "builtin")
+        .map(|r| {
+            format!(
+                "{}|{}|{}|{}",
+                r.ecosystem.as_str(),
+                r.name,
+                r.version_range,
+                r.capability.map(|c| c.name()).unwrap_or("*")
+            )
+        })
+        .collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    lines.sort();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    lines.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
 pub(crate) fn run_list(json: bool) -> ExitCode {
-    let (rules, problems) = all_layers();
+    let (rules, problems) = all_layers(Path::new("."));
     for p in &problems {
         eprintln!("aegis: warning: {p}");
     }
@@ -382,7 +429,7 @@ pub(crate) fn run_test(spec: &str) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let (rules, _) = all_layers();
+    let (rules, _) = all_layers(Path::new("."));
     let set = match AllowSet::new(rules) {
         Ok(s) => s,
         Err(e) => {

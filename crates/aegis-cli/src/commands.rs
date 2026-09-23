@@ -191,9 +191,10 @@ pub(crate) fn run_ci(
     };
 
     // Enrich (fetch source + AST/heuristics scan → per-dep verdict) unless
-    // offline. Builtin allowlist applies during scoring, like Go.
+    // offline. Builtin, user and project allowlists apply during scoring,
+    // like Go; the project layer is the aegis.toml next to the lockfile.
     let enriched = !offline;
-    let allow = match resolved_allow_set(Vec::new()) {
+    let allow = match resolved_allow_set(path.parent().unwrap_or(Path::new(".")), Vec::new()) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("aegis: {e}");
@@ -532,14 +533,15 @@ fn allow_rules_from_config(
     Ok(out)
 }
 
-/// Compile the effective allowlist: the builtin rules plus `user` rules.
-/// Builtin first so a user rule sharing a package can add coverage; matching
-/// is OR-based, so any match suppresses.
+/// Compile the effective allowlist: builtin, user and project layers, plus
+/// `extra` (an explicit `--allowlist` file). Matching is OR-based, so any
+/// match suppresses.
 fn resolved_allow_set(
-    user: Vec<aegis_domain::AllowRule>,
+    project_dir: &Path,
+    extra: Vec<aegis_domain::AllowRule>,
 ) -> Result<aegis_domain::AllowSet, String> {
-    let mut rules = builtin_allow_rules();
-    rules.extend(user);
+    let mut rules = crate::allowlist::effective_rules(project_dir);
+    rules.extend(extra);
     aegis_domain::AllowSet::new(rules)
 }
 
@@ -805,9 +807,12 @@ pub(crate) fn run_config(config_path: &str, json: bool, sarif: bool) -> ExitCode
         }
     }
 
-    // Effective allowlist = builtin + config [[allow]] rules, applied to each
-    // task's source-scan assessment.
-    let allow = match allow_rules_from_config(&config.allow).and_then(resolved_allow_set) {
+    // Effective allowlist = builtin + user + the config's own [[allow]] rules,
+    // applied to each task's source-scan assessment.
+    let config_dir = Path::new(config_path).parent().unwrap_or(Path::new("."));
+    let allow = match allow_rules_from_config(&config.allow)
+        .and_then(|rules| resolved_allow_set(config_dir, rules))
+    {
         Ok(set) => set,
         Err(e) => {
             eprintln!("aegis: {e}");
@@ -962,7 +967,7 @@ pub(crate) fn run_analyze(
         },
         None => Vec::new(),
     };
-    match resolved_allow_set(user_rules) {
+    match resolved_allow_set(Path::new("."), user_rules) {
         Ok(set) => {
             assessment = aegis_domain::apply_allowlist(&assessment, &set, eco, &pkg_name, "");
         }

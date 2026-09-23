@@ -70,8 +70,8 @@ mod tests {
         use Ecosystem::*;
         let all = |e: Ecosystem| match e {
             Npm | PyPI | Crates | Go | Maven | RubyGems | Packagist | NuGet | Hex | Pub
-            | SwiftPM | Cran | Hackage | Cpan | CocoaPods | Neovim | Aur | Conan | Nix
-            | Julia | Conda | Nimble | Elm | Opam => e,
+            | SwiftPM | Cran | Hackage | Cpan | CocoaPods | Neovim | Aur | Conan | Nix | Julia
+            | Conda | Nimble | Elm | Opam => e,
         };
         for e in [
             Npm, PyPI, Crates, Go, Maven, RubyGems, Packagist, NuGet, Hex, Pub, SwiftPM, Cran,

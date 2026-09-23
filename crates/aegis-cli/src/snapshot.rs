@@ -34,11 +34,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use aegis_domain::{
-    apply_allowlist, builtin_allow_rules, diff_snapshots, downgrade_verdict, drift_score,
-    patch_version_drift_flag, provenance_risk_flag, risk_score, verdict, verdict_for_advisories,
-    Advisory, AdvisoryQuery, Capability, CapabilitySet, Dependency, Ecosystem, Fingerprint,
-    HookPhase, InstallHook, Reachability, RiskFlag, Snapshot as DomainSnapshot, VerdictKind,
-    SNAPSHOT_SCHEMA_VERSION,
+    apply_allowlist, diff_snapshots, downgrade_verdict, drift_score, patch_version_drift_flag,
+    provenance_risk_flag, risk_score, verdict, verdict_for_advisories, Advisory, AdvisoryQuery,
+    Capability, CapabilitySet, Dependency, Ecosystem, Fingerprint, HookPhase, InstallHook,
+    Reachability, RiskFlag, Snapshot as DomainSnapshot, VerdictKind, SNAPSHOT_SCHEMA_VERSION,
 };
 use aegis_lockfile::{builtin_parsers, parse_file, DirectMap};
 use rayon::prelude::*;
@@ -803,7 +802,7 @@ fn run_snapshot_diff_files(a_path: &str, b_path: &str) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    print_diff(&prev, &next);
+    print_diff(&prev, &next, Path::new("."));
     ExitCode::SUCCESS
 }
 
@@ -858,13 +857,13 @@ fn run_snapshot_diff_live(project_dir: &str) -> ExitCode {
         project: prev.project.clone(),
         deps: next_deps,
     };
-    print_diff(&prev, &next);
+    print_diff(&prev, &next, &dir);
     ExitCode::SUCCESS
 }
 
-fn print_diff(prev: &DomainSnapshot, next: &DomainSnapshot) {
+fn print_diff(prev: &DomainSnapshot, next: &DomainSnapshot, project_dir: &Path) {
     let deltas = diff_snapshots(prev, next);
-    let allow = aegis_domain::AllowSet::new(builtin_allow_rules())
+    let allow = aegis_domain::AllowSet::new(crate::allowlist::effective_rules(project_dir))
         .unwrap_or_else(|_| aegis_domain::AllowSet::empty());
     let mut views: Vec<DiffEntryView> = Vec::new();
     let mut any_blocked = false;

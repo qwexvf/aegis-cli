@@ -93,6 +93,61 @@ fn analyze_malicious_js_blocks() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// `aegis allowlist add` must change what scans report. Rules used to be
+/// written and listed but never applied: every scan used builtin rules only.
+#[test]
+fn allowlist_add_applies_to_later_scans() {
+    let d = tmp("allow-layers");
+    write(
+        &d,
+        "index.js",
+        "const cp = require('child_process');\ncp.execSync('ls');\n",
+    );
+    write(
+        &d,
+        "package.json",
+        "{\"name\":\"demo\",\"version\":\"1.0.0\"}",
+    );
+    let xdg = d.join("xdg");
+    let aegis = |args: &[&str]| {
+        let o = Command::new(BIN)
+            .args(args)
+            .current_dir(&d)
+            .env("XDG_CONFIG_HOME", &xdg)
+            .output()
+            .unwrap();
+        (
+            o.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&o.stdout).into_owned(),
+        )
+    };
+    let analyze = || aegis(&["analyze", ".", "--name", "demo", "--json"]);
+
+    let (_, before) = analyze();
+    assert!(!before.contains("\"suppressed\": true"), "{before}");
+
+    for scope in ["project", "user"] {
+        let (code, out) = aegis(&[
+            "allowlist",
+            "add",
+            "demo",
+            "--capability",
+            "shell-spawn",
+            "--reason",
+            "demo build step",
+            "--scope",
+            scope,
+        ]);
+        assert_eq!(code, 0, "{out}");
+        let (_, after) = analyze();
+        assert!(after.contains("\"suppressed\": true"), "{scope}: {after}");
+        assert!(after.contains("\"score\": 0"), "{scope}: {after}");
+        let (code, out) = aegis(&["allowlist", "remove", "demo", "--scope", scope]);
+        assert_eq!(code, 0, "{out}");
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 #[test]
 fn analyze_allowlist_suppresses_flag() {
     let d = tmp("analyze-allow");

@@ -387,6 +387,10 @@ fn check_all(
         advisories_by_key(&queries)
     };
 
+    let allow_tag = &crate::allowlist::user_rules_tag(&crate::allowlist::effective_rules(
+        std::path::Path::new("."),
+    ));
+
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(concurrency())
         .build();
@@ -444,7 +448,7 @@ fn check_all(
         let cap_v = if !deep {
             VerdictKind::Safe
         } else {
-            match crate::pkgcache::get(eco_s, &s.name, &version) {
+            match crate::pkgcache::get(eco_s, &s.name, &version, allow_tag) {
                 Some(v) => v,
                 None => {
                     let base = (eco == Ecosystem::Npm).then(|| npm_cfg.registry_for(&s.name));
@@ -460,7 +464,7 @@ fn check_all(
                     ) {
                         Ok(sp) => {
                             let v = verdict(&sp.assessment, &RiskAssessment::default());
-                            crate::pkgcache::put(eco_s, &s.name, &version, v);
+                            crate::pkgcache::put(eco_s, &s.name, &version, allow_tag, v);
                             v
                         }
                         Err(e) => {

@@ -32,20 +32,27 @@ fn cache() -> DiskCache {
     DiskCache::new(crate::enrich::cache_base().join("gate"), Some(TTL))
 }
 
-fn key(eco: &str, name: &str, version: &str) -> String {
-    format!("{eco}/{name}@{version}#v{SCAN_SCHEMA}")
+/// `allow_tag` is [`crate::allowlist::user_rules_tag`]: the cached verdict is
+/// already allowlisted, so a verdict computed under one project's rules must
+/// not be served to a project with different rules.
+fn key(eco: &str, name: &str, version: &str, allow_tag: &str) -> String {
+    if allow_tag.is_empty() {
+        format!("{eco}/{name}@{version}#v{SCAN_SCHEMA}")
+    } else {
+        format!("{eco}/{name}@{version}#v{SCAN_SCHEMA}#allow-{allow_tag}")
+    }
 }
 
 /// A previously computed capability verdict, if we still trust it.
-pub(crate) fn get(eco: &str, name: &str, version: &str) -> Option<VerdictKind> {
-    let raw = cache().get(&key(eco, name, version))?;
+pub(crate) fn get(eco: &str, name: &str, version: &str, allow_tag: &str) -> Option<VerdictKind> {
+    let raw = cache().get(&key(eco, name, version, allow_tag))?;
     VerdictKind::parse(std::str::from_utf8(&raw).ok()?.trim())
 }
 
 /// Remember a capability verdict. Best-effort: a cache we cannot write is not
 /// a reason to fail an install.
-pub(crate) fn put(eco: &str, name: &str, version: &str, v: VerdictKind) {
-    let _ = cache().put(&key(eco, name, version), v.name().as_bytes());
+pub(crate) fn put(eco: &str, name: &str, version: &str, allow_tag: &str, v: VerdictKind) {
+    let _ = cache().put(&key(eco, name, version, allow_tag), v.name().as_bytes());
 }
 
 #[cfg(test)]
@@ -78,13 +85,18 @@ mod tests {
     #[test]
     fn a_stored_verdict_round_trips() {
         with_tmp_cache(|| {
-            assert_eq!(get("npm", "lodash", "4.17.21"), None);
-            put("npm", "lodash", "4.17.21", VerdictKind::Review);
-            assert_eq!(get("npm", "lodash", "4.17.21"), Some(VerdictKind::Review));
+            assert_eq!(get("npm", "lodash", "4.17.21", ""), None);
+            put("npm", "lodash", "4.17.21", "", VerdictKind::Review);
+            assert_eq!(
+                get("npm", "lodash", "4.17.21", ""),
+                Some(VerdictKind::Review)
+            );
             // A different version is a different entry.
-            assert_eq!(get("npm", "lodash", "4.17.20"), None);
+            assert_eq!(get("npm", "lodash", "4.17.20", ""), None);
             // So is a different ecosystem.
-            assert_eq!(get("pypi", "lodash", "4.17.21"), None);
+            assert_eq!(get("pypi", "lodash", "4.17.21", ""), None);
+            // And a different set of user/project allowlist rules.
+            assert_eq!(get("npm", "lodash", "4.17.21", "abc"), None);
         });
     }
 
@@ -92,7 +104,7 @@ mod tests {
     fn the_schema_tag_is_part_of_the_key() {
         // A verdict from an older engine must not be served after a scoring
         // change, which is what bumping SCAN_SCHEMA expresses.
-        let a = key("npm", "x", "1.0.0");
+        let a = key("npm", "x", "1.0.0", "");
         assert!(a.ends_with(&format!("#v{SCAN_SCHEMA}")));
         assert_ne!(a, "npm/x@1.0.0");
     }
