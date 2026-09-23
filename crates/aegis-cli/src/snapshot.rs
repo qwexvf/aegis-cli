@@ -39,7 +39,7 @@ use aegis_domain::{
     Capability, CapabilitySet, Dependency, Ecosystem, Fingerprint, HookPhase, InstallHook,
     Reachability, RiskFlag, Snapshot as DomainSnapshot, VerdictKind, SNAPSHOT_SCHEMA_VERSION,
 };
-use aegis_lockfile::{builtin_parsers, parse_file, DirectMap};
+use aegis_lockfile::builtin_parsers;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -427,29 +427,40 @@ fn load_snapshot(project_dir: &str) -> Result<Option<DomainSnapshot>, String> {
 // recognized lockfile, merging deps. Mirrors that here: enumerate the
 // built-in parsers' filenames and parse each one found at the project root.
 
-/// Find every recognized lockfile at `project_dir` (no recursion — matches Go
-/// which reads only the project root) and collect its parsed deps.
+/// Find the recognized lockfiles at `project_dir` (no recursion, matching Go
+/// which reads only the project root) and collect their parsed deps.
+///
+/// Only the first lockfile per ecosystem is parsed, in `builtin_parsers`
+/// priority order. A project carrying both `pnpm-lock.yaml` and a stale
+/// `package-lock.json` otherwise records every shared dep twice.
 fn scan_project(project_dir: &Path) -> Result<Vec<Dependency>, String> {
     let mut out: Vec<Dependency> = Vec::new();
-    let mut seen_basename: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_eco = std::collections::HashSet::new();
+    let direct = crate::util::direct_map_for(&project_dir.join("package.json"));
     for parser in builtin_parsers() {
+        if seen_eco.contains(&parser.ecosystem()) {
+            continue;
+        }
         let fname = parser.filename();
-        // Only one parser per basename is registered (the first-match wins in
-        // `parse_file`), so deduping on filename avoids double-parsing
-        // (e.g. two npm parsers registered to "package-lock.json").
-        if !seen_basename.insert(fname.to_string()) {
-            continue;
-        }
         let lockfile_path = project_dir.join(fname);
-        let Ok(raw) = std::fs::read(&lockfile_path) else {
+        if !lockfile_path.is_file() {
             continue;
-        };
-        match parse_file(fname, &raw, &DirectMap::new()) {
-            Ok(Some(deps)) => out.extend(deps),
-            Ok(None) => {}
-            Err(e) => return Err(format!("parse {}: {e}", lockfile_path.display())),
         }
+        let raw = std::fs::read(&lockfile_path)
+            .map_err(|e| format!("read {}: {e}", lockfile_path.display()))?;
+        let deps = parser
+            .parse(&raw, &direct)
+            .map_err(|e| format!("parse {}: {e}", lockfile_path.display()))?;
+        seen_eco.insert(parser.ecosystem());
+        out.extend(deps);
     }
+    out.sort_by(|a, b| {
+        a.ecosystem
+            .as_str()
+            .cmp(b.ecosystem.as_str())
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.version.cmp(&b.version))
+    });
     Ok(out)
 }
 

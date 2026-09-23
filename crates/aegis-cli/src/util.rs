@@ -54,6 +54,15 @@ pub(crate) fn parse_ecosystem(s: &str) -> Option<Ecosystem> {
     })
 }
 
+/// Direct-dependency map for a lockfile, from the `package.json` beside it.
+/// Only npm-family parsers consult it; a missing manifest gives an empty map.
+pub(crate) fn direct_map_for(lockfile: &std::path::Path) -> aegis_lockfile::DirectMap {
+    let dir = lockfile.parent().unwrap_or(std::path::Path::new("."));
+    std::fs::read(dir.join("package.json"))
+        .map(|raw| aegis_lockfile::npm_direct_deps(&raw))
+        .unwrap_or_default()
+}
+
 pub(crate) fn default_ecosystem() -> String {
     "npm".to_string()
 }

@@ -906,8 +906,8 @@ fn snapshot_lifecycle_save_show_verify_diff() {
     assert_eq!(out.code, 0, "{}", out.stdout);
     assert!(out.stdout.contains("schema v1"), "{}", out.stdout);
 
-    // No parser marks npm deps direct yet, so the default view falls back to
-    // showing everything rather than an empty table.
+    // No package.json here, so nothing is direct and the default view falls
+    // back to showing everything rather than an empty table.
     let out = run(&["snapshot", "show", dir, "--json"]);
     assert_eq!(out.code, 0, "{}", out.stdout);
     assert!(out.stdout.contains("lodash"), "{}", out.stdout);
@@ -938,6 +938,45 @@ fn snapshot_lifecycle_save_show_verify_diff() {
     ]);
     assert_eq!(out.code, 0, "{}", out.stdout);
     assert!(out.stdout.contains("4.17.20"), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn snapshot_save_takes_one_lockfile_per_ecosystem_and_marks_direct_deps() {
+    // pnpm-lock.yaml outranks a stale package-lock.json, so shared deps are
+    // recorded once; package.json decides which of them are direct.
+    let d = tmp("snaponeeco");
+    write(
+        &d,
+        "package.json",
+        r#"{"name":"app","dependencies":{"lodash":"^4"}}"#,
+    );
+    write(
+        &d,
+        "package-lock.json",
+        r#"{"lockfileVersion":3,"packages":{"":{"name":"app"},"node_modules/lodash":{"version":"4.17.21"},"node_modules/ms":{"version":"2.1.3"}}}"#,
+    );
+    write(
+        &d,
+        "pnpm-lock.yaml",
+        "lockfileVersion: '9.0'\npackages:\n  lodash@4.17.21:\n    resolution: {integrity: sha512-x}\n  ms@2.1.3:\n    resolution: {integrity: sha512-y}\n",
+    );
+    let dir = d.to_str().unwrap();
+    let out = run(&["snapshot", "save", dir]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    let out = run(&["snapshot", "show", dir, "--all", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&out.stdout).expect(&out.stdout);
+    let deps = v["deps"].as_array().expect("deps array");
+    let names: Vec<(&str, bool)> = deps
+        .iter()
+        .map(|d| {
+            (
+                d["name"].as_str().unwrap(),
+                d["direct"].as_bool().unwrap_or(false),
+            )
+        })
+        .collect();
+    assert_eq!(names, [("lodash", true), ("ms", false)], "{}", out.stdout);
     let _ = std::fs::remove_dir_all(&d);
 }
 

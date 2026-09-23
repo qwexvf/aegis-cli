@@ -10,7 +10,7 @@ use aegis_domain::{
     CapabilitySet, Dependency, Fingerprint, Reachability, RiskAssessment, Severity, VerdictKind,
     ALL_CAPABILITIES,
 };
-use aegis_lockfile::{parse_file, DirectMap};
+use aegis_lockfile::parse_file;
 use aegis_vuln::OsvClient;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -146,7 +146,11 @@ pub(crate) fn run_ci(
     };
     let path = Path::new(file);
     let basename = path.file_name().and_then(|n| n.to_str()).unwrap_or(file);
-    let deps = match parse_file(basename, &bytes, &DirectMap::new()) {
+    let deps = match parse_file(
+        basename,
+        &bytes,
+        &crate::util::direct_map_for(Path::new(file)),
+    ) {
         Ok(Some(d)) => d,
         Ok(None) => {
             eprintln!("aegis: no parser for lockfile '{basename}'");
@@ -1089,7 +1093,11 @@ pub(crate) fn run_fix(file: &str, offline: bool, script: bool, json: bool) -> Ex
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(file);
-    let deps = match parse_file(basename, &bytes, &DirectMap::new()) {
+    let deps = match parse_file(
+        basename,
+        &bytes,
+        &crate::util::direct_map_for(Path::new(file)),
+    ) {
         Ok(Some(d)) => d,
         Ok(None) => {
             eprintln!("aegis: no parser for lockfile '{basename}'");
@@ -1237,7 +1245,11 @@ pub(crate) fn run_sbom(
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(file);
-    let mut deps = match parse_file(basename, &bytes, &DirectMap::new()) {
+    let mut deps = match parse_file(
+        basename,
+        &bytes,
+        &crate::util::direct_map_for(Path::new(file)),
+    ) {
         Ok(Some(d)) => d,
         Ok(None) => {
             eprintln!("aegis: no parser for lockfile '{basename}'");
@@ -2011,7 +2023,11 @@ pub(crate) fn run_parse(file: &str, json: bool) -> ExitCode {
         .and_then(|n| n.to_str())
         .unwrap_or(file);
 
-    let deps = match parse_file(basename, &bytes, &DirectMap::new()) {
+    let deps = match parse_file(
+        basename,
+        &bytes,
+        &crate::util::direct_map_for(Path::new(file)),
+    ) {
         Ok(Some(deps)) => deps,
         Ok(None) => {
             eprintln!("aegis: no parser for lockfile '{basename}'");

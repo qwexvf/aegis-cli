@@ -84,6 +84,34 @@ impl std::error::Error for ParseError {}
 /// and flag direct/transitive from their own lockfile.
 pub type DirectMap = HashMap<String, bool>;
 
+/// Direct dependency names from a `package.json`: the union of
+/// `dependencies`, `devDependencies`, `peerDependencies` and
+/// `optionalDependencies`, as Go's `readDirectDeps` read them. Malformed input
+/// yields an empty map, since direct-ness is best-effort.
+pub fn npm_direct_deps(package_json: &[u8]) -> DirectMap {
+    #[derive(serde::Deserialize, Default)]
+    #[serde(rename_all = "camelCase", default)]
+    struct Manifest {
+        dependencies: HashMap<String, serde_json::Value>,
+        dev_dependencies: HashMap<String, serde_json::Value>,
+        peer_dependencies: HashMap<String, serde_json::Value>,
+        optional_dependencies: HashMap<String, serde_json::Value>,
+    }
+    let Ok(m) = serde_json::from_slice::<Manifest>(package_json) else {
+        return DirectMap::new();
+    };
+    [
+        m.dependencies,
+        m.dev_dependencies,
+        m.peer_dependencies,
+        m.optional_dependencies,
+    ]
+    .into_iter()
+    .flat_map(|section| section.into_keys())
+    .map(|name| (name, true))
+    .collect()
+}
+
 /// Turns the raw bytes of one lockfile into canonical dependencies.
 /// Mirrors the Go `LockfileParser` interface.
 pub trait LockfileParser {
@@ -117,12 +145,15 @@ pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
     // vec_init_then_push.
     #[allow(unused_mut, clippy::vec_init_then_push)]
     let mut v: Vec<Box<dyn LockfileParser>> = Vec::new();
+    // Order is priority within an ecosystem: a project scan parses only the
+    // first lockfile found per ecosystem, as Go's ScanProject did. pnpm, yarn
+    // and bun are stricter than npm, so they win when several are present.
     #[cfg(feature = "npm")]
     {
-        v.push(Box::new(npm::PackageLockJson));
-        v.push(Box::new(yarn::YarnLock));
         v.push(Box::new(pnpm::PnpmLock));
+        v.push(Box::new(yarn::YarnLock));
         v.push(Box::new(bun::BunLock));
+        v.push(Box::new(npm::PackageLockJson));
     }
     #[cfg(feature = "pypi")]
     {
@@ -145,10 +176,11 @@ pub fn builtin_parsers() -> Vec<Box<dyn LockfileParser>> {
     v.push(Box::new(swift::PackageResolved));
     #[cfg(feature = "rubygems")]
     v.push(Box::new(gemfile::GemfileLock));
+    // gradle.lockfile lists every resolved coordinate; pom.xml only direct deps.
     #[cfg(feature = "maven")]
     {
-        v.push(Box::new(maven::PomXml));
         v.push(Box::new(maven::GradleLockfile));
+        v.push(Box::new(maven::PomXml));
     }
     #[cfg(feature = "hex")]
     {
@@ -208,4 +240,27 @@ pub fn parse_file(
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod direct_tests {
+    use super::*;
+
+    #[test]
+    fn npm_direct_deps_unions_every_dependency_section() {
+        let m = npm_direct_deps(
+            br#"{"name":"app","dependencies":{"a":"1"},"devDependencies":{"b":"1"},
+                "peerDependencies":{"c":"1"},"optionalDependencies":{"d":"1"},
+                "scripts":{"e":"x"}}"#,
+        );
+        let mut names: Vec<_> = m.keys().cloned().collect();
+        names.sort();
+        assert_eq!(names, ["a", "b", "c", "d"]);
+    }
+
+    #[test]
+    fn npm_direct_deps_is_empty_on_malformed_input() {
+        assert!(npm_direct_deps(b"not json").is_empty());
+        assert!(npm_direct_deps(br#"{"dependencies":[]}"#).is_empty());
+    }
 }
