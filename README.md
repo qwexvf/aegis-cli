@@ -57,7 +57,8 @@ macOS is enough; there is no cgo boundary and no separate grammar toolchain.
 
 Most reporting commands take `--json`; `ci`, `analyze`, and `run` also take
 `--sarif` (SARIF 2.1.0 for GitHub Code Scanning). Exit codes: `0` clean, `1`
-findings ≥ threshold, `2` usage/IO error.
+findings ≥ threshold, `2` usage/IO error. `analyze` and `explain pkg@ver` have
+no threshold flag: they exit `1` on a `prompt` or `block` verdict.
 
 ## Security workflows
 

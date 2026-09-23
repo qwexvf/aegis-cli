@@ -1017,7 +1017,7 @@ pub(crate) fn run_analyze(
             "{}",
             aegis_sbom::sarif::build_json(env!("CARGO_PKG_VERSION"), &rules, &findings)
         );
-        return ExitCode::SUCCESS;
+        return verdict_exit(v);
     }
 
     if json {
@@ -1063,7 +1063,16 @@ pub(crate) fn run_analyze(
             }
         }
     }
-    ExitCode::SUCCESS
+    verdict_exit(v)
+}
+
+/// `analyze` and `explain` exit 1 on a prompt or block verdict so a script
+/// can gate on them, matching Go. The verdict is still printed first.
+fn verdict_exit(v: VerdictKind) -> ExitCode {
+    match v {
+        VerdictKind::Prompt | VerdictKind::Block => ExitCode::from(1),
+        VerdictKind::Safe | VerdictKind::Review => ExitCode::SUCCESS,
+    }
 }
 
 #[derive(Serialize)]
@@ -1703,7 +1712,7 @@ fn explain_package(spec: &str, ecosystem: &str, json: bool) -> ExitCode {
             println!("  [{:>3}] {} — {}", d.weight, d.capability, d.description);
         }
     }
-    ExitCode::SUCCESS
+    verdict_exit(v)
 }
 
 #[derive(Serialize)]

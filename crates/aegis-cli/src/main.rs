@@ -310,6 +310,7 @@ enum Command {
         sub: AurSub,
     },
     /// Explain the risk model: capabilities, their meaning, and score weight.
+    /// With `pkg@ver`, exits 1 on a prompt or block verdict.
     Explain {
         /// A capability slug (e.g. "shell-spawn") for the risk-model doc, OR a
         /// package spec "name@version" (e.g. "lodash@4.17.4") to fetch + scan
@@ -363,6 +364,7 @@ enum Command {
         online: bool,
     },
     /// Scan a package source directory (AST + heuristics) and score it.
+    /// Exits 1 on a prompt or block verdict.
     Analyze {
         /// Directory containing the package's source tree.
         dir: String,

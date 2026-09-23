@@ -82,7 +82,8 @@ fn analyze_malicious_js_blocks() {
         "npm",
         "--json",
     ]);
-    assert_eq!(out.code, 0);
+    // A block verdict exits 1, like Go.
+    assert_eq!(out.code, 1, "{}", out.stdout);
     assert!(
         out.stdout.contains("\"verdict\": \"block\""),
         "{}",
@@ -219,7 +220,8 @@ fn analyze_npm_manifest_metadata_heuristics_fire() {
         "npm",
         "--json",
     ]);
-    assert_eq!(out.code, 0);
+    // A block verdict exits 1, like Go.
+    assert_eq!(out.code, 1, "{}", out.stdout);
     assert!(
         out.stdout.contains("\"verdict\": \"block\""),
         "{}",
@@ -252,7 +254,8 @@ fn analyze_unlisted_large_file_flagged() {
         "npm",
         "--json",
     ]);
-    assert_eq!(out.code, 0);
+    // Scores block (100), so it exits 1.
+    assert_eq!(out.code, 1, "{}", out.stdout);
     assert!(out.stdout.contains("unlisted-large-file"), "{}", out.stdout);
     let _ = std::fs::remove_dir_all(&d);
 }

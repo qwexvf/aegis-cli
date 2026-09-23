@@ -58,7 +58,17 @@ fn analyze(dir: &Path, eco: &str) -> Out {
 }
 
 fn assert_verdict(out: &Out, verdict: &str) {
-    assert_eq!(out.code, 0, "analyze failed: {}", out.stdout);
+    // prompt and block exit 1 so scripts can gate on `analyze`.
+    let want = if matches!(verdict, "prompt" | "block") {
+        1
+    } else {
+        0
+    };
+    assert_eq!(
+        out.code, want,
+        "unexpected exit for {verdict}: {}",
+        out.stdout
+    );
     assert!(
         out.stdout.contains(&format!("\"verdict\": \"{verdict}\"")),
         "expected verdict {verdict}, got:\n{}",
@@ -389,7 +399,8 @@ fn live_analyze_flags_yanked_event_stream() {
         "--online",
         "--json",
     ]);
-    assert_eq!(out.code, 0);
+    // 0 or 1 depending on the verdict; this test is about the signal.
+    assert_ne!(out.code, 2, "{}", out.stdout);
     assert!(
         out.stdout.contains("version-unpublished"),
         "expected version-unpublished for a real yanked package:\n{}",
