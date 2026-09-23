@@ -35,7 +35,8 @@ pub(crate) fn parse_ecosystem(s: &str) -> Option<Ecosystem> {
         "nuget" => Ecosystem::NuGet,
         "hex" | "gleam" | "mix" => Ecosystem::Hex,
         "pub" | "dart" | "pubspec" => Ecosystem::Pub,
-        "swift" | "swiftpm" => Ecosystem::SwiftPM,
+        // `swifturl` is what `Ecosystem::as_str` writes into aegis.lock.
+        "swift" | "swiftpm" | "swifturl" => Ecosystem::SwiftPM,
         "cran" => Ecosystem::Cran,
         "hackage" | "haskell" => Ecosystem::Hackage,
         "cpan" | "perl" => Ecosystem::Cpan,
@@ -46,10 +47,37 @@ pub(crate) fn parse_ecosystem(s: &str) -> Option<Ecosystem> {
         "nix" => Ecosystem::Nix,
         "julia" => Ecosystem::Julia,
         "conda" => Ecosystem::Conda,
+        "nim" | "nimble" => Ecosystem::Nimble,
+        "elm" => Ecosystem::Elm,
+        "opam" => Ecosystem::Opam,
         _ => return None,
     })
 }
 
 pub(crate) fn default_ecosystem() -> String {
     "npm".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_ecosystem_round_trips_through_its_wire_name() {
+        // aegis.lock stores `as_str()`, and a name that fails to parse back
+        // is loaded as npm. The match has no wildcard arm, so adding a
+        // variant without listing it here fails to compile.
+        use Ecosystem::*;
+        let all = |e: Ecosystem| match e {
+            Npm | PyPI | Crates | Go | Maven | RubyGems | Packagist | NuGet | Hex | Pub
+            | SwiftPM | Cran | Hackage | Cpan | CocoaPods | Neovim | Aur | Conan | Nix
+            | Julia | Conda | Nimble | Elm | Opam => e,
+        };
+        for e in [
+            Npm, PyPI, Crates, Go, Maven, RubyGems, Packagist, NuGet, Hex, Pub, SwiftPM, Cran,
+            Hackage, Cpan, CocoaPods, Neovim, Aur, Conan, Nix, Julia, Conda, Nimble, Elm, Opam,
+        ] {
+            assert_eq!(parse_ecosystem(all(e).as_str()), Some(e), "{}", e.as_str());
+        }
+    }
 }
