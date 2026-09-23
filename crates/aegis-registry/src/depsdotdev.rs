@@ -136,7 +136,10 @@ impl DepsDevClient {
         let system = deps_system(eco)?;
         let url = format!(
             "{}/v3alpha/systems/{}/packages/{}/versions/{}",
-            self.base_url, system, name, version
+            self.base_url,
+            system,
+            path_segment(name),
+            path_segment(version)
         );
         let resp = http.get(&url, &[("Accept", "application/json")]).ok()?;
         if resp.status == 404 {
@@ -149,7 +152,7 @@ impl DepsDevClient {
     }
 
     fn fetch_one_advisory(&self, http: &dyn HttpClient, id: &str) -> Option<Advisory> {
-        let url = format!("{}/v3alpha/advisories/{}", self.base_url, id);
+        let url = format!("{}/v3alpha/advisories/{}", self.base_url, path_segment(id));
         let resp = http.get(&url, &[("Accept", "application/json")]).ok()?;
         if !resp.is_ok() {
             return None;
@@ -165,6 +168,21 @@ impl DepsDevClient {
             ..Default::default()
         })
     }
+}
+
+/// Percent-encode one URL path segment, keeping RFC 3986 unreserved bytes.
+/// deps.dev answers 404 for an unescaped scoped npm name (`@types/node`),
+/// and a 404 reads as "not deprecated, no advisories", so the miss was silent.
+fn path_segment(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 /// Map the domain Ecosystem onto deps.dev's system vocabulary. None for
@@ -215,6 +233,30 @@ mod tests {
             .unwrap();
         assert!(health.is_deprecated);
         assert_eq!(health.deprecated_reason, "use foo instead");
+    }
+
+    #[test]
+    fn scoped_and_coordinate_names_are_escaped() {
+        // The escaped forms are the ones api.deps.dev answers 200 for; the raw
+        // `@types/node` path is a 404.
+        let base = "https://d.test";
+        let body = r#"{"isDeprecated":true,"deprecatedReason":"x","advisoryKeys":[]}"#;
+        let http = MockHttpClient::new()
+            .with(
+                &format!("{base}/v3alpha/systems/npm/packages/%40types%2Fnode/versions/20.0.0"),
+                200,
+                body.as_bytes().to_vec(),
+            )
+            .with(
+                &format!("{base}/v3alpha/systems/maven/packages/g%3Aa/versions/1.0"),
+                200,
+                body.as_bytes().to_vec(),
+            );
+        let c = DepsDevClient::new(base);
+        let npm = c.fetch_health(&http, Ecosystem::Npm, "@types/node", "20.0.0");
+        assert!(npm.unwrap().is_deprecated);
+        let mvn = c.fetch_health(&http, Ecosystem::Maven, "g:a", "1.0");
+        assert!(mvn.unwrap().is_deprecated);
     }
 
     #[test]
