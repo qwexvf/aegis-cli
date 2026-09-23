@@ -29,7 +29,6 @@
 //! field; only the outer compression differs. A Go-written zstd `aegis.lock`
 //! will fail to load here with a clear "re-run `aegis snapshot save`" message.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -379,20 +378,14 @@ fn lockfile_path(project_dir: &str) -> PathBuf {
     dir.join(LOCKFILE_NAME)
 }
 
-/// Write `aegis.lock` atomically (temp file + rename) to `path`. Pretty-JSON
-/// encoded so the file is git-diffable.
+/// Write `aegis.lock` atomically to `path`. Pretty-JSON encoded so the file
+/// is git-diffable.
 fn save_snapshot(path: &Path, snap: &DomainSnapshot) -> Result<(), String> {
     let file = snapshot_to_file(snap);
     let json =
         serde_json::to_string_pretty(&file).map_err(|e| format!("encode aegis.lock: {e}"))?;
-    let tmp = path.with_extension("lock.tmp");
-    let mut f = std::fs::File::create(&tmp).map_err(|e| format!("open {}: {e}", tmp.display()))?;
-    f.write_all(json.as_bytes())
-        .map_err(|e| format!("write {}: {e}", tmp.display()))?;
-    f.sync_all()
-        .map_err(|e| format!("sync {}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("rename → {}: {e}", path.display()))?;
-    Ok(())
+    aegis_net::atomic_write(path, json.as_bytes())
+        .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 /// Load `aegis.lock`. Tolerates a missing file (returns None) but errors on

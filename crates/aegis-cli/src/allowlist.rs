@@ -103,7 +103,8 @@ fn save(path: &Path, f: &AllowFile) -> Result<(), String> {
         }
     }
     let body = toml::to_string_pretty(f).map_err(|e| format!("encode: {e}"))?;
-    std::fs::write(path, body).map_err(|e| format!("{}: {e}", path.display()))
+    // aegis.toml also holds tasks and other config; a torn write loses all of it.
+    aegis_net::atomic_write(path, body.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 fn capability_by_name(slug: &str) -> Option<Capability> {
