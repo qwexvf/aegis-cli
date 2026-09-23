@@ -869,6 +869,20 @@ fn snapshot_lifecycle_save_show_verify_diff() {
     );
     let out = run(&["snapshot", "diff", dir]);
     assert!(out.stdout.contains("4.17.20"), "{}", out.stdout);
+
+    // Two-file form: `diff A B` with no directory in front.
+    let old_lock = d.join("old.lock");
+    std::fs::copy(d.join("aegis.lock"), &old_lock).unwrap();
+    let out = run(&["snapshot", "save", dir]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    let out = run(&[
+        "snapshot",
+        "diff",
+        old_lock.to_str().unwrap(),
+        d.join("aegis.lock").to_str().unwrap(),
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    assert!(out.stdout.contains("4.17.20"), "{}", out.stdout);
     let _ = std::fs::remove_dir_all(&d);
 }
 

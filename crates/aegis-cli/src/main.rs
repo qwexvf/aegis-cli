@@ -541,19 +541,14 @@ enum SnapshotSub {
         #[arg(long)]
         json: bool,
     },
-    /// Diff two snapshots: zero args = saved `aegis.lock` vs a fresh re-scan
-    /// of the project lockfile; two file paths = explicit two-file diff.
-    /// Per-entry verdicts (verdict=safe/review/prompt/block) are advisory.
+    /// Diff two snapshots. `diff [DIR]` compares the saved `aegis.lock`
+    /// against a fresh re-scan of the project lockfile; `diff A B` compares
+    /// two snapshot files. Per-entry verdicts (verdict=safe/review/prompt/block)
+    /// are advisory.
     Diff {
-        /// Project directory (used when neither `a` nor `b` given).
-        #[arg(default_value = ".")]
-        dir: String,
-        /// First snapshot file path (two-file mode).
-        #[arg(name = "A")]
-        a: Option<String>,
-        /// Second snapshot file path (two-file mode).
-        #[arg(name = "B")]
-        b: Option<String>,
+        /// `[DIR]` or `A B`. The older `DIR A B` form is still accepted.
+        #[arg(value_name = "PATH", num_args = 0..=3)]
+        paths: Vec<String>,
     },
     /// Enrich the saved snapshot in place: fetch each dep's published source,
     /// AST + heuristics scan it, fold in advisories (OSV+GHSA+EPSS+KEV), and
@@ -688,8 +683,17 @@ fn main() -> ExitCode {
                 used_only,
                 json,
             } => snapshot::run_snapshot_show(&dir, all, used_only, json),
-            SnapshotSub::Diff { dir, a, b } => {
-                snapshot::run_snapshot_diff(&dir, a.as_deref(), b.as_deref())
+            SnapshotSub::Diff { paths } => {
+                // Two paths are the two-file form; one path is a project
+                // dir. Binding them positionally as `DIR A B` made
+                // `diff a.lock b.lock` treat a.lock as the directory.
+                let (dir, a, b) = match paths.as_slice() {
+                    [] => (".", None, None),
+                    [dir] => (dir.as_str(), None, None),
+                    [a, b] => (".", Some(a.as_str()), Some(b.as_str())),
+                    [dir, a, b, ..] => (dir.as_str(), Some(a.as_str()), Some(b.as_str())),
+                };
+                snapshot::run_snapshot_diff(dir, a, b)
             }
             SnapshotSub::Enrich { dir } => snapshot::run_snapshot_enrich(&dir),
             SnapshotSub::Verify { dir } => snapshot::run_snapshot_verify(&dir),

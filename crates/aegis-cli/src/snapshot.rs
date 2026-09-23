@@ -762,7 +762,7 @@ impl From<&RiskFlag> for RiskFlagView {
 /// args it diffs the saved `aegis.lock` against a fresh re-scan of the
 /// project lockfile (carry-forward of fingerprints for unchanged versions, so
 /// the diff can compare FP-old vs FP-new without re-enriching). With two
-/// paths it diffs the two named files. One-arg is rejected.
+/// paths it diffs the two named files.
 pub(crate) fn run_snapshot_diff(
     project_dir: &str,
     a_path: Option<&str>,
