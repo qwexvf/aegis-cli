@@ -24,6 +24,8 @@ pub struct GrammarScanner {
     capture_to_cap: Vec<Option<Capability>>,
     /// capture index of `@env_var`, if present.
     env_read_idx: Option<u32>,
+    /// capture index of `@hook-script`, if present.
+    hook_script_idx: Option<u32>,
     /// optional language-specific second pass over the same tree.
     post_pass: Option<PostPass>,
 }
@@ -45,11 +47,14 @@ impl GrammarScanner {
         let names = query.capture_names();
         let mut capture_to_cap = vec![None; names.len()];
         let mut env_read_idx = None;
+        let mut hook_script_idx = None;
         for (i, name) in names.iter().enumerate() {
             if let Some(suffix) = name.strip_prefix("cap.") {
                 capture_to_cap[i] = capability_for(suffix);
             } else if *name == "env_var" {
                 env_read_idx = Some(i as u32);
+            } else if *name == "hook-script" {
+                hook_script_idx = Some(i as u32);
             }
         }
         Ok(GrammarScanner {
@@ -57,6 +62,7 @@ impl GrammarScanner {
             query,
             capture_to_cap,
             env_read_idx,
+            hook_script_idx,
             post_pass,
         })
     }
@@ -87,6 +93,11 @@ impl LanguageScanner for GrammarScanner {
                 } else if Some(cap.index) == self.env_read_idx {
                     if let Ok(name) = cap.node.utf8_text(body) {
                         findings.add_env_read(name);
+                    }
+                } else if Some(cap.index) == self.hook_script_idx {
+                    if let Ok(script) = cap.node.utf8_text(body) {
+                        let line = cap.node.start_position().row + 1;
+                        findings.add_hook_script(path, line, script.to_string());
                     }
                 }
             }
