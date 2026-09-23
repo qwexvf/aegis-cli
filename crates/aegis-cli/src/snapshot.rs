@@ -1174,7 +1174,7 @@ fn enrich_dep_fingerprint(dep: &Dependency) -> Fingerprint {
     }
     let http = aegis_net::default_client();
     match crate::scan::fetch_source(&http, dep) {
-        Ok(files) => fingerprint_source(&files, &dep.name, dep.ecosystem, Vec::new()),
+        Ok(files) => fingerprint_source(&files, &dep.name, &dep.version, dep.ecosystem, Vec::new()),
         Err(_) => Fingerprint {
             analyzed: true,
             ..Default::default()
@@ -1419,7 +1419,7 @@ pub(crate) fn run_snapshot_capture(
         .unwrap_or_default();
 
     let files = collect_files(root);
-    let fp = fingerprint_source(&files, &pkg_name, eco, Vec::new());
+    let fp = fingerprint_source(&files, &pkg_name, "", eco, Vec::new());
     let assessment = risk_score(Some(&fp));
     let snap = CaptureSchema {
         ecosystem: eco.as_str().to_string(),

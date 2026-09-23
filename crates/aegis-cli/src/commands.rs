@@ -649,7 +649,7 @@ fn run_task(t: &TaskConfig, allow: &aegis_domain::AllowSet) -> TaskResult {
 
     // Source scan (ast + heuristics).
     if want("ast") || want("heuristics") {
-        let (_caps, assessment) = scan_source(&files, &t.name, eco, Vec::new());
+        let (_caps, assessment) = scan_source(&files, &t.name, "", eco, Vec::new());
         // Allowlist suppression: excuse capabilities declared expected for
         // this package (builtin + user rules). Version unknown here → "".
         let assessment = aegis_domain::apply_allowlist(&assessment, allow, eco, &t.name, "");
@@ -950,7 +950,7 @@ pub(crate) fn run_analyze(
     } else {
         Vec::new()
     };
-    let (caps, mut assessment) = scan_source(&files, &pkg_name, eco, extra_caps);
+    let (caps, mut assessment) = scan_source(&files, &pkg_name, "", eco, extra_caps);
     // Online npm packages get an SLSA-provenance check: a missing attestation
     // adds the `provenance-missing` flag + its weight before the verdict.
     if online {

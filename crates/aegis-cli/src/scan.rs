@@ -74,10 +74,11 @@ fn ext_has_scanner(
 pub(crate) fn scan_source(
     files: &[(String, Vec<u8>)],
     pkg_name: &str,
+    version: &str,
     eco: Ecosystem,
     extra_caps: Vec<aegis_domain::Capability>,
 ) -> (CapabilitySet, RiskAssessment) {
-    let fp = fingerprint_source(files, pkg_name, eco, extra_caps);
+    let fp = fingerprint_source(files, pkg_name, version, eco, extra_caps);
     let assessment = risk_score(Some(&fp));
     (fp.capabilities, assessment)
 }
@@ -91,10 +92,11 @@ pub(crate) fn scan_source(
 pub(crate) fn scan_source_with_evidence(
     files: &[(String, Vec<u8>)],
     pkg_name: &str,
+    version: &str,
     eco: Ecosystem,
     extra_caps: Vec<aegis_domain::Capability>,
 ) -> (Fingerprint, RiskAssessment, Vec<Evidence>) {
-    let (fp, evidence) = fingerprint_inner(files, pkg_name, eco, extra_caps, true);
+    let (fp, evidence) = fingerprint_inner(files, pkg_name, version, eco, extra_caps, true);
     let assessment = risk_score(Some(&fp));
     (fp, assessment, evidence)
 }
@@ -105,10 +107,11 @@ pub(crate) fn scan_source_with_evidence(
 pub(crate) fn fingerprint_source(
     files: &[(String, Vec<u8>)],
     pkg_name: &str,
+    version: &str,
     eco: Ecosystem,
     extra_caps: Vec<aegis_domain::Capability>,
 ) -> Fingerprint {
-    fingerprint_inner(files, pkg_name, eco, extra_caps, false).0
+    fingerprint_inner(files, pkg_name, version, eco, extra_caps, false).0
 }
 
 /// Shared implementation. `collect_evidence` turns on per-capability
@@ -117,6 +120,7 @@ pub(crate) fn fingerprint_source(
 fn fingerprint_inner(
     files: &[(String, Vec<u8>)],
     pkg_name: &str,
+    version: &str,
     eco: Ecosystem,
     extra_caps: Vec<aegis_domain::Capability>,
     collect_evidence: bool,
@@ -155,7 +159,7 @@ fn fingerprint_inner(
     // Heuristics over the whole file set. Enrich the package from its manifest
     // so the metadata detectors (vcs-dep, install-hook, unlisted-payload,
     // go-retract) have Deps / Hooks / retract data, not just raw files.
-    let normalized = build_normalized(files, pkg_name, eco);
+    let normalized = build_normalized(files, pkg_name, version, eco);
     let mut caps = findings.capabilities();
     caps.extend(run_heuristics(&normalized));
     caps.extend(extra_caps);
@@ -429,7 +433,8 @@ pub(crate) fn enrich_dep(dep: &Dependency, allow: &aegis_domain::AllowSet) -> Ri
         Ok(f) => f,
         Err(_) => return RiskAssessment::default(),
     };
-    let (_caps, assessment) = scan_source(&files, &dep.name, dep.ecosystem, Vec::new());
+    let (_caps, assessment) =
+        scan_source(&files, &dep.name, &dep.version, dep.ecosystem, Vec::new());
     aegis_domain::apply_allowlist(&assessment, allow, dep.ecosystem, &dep.name, &dep.version)
 }
 
@@ -497,7 +502,8 @@ pub(crate) fn fetch_and_scan_package_at(
     // Evidence on: `explain` is the per-package view, and its output is what a
     // public package report cites. Without file/line/snippet a report says
     // "this package can spawn a shell" with nothing to check it against.
-    let (fp, assessment, evidence) = scan_source_with_evidence(&files, name, eco, Vec::new());
+    let (fp, assessment, evidence) =
+        scan_source_with_evidence(&files, name, version, eco, Vec::new());
     let assessment = aegis_domain::apply_allowlist(&assessment, &allow, eco, name, version);
     Ok(ScannedPackage {
         capabilities: fp.capabilities,
@@ -525,8 +531,9 @@ pub(crate) struct ScannedPackage {
 /// Map the heuristics' manifest hooks onto domain [`InstallHook`]s. Phase
 /// strings mirror the Go npm parser (preinstall → PreInstall; install /
 /// postinstall / prepare → PostInstall; build → Build). `source` is
-/// `scripts.<phase>`. `sha256` is left empty — it's only consumed by snapshot
-/// hook-drift, which `analyze` doesn't exercise.
+/// `scripts.<phase>`. `sha256` hashes the hook body, which is what snapshot
+/// hook drift compares: a changed postinstall between two versions only shows
+/// up if both sides carry a hash.
 fn to_install_hooks(hooks: &[aegis_heuristics::Hook]) -> Vec<InstallHook> {
     hooks
         .iter()
@@ -539,18 +546,38 @@ fn to_install_hooks(hooks: &[aegis_heuristics::Hook]) -> Vec<InstallHook> {
             InstallHook {
                 phase,
                 source: format!("scripts.{}", h.phase),
-                sha256: String::new(),
+                sha256: sha256_hex(h.body.as_bytes()),
             }
         })
+        .collect()
+}
+
+fn sha256_hex(data: &[u8]) -> String {
+    ring::digest::digest(&ring::digest::SHA256, data)
+        .as_ref()
+        .iter()
+        .map(|b| format!("{b:02x}"))
         .collect()
 }
 
 /// Build the heuristics view of a package: always the raw file set, plus
 /// ecosystem-specific manifest enrichment (npm package.json → deps + hooks;
 /// go.mod → retract list) so the metadata detectors get structured input, not
-/// just files. `analyze` runs on a source tree with no pinned version, so the
-/// go-retract check stays dormant (needs `version`) — the parser still runs.
+/// just files. `version` is the pinned version when the caller knows it; the
+/// go-retract check needs it, so a bare source tree (`analyze`) leaves that
+/// check dormant.
 fn build_normalized(
+    files: &[(String, Vec<u8>)],
+    pkg_name: &str,
+    version: &str,
+    eco: Ecosystem,
+) -> NormalizedPackage {
+    let mut pkg = build_normalized_unversioned(files, pkg_name, eco);
+    pkg.version = version.to_string();
+    pkg
+}
+
+fn build_normalized_unversioned(
     files: &[(String, Vec<u8>)],
     pkg_name: &str,
     eco: Ecosystem,
@@ -659,7 +686,7 @@ pub(crate) fn fetch_online_caps(
             name,
             version,
         ) {
-            let normalized = build_normalized(files, name, eco);
+            let normalized = build_normalized(files, name, version, eco);
             caps.extend(aegis_heuristics::tarball_drift::check_tarball_drift(
                 &normalized,
                 &repo_files,
@@ -743,6 +770,52 @@ mod tests {
     use super::*;
     use aegis_domain::Reachability;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn go_retract_fires_when_the_version_is_known() {
+        let files = vec![(
+            "go.mod".to_string(),
+            b"module example.com/m\n\ngo 1.22\n\nretract v1.0.1\n".to_vec(),
+        )];
+        let caps = |v: &str| fingerprint_source(&files, "example.com/m", v, Ecosystem::Go, vec![]);
+        assert!(caps("v1.0.1")
+            .capabilities
+            .has(Capability::VersionUnpublished));
+        assert!(!caps("v1.0.2")
+            .capabilities
+            .has(Capability::VersionUnpublished));
+        // No version (a bare source tree): the check stays off.
+        assert!(!caps("").capabilities.has(Capability::VersionUnpublished));
+    }
+
+    #[test]
+    fn install_hook_bodies_are_hashed_so_drift_can_see_a_change() {
+        let fp = |script: &str| {
+            let manifest = format!(
+                r#"{{"name":"p","version":"1.0.0","scripts":{{"postinstall":"{script}"}}}}"#
+            );
+            fingerprint_source(
+                &[("package.json".to_string(), manifest.into_bytes())],
+                "p",
+                "1.0.0",
+                Ecosystem::Npm,
+                vec![],
+            )
+        };
+        let old = fp("node evil.js");
+        // Expected value from `printf 'node evil.js' | sha256sum`.
+        assert_eq!(
+            old.hooks[0].sha256,
+            "10f23f1b9f6a7176c5ca652c4a535f7c569ccdd05b268f5e2278a54304e584ff"
+        );
+        let new = fp("node worse.js");
+        let drift = aegis_domain::drift_score(Some(&old), Some(&new));
+        assert!(
+            drift.flags.iter().any(|f| f.code == "install-hook-changed"),
+            "{:?}",
+            drift.flags
+        );
+    }
 
     fn dep(name: &str, eco: Ecosystem) -> Dependency {
         Dependency {

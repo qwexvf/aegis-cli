@@ -23,7 +23,7 @@ use aegis_net::DiskCache;
 ///
 /// Deliberately not the crate version: keying on that would cold-start every
 /// user's cache on every release, including docs-only ones.
-const SCAN_SCHEMA: u32 = 1;
+const SCAN_SCHEMA: u32 = 2;
 
 /// Capability scans are immutable for an exact version, so this can be long.
 const TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60);

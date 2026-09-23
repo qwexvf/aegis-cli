@@ -34,6 +34,9 @@ tar = "0.4.46"
 flate2 = "1.1.9"
 clap_complete = "4.5.67"
 regex = "1.13.1"
+# SHA-256 of install-hook bodies. Already in the graph through rustls, so this
+# adds no new code to the build.
+ring = "0.17"
 
 # opt-in precise-reachability backend: ripple's resolved code-graph, used to
 # replace the name-based transitive caller walk. Path dep to a sibling ripple
