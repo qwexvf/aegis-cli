@@ -33,8 +33,11 @@ use commands::{
     run_parse, run_reach, run_sbom,
 };
 
+/// Crate version plus the git commit it was built from, e.g. `0.30.0 (02b37ec1a2b3)`.
+const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("AEGIS_VERSION_SUFFIX"));
+
 #[derive(Parser)]
-#[command(name = "aegis", version, about = "Supply-chain security scanner")]
+#[command(name = "aegis", version = VERSION, about = "Supply-chain security scanner")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
