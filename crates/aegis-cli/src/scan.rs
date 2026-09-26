@@ -189,6 +189,21 @@ fn fingerprint_inner(
     if !hooks.is_empty() {
         caps.push(Capability::InstallHookExec);
     }
+    // The hook script is the evidence for install-hook-exec: without it a
+    // report can say "this package runs something at install" but not what.
+    if collect_evidence {
+        let manifest = find_manifest(files, "package.json")
+            .map(|(rel, _)| rel.to_string())
+            .unwrap_or_else(|| "package.json".to_string());
+        for h in &normalized.hooks {
+            evidence.push(Evidence {
+                capability: Capability::InstallHookExec,
+                path: manifest.clone(),
+                line: 0,
+                snippet: format!("scripts.{}: {}", h.phase, h.body),
+            });
+        }
+    }
 
     (
         Fingerprint {

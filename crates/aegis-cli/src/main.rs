@@ -392,6 +392,10 @@ enum Command {
         /// Emit SARIF 2.1.0 (for GitHub Code Scanning). Overrides --json.
         #[arg(long)]
         sarif: bool,
+        /// Include where each capability was seen (file, line, snippet) and
+        /// install hook scripts in the JSON output.
+        #[arg(long)]
+        evidence: bool,
     },
 }
 
@@ -774,6 +778,7 @@ fn main() -> ExitCode {
             allowlist,
             json,
             sarif,
+            evidence,
         } => run_analyze(
             &dir,
             name.as_deref(),
@@ -782,6 +787,7 @@ fn main() -> ExitCode {
             allowlist.as_deref(),
             json,
             sarif,
+            evidence,
         ),
     }
 }

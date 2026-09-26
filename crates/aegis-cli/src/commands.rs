@@ -457,6 +457,10 @@ struct AnalysisView {
     score: i32,
     capabilities: Vec<String>,
     flags: Vec<FlagView>,
+    /// Only with `--evidence`: where each capability was seen, including
+    /// install hook scripts. Sorted by file, line, capability.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    evidence: Option<Vec<EvidenceView>>,
 }
 
 #[derive(Serialize)]
@@ -921,6 +925,7 @@ fn flag_level(weight: i32) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_analyze(
     dir: &str,
     name: Option<&str>,
@@ -929,6 +934,7 @@ pub(crate) fn run_analyze(
     allowlist: Option<&str>,
     json: bool,
     sarif: bool,
+    with_evidence: bool,
 ) -> ExitCode {
     let root = Path::new(dir);
     if !root.is_dir() {
@@ -950,7 +956,14 @@ pub(crate) fn run_analyze(
     } else {
         Vec::new()
     };
-    let (caps, mut assessment) = scan_source(&files, &pkg_name, "", eco, extra_caps);
+    let (caps, mut assessment, evidence) = if with_evidence {
+        let (fp, assessment, ev) =
+            crate::scan::scan_source_with_evidence(&files, &pkg_name, "", eco, extra_caps);
+        (fp.capabilities, assessment, Some(ev))
+    } else {
+        let (caps, assessment) = scan_source(&files, &pkg_name, "", eco, extra_caps);
+        (caps, assessment, None)
+    };
     // Online npm packages get an SLSA-provenance check: a missing attestation
     // adds the `provenance-missing` flag + its weight before the verdict.
     if online {
@@ -1036,6 +1049,21 @@ pub(crate) fn run_analyze(
                     suppress_by: f.suppress_by.clone(),
                 })
                 .collect(),
+            evidence: evidence.map(|ev| {
+                let mut v: Vec<EvidenceView> = ev
+                    .into_iter()
+                    .map(|x| EvidenceView {
+                        capability: x.capability.name().to_string(),
+                        file: x.path,
+                        line: x.line,
+                        snippet: x.snippet,
+                    })
+                    .collect();
+                v.sort_by(|a, b| {
+                    (&a.file, a.line, &a.capability).cmp(&(&b.file, b.line, &b.capability))
+                });
+                v
+            }),
         };
         match serde_json::to_string_pretty(&view) {
             Ok(s) => println!("{s}"),
