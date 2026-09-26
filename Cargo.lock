@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "aegis-ast"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "aegis-domain",
  "streaming-iterator",
@@ -37,7 +37,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-cli"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "aegis-ast",
  "aegis-domain",
@@ -67,11 +67,11 @@ dependencies = [
 
 [[package]]
 name = "aegis-domain"
-version = "0.30.0"
+version = "0.31.0"
 
 [[package]]
 name = "aegis-heuristics"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "aegis-domain",
  "regex",
@@ -82,7 +82,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-image"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "aegis-ast",
  "aegis-domain",
@@ -96,7 +96,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-lockfile"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "aegis-domain",
  "divan",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-net"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "base64",
  "serde",
@@ -119,14 +119,14 @@ dependencies = [
 
 [[package]]
 name = "aegis-pkgbuild"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "regex",
 ]
 
 [[package]]
 name = "aegis-reach"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "aegis-domain",
  "divan",
@@ -143,7 +143,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-registry"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "aegis-domain",
  "aegis-net",
@@ -156,7 +156,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-sbom"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "aegis-domain",
  "serde",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-vuln"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "aegis-domain",
  "aegis-net",
@@ -1573,7 +1573,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "serde",
  "serde_json",

@@ -8,6 +8,52 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
+## [0.31.0](https://github.com/qwexvf/aegis-cli/compare/v0.30.0...v0.31.0) (2026-09-27)
+
+Port parity with the Go CLI, found by comparing the two call graphs, plus a
+detection rule that doubled blocked npm malware on the Datadog dataset
+(8.6% to 17.9% of `malicious_intent` samples).
+
+### Changed
+
+* **`analyze` and `explain` exit 1 on a prompt or block verdict**, in every
+  output mode, as the Go CLI did. Scripts that treated any non-zero exit as a
+  crash need to accept 1.
+
+### Added
+
+* **Install hooks that beacon host identity are flagged.** A hook running
+  `curl`, `wget`, `nslookup`, `dig`, `ping` or `host` with `$(whoami)`,
+  `$(hostname)`, `$USER`, `/etc/passwd` or `%USERNAME%` on the same command.
+* **`analyze --evidence`** lists the evidence behind the verdict, with install
+  hook scripts recorded as `scripts.<phase>: <body>`.
+* **`--version` includes the git commit**, so results can be tied to the build
+  that produced them.
+
+### Fixed
+
+* **User and project allowlist rules were ignored outside `allowlist list`.**
+  `ci`, `analyze`, `explain`, the install gate and `snapshot diff` now merge
+  builtin, user and project rules. The gate cache key carries a fingerprint of
+  the non-builtin rules, so one project's verdicts are not served to another.
+* **Go retractions and install-hook drift never fired.** No caller passed the
+  pinned version to the heuristics, and hook bodies carried no hash. Gate cache
+  schema bumps to 2.
+* **Malicious lazy.nvim `build = "..."` hooks scored safe** again; they run
+  through the install-hook malware matcher.
+* **Repos with two lockfiles for one ecosystem counted deps twice**, and npm
+  deps were never marked direct. Discovery takes the first lockfile per
+  ecosystem (pnpm, yarn, bun before npm) and reads `package.json` for direct
+  deps.
+* **Scoped npm names 404ed on deps.dev**, which read as "no advisories".
+  Names, versions and advisory ids are now percent-encoded.
+* **The lefthook entry blocked every commit** (`aegis ci` without a lockfile
+  exits 2). It now runs the staged-lockfile loop like the other hooks.
+* **`snapshot diff a.lock b.lock`** works without a leading directory.
+* **SwiftPM, Nim, Elm and opam deps reloaded from `aegis.lock` as npm.**
+* **`aegis.lock` and allowlist writes are atomic**; an interrupted
+  `allowlist add` could lose the rest of `aegis.toml`.
+
 ## [0.30.0](https://github.com/qwexvf/aegis-cli/compare/v0.30.0-rc.9...v0.30.0) (2026-09-21)
 
 First stable release of the Rust rewrite, and of the **install gate** — aegis
