@@ -5,8 +5,9 @@
 ;   1. Direct exec / shell — os.execute, io.popen, vim.fn.system, ...
 ;   2. Direct eval — loadstring, load, loadfile, dofile, vim.api.nvim_exec
 ;   3. require of network / OS modules (import ≠ call, but reliable signal)
-;   4. ffi.load / package.cpath — native binding load (folded into
-;      install-hook-exec for v1 to avoid a new domain.Capability)
+;   4. Native code load: ffi.load, package.cpath, package.loadlib
+;      (folded into install-hook-exec to avoid a new domain.Capability;
+;      risk scoring weighs it when no manifest hook explains it)
 ;   5. Raw IP literals in strings
 ;
 ; Note on AST shape: `variable` is a supertype in the grammar — it does
@@ -104,11 +105,56 @@
   (#eq? @_t "os")
   (#eq? @_f "getenv")) @cap.env-read
 
+;; os.getenv("NAME"): capture the literal name as @env_var so the
+;; credential-shaped-name filter in risk scoring can see it. Kept separate
+;; from the pattern above so a non-literal argument still records env-read.
+(function_call
+  name: (dot_index_expression
+    table: (identifier) @_t
+    field: (identifier) @_f)
+  arguments: (arguments . (string (string_content) @env_var))
+  (#eq? @_t "os")
+  (#eq? @_f "getenv"))
+
+;; vim.fn.getenv("NAME")
+(function_call
+  name: (dot_index_expression
+    table: (dot_index_expression
+      table: (identifier) @_root
+      field: (identifier) @_mid)
+    field: (identifier) @_leaf)
+  arguments: (arguments . (string (string_content) @env_var))
+  (#eq? @_root "vim")
+  (#eq? @_mid "fn")
+  (#eq? @_leaf "getenv")) @cap.env-read
+
+;; vim.uv.os_getenv("NAME") / vim.loop.os_getenv("NAME")
+(function_call
+  name: (dot_index_expression
+    table: (dot_index_expression
+      table: (identifier) @_root
+      field: (identifier) @_mid)
+    field: (identifier) @_leaf)
+  arguments: (arguments . (string (string_content) @env_var))
+  (#eq? @_root "vim")
+  (#any-of? @_mid "uv" "loop")
+  (#eq? @_leaf "os_getenv")) @cap.env-read
+
 ;; vim.env.<NAME> access — read of any env var via vim.env table
 (dot_index_expression
   table: (dot_index_expression
     table: (identifier) @_root
     field: (identifier) @_mid)
+  field: (identifier) @env_var
+  (#eq? @_root "vim")
+  (#eq? @_mid "env")) @cap.env-read
+
+;; vim.env["NAME"]
+(bracket_index_expression
+  table: (dot_index_expression
+    table: (identifier) @_root
+    field: (identifier) @_mid)
+  field: (string (string_content) @env_var)
   (#eq? @_root "vim")
   (#eq? @_mid "env")) @cap.env-read
 
@@ -151,6 +197,14 @@
       field: (identifier) @_f))
   (#eq? @_t "package")
   (#eq? @_f "cpath")) @cap.install-hook-exec
+
+;; package.loadlib("native.so", "luaopen_x"): load a C function directly
+(function_call
+  name: (dot_index_expression
+    table: (identifier) @_t
+    field: (identifier) @_f)
+  (#eq? @_t "package")
+  (#eq? @_f "loadlib")) @cap.install-hook-exec
 
 ;; ---- plugin-spec build hook -------------------------------------------
 

@@ -29,6 +29,12 @@ pub const WEIGHT_FS_WRITE: i32 = 8;
 pub const WEIGHT_RAW_IP_LITERAL: i32 = 10;
 pub const WEIGHT_SIZE_ANOMALY: i32 = 5;
 pub const WEIGHT_HOOK_CONTENT: i32 = 30;
+// Loading native code from source (Lua ffi.load / package.cpath /
+// package.loadlib) has legitimate uses: lazy.nvim extends package.cpath for
+// luarocks, LuaSnip loads its own jsregexp build. Weighted below a declared
+// install hook (30) so either alone stays at review, but high enough that a
+// plugin pairing it with shell, eval and a credential read reaches prompt.
+pub const WEIGHT_NATIVE_LOAD: i32 = 20;
 pub const WEIGHT_CAPABILITY_ADD: i32 = 15;
 pub const WEIGHT_MAINTAINER_SWAP: i32 = 30;
 
@@ -186,8 +192,18 @@ pub fn risk_score(fp: Option<&Fingerprint>) -> RiskAssessment {
                     );
                 }
             }
-            // Accounted for via hooks above; skip to avoid double-counting.
-            Capability::InstallHookExec => {}
+            // With declared hooks this is already counted above. Without
+            // them it came from source (Lua ffi.load / package.cpath /
+            // package.loadlib), which nothing else would score.
+            Capability::InstallHookExec => {
+                if fp.hooks.is_empty() {
+                    ra.add(
+                        c.name(),
+                        "loads native code at runtime (ffi.load / package.cpath / package.loadlib)",
+                        WEIGHT_NATIVE_LOAD,
+                    );
+                }
+            }
             Capability::InstallHookSuspicious => ra.add(
                 c.name(),
                 "install hook downloads-and-executes (curl|sh / wget|bash / node -e / base64|sh)",
@@ -284,7 +300,7 @@ pub fn drift_score(prev: Option<&Fingerprint>, next: Option<&Fingerprint>) -> Ri
 
     // 2. New capabilities gained in next.
     for c in next.capabilities.difference(&prev.capabilities).iter() {
-        if *c == Capability::InstallHookExec {
+        if *c == Capability::InstallHookExec && !next.hooks.is_empty() {
             continue; // counted by hook_diff
         }
         ra.add(

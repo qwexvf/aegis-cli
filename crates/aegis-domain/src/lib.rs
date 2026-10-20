@@ -119,6 +119,31 @@ mod tests {
     }
 
     #[test]
+    fn source_native_load_scores_only_without_declared_hooks() {
+        // Lua ffi.load / package.cpath: install-hook-exec with no manifest hook.
+        let mut fp = analyzed(&[Capability::InstallHookExec]);
+        assert_eq!(risk_score(Some(&fp)).score, risk::WEIGHT_NATIVE_LOAD);
+
+        // npm-style declared hook: the hook flag already covers it.
+        fp.hooks.push(InstallHook {
+            phase: HookPhase::PostInstall,
+            source: "scripts.postinstall".into(),
+            sha256: String::new(),
+        });
+        assert_eq!(risk_score(Some(&fp)).score, risk::WEIGHT_INSTALL_HOOK);
+    }
+
+    #[test]
+    fn drift_counts_native_load_gained_without_hooks() {
+        let prev = analyzed(&[]);
+        let next = analyzed(&[Capability::InstallHookExec]);
+        assert_eq!(
+            drift_score(Some(&prev), Some(&next)).score,
+            risk::WEIGHT_CAPABILITY_ADD
+        );
+    }
+
+    #[test]
     fn env_read_only_flags_credential_shaped_names() {
         let mut fp = analyzed(&[Capability::EnvRead]);
         fp.env_reads = vec!["NODE_ENV".into(), "HOME".into()];
