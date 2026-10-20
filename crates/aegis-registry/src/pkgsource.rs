@@ -395,7 +395,10 @@ fn extract_zip(raw: &[u8], prefix: &str) -> Result<Vec<(String, Vec<u8>)>, Strin
         if !f.is_file() {
             continue;
         }
-        let path = f.name().replace('\\', "/");
+        let path = match f.name() {
+            Ok(name) => name.replace('\\', "/"),
+            Err(_) => continue,
+        };
         if !is_safe_rel(&path) {
             continue;
         }
