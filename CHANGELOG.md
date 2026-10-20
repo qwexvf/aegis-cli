@@ -8,6 +8,27 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 > [`old`](https://github.com/qwexvf/aegis-cli/tree/old) branch. `main` is now the
 > Rust rewrite.
 
+## [Unreleased]
+
+### Fixed
+
+* **Lua credential env reads scored nothing.** The Lua queries marked
+  `env-read` but never captured the variable name, so `env-cred-read` could
+  not fire. `os.getenv("NAME")`, `vim.env.NAME`, `vim.env["NAME"]`,
+  `vim.fn.getenv("NAME")` and `vim.uv.os_getenv("NAME")` now record it.
+* **Lua native code loading scored nothing.** `ffi.load` and `package.cpath`
+  were filed under `install-hook-exec`, which risk scoring skips because a
+  declared manifest hook already counts it, and Lua has no manifest hooks.
+  When no hook is declared it now weighs 20, and drift scoring counts it as a
+  new capability. `package.loadlib` is detected too.
+
+  Together these restore a Neovim plugin that shells out, evals a fetched
+  payload, reads `GITHUB_TOKEN` and loads a native library to `prompt`. It
+  scored 43 (`review`) after the 0.30 weight recalibration, below the
+  `prompt` threshold aegis.nvim gates on by default. Of 12 popular Neovim
+  plugins, two move: lazy.nvim 33 to 53 (still `review`) and LuaSnip 50 to 70
+  (`prompt`; it ships and loads its own jsregexp binary).
+
 ## [0.31.0](https://github.com/qwexvf/aegis-cli/compare/v0.30.0...v0.31.0) (2026-09-27)
 
 Port parity with the Go CLI, found by comparing the two call graphs, plus a

