@@ -10,6 +10,27 @@ For binary downloads + cosign + SLSA verification: see the matching [GitHub Rele
 
 ## [Unreleased]
 
+## [0.32.0](https://github.com/qwexvf/aegis-cli/compare/v0.31.0...v0.32.0) (2026-10-20)
+
+Lua scoring fixes so the aegis.nvim gates block a malicious plugin again, plus
+dependency updates that clear the open RustSec advisories.
+
+### Security
+
+* **Dependency advisories cleared.** rustls 0.23.46 (RUSTSEC-2026-0346 to
+  0349), ruzstd 0.9.1 (RUSTSEC-2026-0344) and zip 9 (RUSTSEC-2026-0367 to
+  0369). With zip 9 a Go module archive entry whose name is not valid UTF-8
+  is skipped, as unreadable entries already were.
+
+### Changed
+
+* **Dependencies updated.** tree-sitter 0.26, tree-sitter-php 0.25,
+  tree-sitter-haskell 0.24, quick-xml 0.42 and the rest of the tree to their
+  latest compatible releases. Analysis output on the parity corpus is
+  unchanged. tree-sitter stays on 0.26 because ripple's engine pins it, and
+  ureq stays on 3.4.1 because 3.4.2 trips the hardcoded-secret rule on a
+  placeholder key in a test module.
+
 ### Fixed
 
 * **Lua credential env reads scored nothing.** The Lua queries marked
