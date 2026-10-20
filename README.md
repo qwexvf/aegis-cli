@@ -1,20 +1,20 @@
 # aegis
 
 Supply-chain security scanner for source packages, lockfiles, and container
-images. No CGO, no tokio — pure-Rust, feature-gated crates, parallel across
-cores via rayon.
+images. Pure Rust (no CGO, no tokio), split into feature-gated crates, and
+parallel across cores via rayon.
 
-It answers the questions a security engineer actually asks about a dependency:
+What it tells you about a dependency:
 
-- Does this package's code do something dangerous? (`analyze` — AST + heuristics)
-- Does my lockfile pin a known-vulnerable version? (`ci` — OSV/GHSA)
-- How do I fix it? (`fix` — minimal safe version bumps)
-- Did this dependency's *behavior* change between versions? (`snapshot` — drift)
+- Does this package's code do something dangerous? (`analyze`: AST + heuristics)
+- Does my lockfile pin a known-vulnerable version? (`ci`: OSV/GHSA)
+- How do I fix it? (`fix`: minimal safe version bumps)
+- Did this dependency's *behavior* change between versions? (`snapshot`: drift)
 - Is a flagged dependency even used? (`reach` / `run` unused-deps)
-- What's in this container image? (`image` — tarball or registry pull)
+- What's in this container image? (`image`: tarball or registry pull)
 
-Pure-Rust, offline-first, CI-first. Every check runs locally with no backend
-and no network unless you ask for one; the online paths (advisory feeds,
+It's offline-first and built for CI. Every check runs locally with no backend
+and no network unless you ask for one. The online paths (advisory feeds,
 published-source fetch) are opt-in and cached on disk.
 
 ## Install
@@ -25,7 +25,7 @@ cargo install --path crates/aegis-cli      # from this repo
 cargo install --git https://github.com/qwexvf/aegis-cli
 ```
 
-Needs a working C compiler — the tree-sitter grammars are Rust crates that
+Needs a working C compiler. The tree-sitter grammars are Rust crates that
 compile their vendored `parser.c` through the `cc` build script. That's the
 same `cc` cargo already needs to link, so a stock `rustup` install on Linux or
 macOS is enough; there is no cgo boundary and no separate grammar toolchain.
@@ -41,16 +41,16 @@ macOS is enough; there is no cgo boundary and no separate grammar toolchain.
 | `run <aegis.toml>` | parallel fleet scan (ast/heuristics/cve/deprecated/license/unused-deps) |
 | `sbom <lockfile>` | CycloneDX 1.5 / SPDX 2.3 SBOM |
 | `image <tarball>` / `image --ref <repo:tag>` | scan an OCI image (3 tiers) |
-| `snapshot <sub>` | `aegis.lock` lifecycle — see [Snapshots](#snapshots) |
-| `aur <sub>` | AUR / PKGBUILD install gate — see [AUR packages](#aur-packages) |
+| `snapshot <sub>` | `aegis.lock` lifecycle (see [Snapshots](#snapshots)) |
+| `aur <sub>` | AUR / PKGBUILD install gate (see [AUR packages](#aur-packages)) |
 | `reach <dir> <pkg>` | is a dependency imported (reachable) in JS/TS/Py/Go/PHP source? |
-| `allowlist <sub>` | manage capability suppressions — see [Allowlist](#allowlist) |
+| `allowlist <sub>` | manage capability suppressions (see [Allowlist](#allowlist)) |
 | `explain [capability\|pkg@ver]` | the risk model, or a published package's capabilities |
 | `hook [--install\|--uninstall]` | git pre-commit hook that scans staged lockfiles |
-| `npm`/`pnpm`/`yarn`/`bun`/`cargo`/`pip`/`go` | install gate — check packages *before* the manager fetches them, see [Install gate](#install-gate) |
+| `npm`/`pnpm`/`yarn`/`bun`/`cargo`/`pip`/`go` | install gate: checks packages *before* the manager fetches them (see [Install gate](#install-gate)) |
 | `shell-init <shell>` | shell functions that route installs through the gate |
 | `actions` / `actions scan` | generate a workflow, or audit existing ones for risk |
-| `audit tail` | the local decision log — what was scanned, and what the verdict was |
+| `audit tail` | the local decision log: what was scanned and what the verdict was |
 | `cache list` / `cache clear` | the on-disk advisory caches (CISA KEV, OSV documents) |
 | `doctor` | check the environment can run a scan; exits 1 on a real problem |
 | `completion <shell>` | shell completion script (bash, zsh, fish, powershell, elvish) |
@@ -69,7 +69,7 @@ aegis ci package-lock.json --sarif > aegis.sarif # → upload to Code Scanning
 aegis actions > .github/workflows/aegis.yml      # ready-made workflow
 ```
 
-`--fail-on` is a *verdict* threshold — `safe`, `review`, `prompt`, or `block`
+`--fail-on` is a *verdict* threshold: `safe`, `review`, `prompt`, or `block`
 (default `block`). A dep's verdict folds together its scanned capabilities, its
 advisories, and whether your source actually imports it: an unused dependency's
 advisory verdict is downgraded one level.
@@ -125,7 +125,7 @@ aegis snapshot rescan        # re-query advisories; exit 1 on a NEW one (cron)
 aegis snapshot verify        # lint the lock for loadability + schema version
 ```
 
-`enrich` is idempotent — re-running only processes deps that don't have a
+`enrich` is idempotent. Re-running only processes deps that don't have a
 fingerprint yet, so a partial run is safe to resume. `diff` also accepts two
 explicit snapshot paths (`aegis snapshot diff . a.json b.json`).
 
@@ -166,7 +166,7 @@ allowlist is that somebody decided the risk was acceptable.
 
 Rules are validated before they are written, so an unknown capability or
 a malformed semver range cannot land on disk and quietly break every
-later scan. Editing `aegis.toml` preserves the rest of the file — your
+later scan. Editing `aegis.toml` preserves the rest of the file, so your
 `[[task]]` entries survive.
 
 
@@ -205,7 +205,7 @@ constantly and install nothing.
 | `npm install <pkg>` | the named packages |
 | `npm install` / `npm ci` / `pnpm install --frozen-lockfile` | every dependency the lockfile pins, advisories only (see below) |
 | `pip install -r requirements.txt` | every requirement listed |
-| `npm run build`, `cargo check` | nothing — not an install, passed straight through |
+| `npm run build`, `cargo check` | nothing (not an install, passed straight through) |
 | `npm install ./local`, `git+https://…`, `workspace:*` | skipped and reported: there is no registry entry to check |
 
 ### Why a lockfile install is advisory-only
@@ -213,36 +213,36 @@ constantly and install nothing.
 A named install (`npm install lodash`) gets the full treatment: source fetch,
 AST capability scan, and advisories.
 
-A lockfile install means the whole tree — transitives included, commonly many
-hundreds of packages. Capability-scanning all of them costs a tarball fetch
+A lockfile install means the whole tree, transitives included, which is often
+many hundreds of packages. Capability-scanning all of them costs a tarball fetch
 and an AST parse each: measured at over 90 seconds for a real 922-dependency
 lockfile, in front of a command you are waiting on. So lockfile mode checks
 **advisories only**, which is one batched OSV query for the whole tree (32s
-cold, 3s warm on that same lockfile) and catches what matters most there — a
+cold, 3s warm on that same lockfile). That catches what matters most there: a
 known-vulnerable version already pinned in your tree.
 
 `AEGIS_GATE_DEEP=1` opts a lockfile install into the full capability scan.
 
 ### Private registries
 
-The gate reads `.npmrc` — `registry=`, `@scope:registry=` and `_authToken` —
-from the project directory and `$HOME`, plus `NPM_CONFIG_REGISTRY`, and looks
+The gate reads `registry=`, `@scope:registry=` and `_authToken` from `.npmrc`
+in the project directory and `$HOME`, plus `NPM_CONFIG_REGISTRY`, and looks
 each package up on the registry it actually comes from.
 
 A failure against a *private* registry warns rather than blocks: a private
 host cannot distinguish "this package does not exist" from "you are not
 authorised", and blocking on that made every install fail for anyone on
 Verdaccio, Artifactory or GitHub Packages. A 404 on the **public** registry
-still blocks — there it is a real signal that the name is unclaimed.
+still blocks, because there it really does mean the name is unclaimed.
 
 Only npm-family registries are configurable today; cargo, PyPI and Go always
 use their public registries.
 
 ### Failing closed
 
-Anything the gate cannot verify — registry unreachable, package not found, a
-scan that errored — **blocks**. Making the scanner unreachable would otherwise
-be a complete bypass for exactly the adversary this tool models.
+Anything the gate cannot verify **blocks**: registry unreachable, package not
+found, a scan that errored. Otherwise, making the scanner unreachable would be a
+complete bypass for exactly the adversary this tool models.
 
 Two escape hatches, both named in every blocking message:
 
@@ -283,25 +283,25 @@ aegis aur inspect ./some-pkg-1.0-1-x86_64.pkg.tar.zst
 
 Three layers, because each sees what the others cannot:
 
-- **PKGBUILD text** — privilege escalation in a build function, a committed
+- **PKGBUILD text**: privilege escalation in a build function, a committed
   binary in `source=()` (matched on magic bytes, not file extension), source
   and checksum arrays that disagree, paste/shortener hosts, download-and-exec.
-- **git history** — works on a *first* install with no stored state, by
+- **git history**: works on a *first* install with no stored state, by
   checking the attacker-writable history against the AUR's server-side
   `FirstSubmitted`: a force-pushed history, forged commit dates, spliced roots.
-- **the built package** — pacman hooks (root code on every future transaction),
+- **the built package**: pacman hooks (root code on every future transaction),
   setuid bits, `sudoers.d` and `ld.so.preload` drop-ins, PAM modules, files
   landing in a home directory. A build can fetch a payload from a perfectly
   legitimate host; whatever it produces still has to appear here.
 
-Calibrated against real data rather than intuition: 1200 packages from
+The rules were calibrated against real data: 1200 packages from
 `/var/cache/pacman/pkg` (96.8% clean, no CRITICAL rule fires on any of them),
 the 41 `.INSTALL` scripts those ship, and 116 freshly cloned AUR packages.
 
 ### Using it with an AUR helper
 
-There is a paru fork wired to call this before anything from a PKGBUILD runs —
-after the sources are fetched, before the first `makepkg` stage — and again on
+There is a paru fork that calls this before anything from a PKGBUILD runs
+(after the sources are fetched, before the first `makepkg` stage) and again on
 the built package before `pacman -U`:
 [github.com/qwexvf/paru](https://github.com/qwexvf/paru).
 
@@ -320,8 +320,8 @@ package the scanner did not report on counts as unscanned, never as clean.
 
 Line-based text rules lose to obfuscation split across lines, and a build that
 exfiltrates without leaving anything in the package is invisible to all three
-layers. This is a filter that raises the cost of a careless attack and informs
-the review you were going to do anyway — not a guarantee. See the open issues.
+layers. It's a filter that raises the cost of a careless attack and helps with
+the review you were going to do anyway. It is not a guarantee. See the open issues.
 
 ## What it detects
 
@@ -330,37 +330,37 @@ base64-decode, env-cred-read, obfuscated-payload (incl. `String.fromCharCode` /
 split-string de-obfuscation via a taint pass), install-hook-suspicious,
 binary-dropper, hardcoded-secret, typosquat, tarball-source-drift,
 git-dep-in-optional, unlisted-large-file, known-malware-ioc, maintainer-hijack /
-version-unpublished / maintainer-changed, provenance-missing, and more —
+version-unpublished / maintainer-changed, provenance-missing, and more.
 `aegis explain` lists them all with weights.
 
 Known vulnerabilities: OSV.dev + GitHub GHSA (with `GITHUB_TOKEN`), enriched with
 EPSS exploit-probability and CISA KEV; feeds cached on disk (24h/7d TTL).
 
-PKGBUILD-specific rules are listed under [AUR packages](#aur-packages) — they
+PKGBUILD-specific rules are listed under [AUR packages](#aur-packages). They
 run against build recipes rather than published package source.
 
 Ecosystems: npm (package-lock/yarn/pnpm/bun), PyPI (poetry/uv/pipfile/
 requirements), crates, Go, RubyGems, Composer, NuGet, Maven (pom+gradle), Hex
-(mix+gleam), Pub, CocoaPods, Swift, CRAN, CPAN, Hackage — 24 lockfile parsers.
+(mix+gleam), Pub, CocoaPods, Swift, CRAN, CPAN, Hackage. That's 24 lockfile parsers in total.
 Five of them (npm/PyPI/crates/RubyGems/Go) also fetch and scan each dependency's
 published source during `ci` and `snapshot enrich`.
 
 ## Design
 
-- **Dependency-free domain core** (`aegis-domain`) — risk scoring, verdicts,
+- **Dependency-free domain core** (`aegis-domain`): risk scoring, verdicts,
   capabilities, fix planning, snapshot diffing, reachability suppression,
   allowlist. Std only.
-- **Feature-gated crates** — every lockfile ecosystem, tree-sitter grammar, and
-  heuristic behind a Cargo feature; lean builds strip what they don't need:
+- **Feature-gated crates**: every lockfile ecosystem, tree-sitter grammar, and
+  heuristic sits behind a Cargo feature, so lean builds strip what they don't need:
   ```sh
   cargo build --no-default-features --features npm,pypi,rust
   ```
-- **Blocking HTTP** (`ureq`) behind an `HttpClient` trait — mock-tested offline,
-  no async coloring, small binary. Record/replay cassettes make network-shaped
+- **Blocking HTTP** (`ureq`) behind an `HttpClient` trait. It's mock-tested offline,
+  has no async coloring, and keeps the binary small. Record/replay cassettes make network-shaped
   tests deterministic.
 - **13 tree-sitter grammars** (js/ts/py/ruby/rust/go/php/csharp/java/haskell/
   lua/gleam/dart, plus cocoapods `.podspec` via the ruby grammar), each an
-  ordinary Cargo dependency — no cgo, no vendored toolchain, no build step
+  ordinary Cargo dependency. No cgo, no vendored toolchain, no build step
   outside `cargo build`.
 
 ## Development
@@ -374,7 +374,7 @@ cargo run -q -p xtask -- ci-parity        # 6/6   cassette replay (offline)
 ```
 
 CI runs three blocking jobs: `build-test` (fmt/clippy/test), `lean-build`
-(feature-gating guard — a leaked dependency fails here), and `parity`.
+(feature-gating guard; a leaked dependency fails here), and `parity`.
 
 The parity harnesses check the Rust scanner against goldens captured from Go
 v0.29 for `analyze`, `sbom`, and `ci`. They run offline; `ci-parity` replays a
